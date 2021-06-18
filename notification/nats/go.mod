@@ -1,4 +1,4 @@
-module github.com/vc2402/notification/nats
+module github.com/vc2402/vivard/notification/nats
 
 go 1.14
 

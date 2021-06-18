@@ -2,6 +2,7 @@ package vivard
 
 import (
 	"github.com/sirupsen/logrus"
+	dep "github.com/vc2402/vivard/dependencies"
 )
 
 type LogrusService struct {
@@ -12,7 +13,7 @@ func NewLogrusService(log *logrus.Entry) *LogrusService {
 	return &LogrusService{log: log}
 }
 
-func (ls *LogrusService) Prepare(eng *Engine) (err error) {
+func (ls *LogrusService) Prepare(eng *Engine, _ dep.Provider) (err error) {
 	if ls.log == nil {
 		var logger *logrus.Logger
 		logger, err = ls.initLogrus(eng)
@@ -23,7 +24,7 @@ func (ls *LogrusService) Prepare(eng *Engine) (err error) {
 	return
 }
 
-func (ls *LogrusService) Start(eng *Engine) error {
+func (ls *LogrusService) Start(eng *Engine, _ dep.Provider) error {
 	return nil
 }
 

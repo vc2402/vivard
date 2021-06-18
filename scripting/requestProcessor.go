@@ -22,7 +22,7 @@ const (
 )
 
 var errorsDesc = [...]string{
-	"Script file locationg problem",
+	"Script file locating problem",
 	"Compilation problem",
 	"Execution problem",
 }
@@ -99,7 +99,7 @@ func (s *Service) Process(ctx context.Context,
 			vm.Set(name, value)
 		}
 	}
-	rt := &runtime{engine: s, runtime: vm}
+	rt := &runtime{srv: s, runtime: vm}
 	vm.Set("ctx", ctx)
 	vm.Set("trace", rt.scriptTrace)
 	vm.Set("tracef", rt.scriptTracef)
@@ -163,7 +163,7 @@ func (s *Service) ProcessSingleRet(ctx context.Context,
 	return ret["_"], nil
 }
 
-func (Service *Service) getScript(name string,
+func (s *Service) getScript(name string,
 	// for otto
 	// vm *js.Otto) (*js.Script, *Error) {
 	vm *js.Runtime) (*js.Program, *Error) {
@@ -174,23 +174,23 @@ func (Service *Service) getScript(name string,
 		s.log.Tracef("getScript: error: %v", err)
 		return nil, newError(FileNotFound, err.Error())
 	}
-	time := stat.ModTime()
+	mt := stat.ModTime()
 	s.locker.Lock()
-	s, ok := s.scripts[name]
+	scr, ok := s.scripts[name]
 	if !ok {
-		s = &script{name: name}
-		s.scripts[name] = s
+		scr = &script{name: name}
+		s.scripts[name] = scr
 	}
 	s.locker.Unlock()
 	s.locker.Lock()
 	defer s.locker.Unlock()
-	if s.lastModified.Before(time) {
-		s.lastModified = time
+	if scr.lastModified.Before(mt) {
+		scr.lastModified = mt
 		// scr, err1 := vm.Compile(fileName, nil)
 		if file, err1 := ioutil.ReadFile(fileName); err1 == nil {
-			scr, err1 := js.Compile(fileName, string(file), false)
+			bc, err1 := js.Compile(fileName, string(file), false)
 			if err1 == nil {
-				s.byteCode = scr
+				scr.byteCode = bc
 			}
 			err = err1
 		}
@@ -199,7 +199,7 @@ func (Service *Service) getScript(name string,
 		s.log.Warnf("getScript: error while compiling: %+v", err)
 		return nil, newError(CompilationError, err.Error())
 	}
-	return s.byteCode, nil
+	return scr.byteCode, nil
 }
 
 func newError(code ErrorCode, problem string) *Error {
@@ -216,8 +216,7 @@ func (rt *runtime) scriptTrace(call js.FunctionCall) js.Value {
 	}
 	rt.srv.log.Trace(args...)
 	// return js.TrueValue()
-	ret := true
-	return rt.runtime.ToValue(ret)
+	return rt.runtime.ToValue(true)
 }
 
 func (rt *runtime) scriptTracef(call js.FunctionCall) js.Value {
@@ -236,8 +235,7 @@ func (rt *runtime) scriptTracef(call js.FunctionCall) js.Value {
 	// log.Warnf("Problem converting arg to string: %v", err)
 	// }
 	// return js.TrueValue()
-	ret := true
-	return rt.runtime.ToValue(ret)
+	return rt.runtime.ToValue(true)
 }
 
 func (e *Error) Error() string {

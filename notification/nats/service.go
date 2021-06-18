@@ -37,14 +37,14 @@ func (ns *Service) Err() error {
 }
 
 func (ns *Service) Connect() error {
+	skipConnectError := false
 	if ns.conn == nil {
 		o := &ng.Options{
 			Url:            "nats://localhost:4222",
 			AllowReconnect: true,
 			ReconnectWait:  time.Second * 30,
 		}
-		skipConnectError := false
-		if cfg, ok := dp.Config().GetConfig("nats").(map[string]interface{}); ok {
+		if cfg, ok := ns.dp.Config().GetConfig("nats").(map[string]interface{}); ok {
 			if url, ok := cfg["url"].(string); ok {
 				o.Url = url
 			}
@@ -55,13 +55,12 @@ func (ns *Service) Connect() error {
 				skipConnectError = sce
 			}
 		}
+		ns.conn, ns.err = o.Connect()
+		if !skipConnectError {
+			return ns.err
+		}
 	}
-	ns.conn, ns.err = o.Connect()
-	if !skipConnectError {
-		return ns.err
-	} else {
-		return nil
-	}
+	return nil
 }
 
 func (ns *Service) Reconnect() error {

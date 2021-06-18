@@ -3,6 +3,7 @@ package vivard
 import (
 	"encoding/json"
 	"fmt"
+	dep "github.com/vc2402/vivard/dependencies"
 	"net/http"
 
 	"github.com/graphql-go/graphql"
@@ -64,7 +65,7 @@ func createGQLDescriptor() *GQLDescriptor {
 	}
 }
 
-func (gqe *GQLEngine) generate(eng *Engine) error {
+func (gqe *GQLEngine) generate(_ *Engine) error {
 	gqld := gqe.descriptor
 	for tn, tg := range gqld.typesGenerators {
 		if gqld.types[tn] == nil {
@@ -98,11 +99,11 @@ func (gqe *GQLEngine) generate(eng *Engine) error {
 // 	return gqld.engine
 // }
 
-func (gqe *GQLEngine) Prepare(eng *Engine) error {
+func (gqe *GQLEngine) Prepare(_ *Engine, _ dep.Provider) error {
 	gqe.descriptor = createGQLDescriptor()
 	return nil
 }
-func (gqe *GQLEngine) Start(eng *Engine) error {
+func (gqe *GQLEngine) Start(eng *Engine, _ dep.Provider) error {
 	return gqe.generate(eng)
 }
 
@@ -299,7 +300,7 @@ func GQLArgToMapStringString(arg []interface{}) (ret map[string]string, err erro
 	for _, a := range arg {
 		if am, ok := a.(map[string]interface{}); ok {
 			kv, e := GQLArgToKVStringString(am)
-			if err != nil {
+			if e != nil {
 				err = e
 				return
 			}
@@ -388,7 +389,7 @@ func GQLArgToMapStringInt(arg []interface{}) (ret map[string]int, err error) {
 	for _, a := range arg {
 		if am, ok := a.(map[string]interface{}); ok {
 			kv, e := GQLArgToKVStringInt(am)
-			if err != nil {
+			if e != nil {
 				err = e
 				return
 			}

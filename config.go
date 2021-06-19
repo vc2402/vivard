@@ -1,14 +1,23 @@
 package vivard
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
 )
 
+var (
+	// ErrValueIgnored - provider can not set config values
+	ErrValueIgnored = errors.New("ignored")
+	// ErrInvalidValueType - type of value is invalid
+	ErrInvalidValueType = errors.New("invalid value type")
+)
+
 type ConfigProvider interface {
 	GetConfigValue(key string) interface{}
+	SetConfigValue(key string, val interface{}) error
 }
 
 type ViperConfig struct {
@@ -25,6 +34,10 @@ func NewViperConfigForViper(v *viper.Viper) ViperConfig {
 
 func (vc ViperConfig) GetConfigValue(key string) interface{} {
 	return vc.vip.Get(strings.ToLower(key))
+}
+
+func (vc ViperConfig) SetConfigValue(key string, val interface{}) error {
+	return errors.New("ignored")
 }
 
 type configProvider struct {
@@ -56,6 +69,20 @@ func (eng *Engine) ConfValue(key string) interface{} {
 		}
 	}
 	return ret
+}
+
+func (eng *Engine) SetConfValue(key string, val interface{}) error {
+	ok := false
+	for cp := eng.config; cp != nil; cp = cp.next {
+		if ret := cp.provider.SetConfigValue(key, val); ret == nil {
+			ok = true
+		}
+	}
+	if ok {
+		return nil
+	} else {
+		return ErrValueIgnored
+	}
 }
 
 func (eng *Engine) ConfString(key string, def ...string) string {

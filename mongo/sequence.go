@@ -66,7 +66,7 @@ func (msp *SequenceProvider) Start(eng *vivard.Engine, prov dep.Provider) error 
 
 // Sequence returns Sequence object with given name
 func (msp *SequenceProvider) Sequence(ctx context.Context, name string) (vivard.Sequence, error) {
-	return msp.Sequence(ctx, name)
+	return msp.sequence(ctx, name)
 }
 
 func (msp *SequenceProvider) sequence(ctx context.Context, seqName string) (*Sequence, error) {

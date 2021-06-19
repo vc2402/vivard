@@ -33,11 +33,16 @@ type connection struct {
 	db  *mongo.Database
 }
 
+func (ms *Service) With(db *mongo.Database) *Service {
+	ms.db = db
+	return ms
+}
+
 func (ms *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
 	ms.aliases = make(map[string]*connection)
 	ms.connections = make(map[string]*mongo.Client)
 	ms.log = prov.Logger("mongo")
-	ms.dp = prov
+	//ms.dp = prov
 	ms.db, err = ms.GetDefaultMongo(context.Background())
 	return
 }

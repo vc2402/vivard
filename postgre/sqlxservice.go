@@ -18,6 +18,7 @@ type Service struct {
 }
 
 func (ss *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
+	ss.log = prov.Logger("postgre")
 	ss.dp = prov
 	if ss.db == nil {
 		ss.tryConnectPostgre()

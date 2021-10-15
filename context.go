@@ -2,6 +2,13 @@ package vivard
 
 import "context"
 
+type Context interface {
+	UserID() int
+	UserName() string
+	Source() string
+	HasRole(role string) bool
+}
+
 type DefaultContext struct {
 	userID   int
 	userName string

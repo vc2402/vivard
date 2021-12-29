@@ -156,7 +156,7 @@ var (
 Comment = ("//") { "\u0000"…"\uffff"-"\n" } .
 MetaLine = ("#" | "\t") { "\u0000"…"\uffff"-"\n" } .
 TypeModifier = "config" | "dictionary" | "embeddable" | "foreign" | "singleton" | "transient" .
-AttrModifier = "id" | "auto" | "lookup" | "one-to-many" | "embedded" | "calculated" .
+AttrModifier = "id" | "auto" | "lookup" | "one-to-many" | "embedded" | "ref-embedded" | "calculated" .
 More = "..." .
 QualifiedName = Ident "." Ident .
 Ident = (alpha | "_") { "_" | alpha | digit } .
@@ -268,7 +268,7 @@ func (f *File) postProcess() error {
 				t.FieldsIndex[te.Field.Name] = te.Field
 				// stripAnnotations(te.Modifiers)
 				te.Field.Type.Complex = !IsPrimitiveType(te.Field.Type.Type)
-				te.Field.Type.Embedded = te.Field.HasModifier(AttrModifierEmbeeded)
+				te.Field.Type.Embedded = te.Field.HasModifier(AttrModifierEmbedded)
 			} else if te.Method != nil {
 				te.Method.Modifiers = te.Modifiers
 				te.Method.Features = Features{}

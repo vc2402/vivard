@@ -289,6 +289,7 @@ func (p *Project) Generate() (err error) {
 				Project:    p}
 
 			bldr.Generator = &jen.Statement{}
+			bldr.JenFile.HeaderComment(fmt.Sprintf("Code generated from file %s by vivgen. DO NOT EDIT.", file.FileName))
 			err = pckg.doGenerate(bldr)
 			if err != nil {
 				return

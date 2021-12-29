@@ -146,7 +146,7 @@ func (hg *HistoryGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 				Pos:         field.Pos,
 				Annotations: Annotations{},
 				Features:    Features{},
-				Modifiers:   []*EntryModifier{{AttrModifier: string(AttrModifierEmbeeded)}},
+				Modifiers:   []*EntryModifier{{AttrModifier: string(AttrModifierEmbedded)}},
 				Tags:        map[string]string{},
 				Type:        &TypeRef{Array: &TypeRef{Type: he.Name, NonNullable: true}, NonNullable: true, Complex: true, Embedded: true},
 			}

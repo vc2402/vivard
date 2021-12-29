@@ -605,6 +605,75 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 
 	ncg.b.Functions.Add(f.Line())
 
+	f = jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id("SetConfigValue").
+		Params(jen.Id("key").String(), jen.Id("val").Interface()).Error().BlockFunc(func(g *jen.Group) {
+		g.Id("parts").Op(":=").Qual("strings", "SplitN").Params(jen.Id("key"), jen.Lit("."), jen.Lit(2))
+		g.Switch(jen.Id("parts").Index(jen.Lit(0))).BlockFunc(func(g *jen.Group) {
+			ca := e.Annotations[AnnotationConfig]
+			var name string
+			var ft *Entity
+			for _, f := range e.Fields {
+				isArray := false
+				if ca == nil || !ca.GetBool(AnnCfgValue, false) {
+					name = f.Type.Type
+					if f.Type.Array != nil {
+						isArray = true
+						name = f.Type.Array.Type
+					}
+					if name == "" {
+						continue
+					}
+					if dt, ok := ncg.desc.FindType(name); ok {
+						ft = dt.Entity()
+						ca := ft.Annotations[AnnotationConfig]
+						if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+							continue
+						}
+					} else {
+						continue
+					}
+				}
+				fname := f.Name
+				g.Case(jen.Lit(fname)).BlockFunc(func(g *jen.Group) {
+					//TODO return array elements?
+					if ca != nil && ca.GetBool(AnnCfgValue, false) || isArray {
+						g.If(
+							jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(f.Features.Stmt(FeatGoKind, FCGAttrType)),
+							jen.Id("ok"),
+						).
+							Block(
+								//TODO save it to DB
+								jen.Id("o").Dot(f.Name).Op("=").Id("v"),
+								jen.Return(jen.Nil()),
+							).
+							Else().Block(
+							jen.Return(jen.Qual(vivardPackage, "ErrInvalidValueType")),
+						)
+					} else {
+						g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
+							g.If(
+								jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(f.Features.Stmt(FeatGoKind, FCGAttrType)),
+								jen.Id("ok"),
+							).
+								Block(
+									//TODO save it to DB or not to save - that is the question...
+									jen.Id("o").Dot(f.Name).Op("=").Id("v"),
+									//jen.List(jen.Id("_"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Qual("context", "TODO").Params(), jen.Id("v")),
+									jen.Return(jen.Nil()),
+								).
+								Else().Block(
+								jen.Return(jen.Qual(vivardPackage, "ErrInvalidValueType")),
+							),
+						)
+						g.Return(jen.Id("o").Dot(f.Name).Dot("SetConfigValue").Params(jen.Id("parts").Index(jen.Lit(1)), jen.Id("val")))
+					}
+				})
+			}
+		})
+		g.Return(jen.Nil())
+	})
+
+	ncg.b.Functions.Add(f.Line())
 	if e.HasModifier(TypeModifierConfig) {
 		ncg.desc.Engine.Initialized.Add(
 			jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, e.Name)).Params(jen.Qual("context", "TODO").Params()).Line(),

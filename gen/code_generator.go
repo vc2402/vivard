@@ -11,12 +11,18 @@ import (
 const (
 	codeGeneratorAnnotation     = "go"
 	codeGeneratorAnnotationTags = "gotags"
+	AnnotationDeletable         = "deletable"
 
 	//cgaNameTag may be used to set go name of field or type
 	cgaNameTag                     = "name"
 	codeGenAnnoSingletonEngineAttr = "attrName"
 
 	CodeGeneratorOptionsName = "go"
+
+	//deletableAnnotationWithField - generate Deleted field for entity that can be deleted
+	deletableAnnotationWithField = "field"
+	// deletableAnnotationIgnore - do not generate Delete operation (overwrites default generation)
+	deletableAnnotationIgnore = "ignore"
 )
 
 const (
@@ -50,6 +56,12 @@ const (
 	FCGCronRequired = "cron-required"
 	//FCGExtEngineVar - for Field - name of engine var in engine for external types
 	FCGExtEngineVar = "ext-engine-var"
+	//FCGDeletable - the entity is deletable
+	FCGDeletable = "deletable"
+	//FCGDeletedFieldName - for entity; name of the deleted field (empty if not needed)
+	FCGDeletedFieldName = "del-fld"
+	//FCGDeletedField - for field; set to true for DeletedOn field
+	FCGDeletedField = "del-fld"
 )
 
 // CodeGeneratorOptions describes possible options for CodeGenerator
@@ -60,6 +72,10 @@ type CodeGeneratorOptions struct {
 	GenerateNullMethods bool
 	// GenerateFieldsEnums - generate int consts for each field of each type, e.g. 'Type1Field1Field' (may be used for NullableField, search filters etc.)
 	GenerateFieldsEnums bool
+	// GenerateRemoveOperation - generate Remove and Delete operations for each entity
+	GenerateRemoveOperation bool
+	// GenerateDeletedField - generate field Deleted *time.Time for every entity that can be deleted
+	GenerateDeletedField bool
 }
 
 //CodeGenerator generates Go code (structs, methods, Engine object  and other)
@@ -108,6 +124,8 @@ const (
 	scriptingEnginePackage       = "github.com/vc2402/vivard/scripting"
 	extendableTypeDescriptorType = "V_%sType"
 	extendedTypeTypeName         = "V_%s_%s"
+
+	deletedFieldName = "DeletedOn"
 )
 
 var cgComplexMethodsTemplates = [cgLastComplexMethod]string{
@@ -142,6 +160,8 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 				return true, fmt.Errorf("at %v: gotags annotation could countain only strings params: %s", ann.Pos, v.Key)
 			}
 		}
+	} else if _, ok := item.(*Entity); ok && ann.Name == AnnotationDeletable {
+		return true, nil
 	}
 	if _, ok := item.(*Method); ok && ann.Name == AnnotationCall {
 		return true, nil
@@ -170,6 +190,24 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 				}
 				cn := fmt.Sprintf(extendedTypeTypeName, cg.desc.GetRealTypeName(t.BaseTypeName), name)
 				t.Features.Set(FeatGoKind, FCGDerivedTypeNameConst, cn)
+			}
+			if ann, ok := t.Annotations[AnnotationDeletable]; ok || cg.options.GenerateRemoveOperation {
+				if !ann.GetBool(deletableAnnotationIgnore, false) {
+					t.Features.Set(FeatGoKind, FCGDeletable, true)
+					if tag := ann.GetTag(deletableAnnotationWithField); tag != nil || cg.options.GenerateDeletedField {
+						dfn := deletedFieldName
+						if tag != nil {
+							if n, ok := tag.GetString(); ok {
+								dfn = n
+							} else if b, ok := tag.GetBool(); ok && !b {
+								dfn = ""
+							}
+						}
+						if dfn != "" {
+							t.Features.Set(FeatGoKind, FCGDeletedFieldName, dfn)
+						}
+					}
+				}
 			}
 			cg.prepareFields(t)
 		}
@@ -209,9 +247,9 @@ func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 	if cg.desc.Features.Bool(FeatGoKind, FCGScriptingRequired) &&
 		!cg.desc.Features.Bool(FeatGoKind, FCGScriptingCreated) {
 		cg.desc.Features.Set(FeatGoKind, FCGScriptingCreated, true)
-		bldr.Descriptor.Engine.Fields.Add(jen.Id(scriptingEngineField).Op("*").Qual(scriptingEnginePackage, "Engine")).Line()
+		bldr.Descriptor.Engine.Fields.Add(jen.Id(scriptingEngineField).Op("*").Qual(scriptingEnginePackage, "Service")).Line()
 		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(scriptingEngineField).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceScripting)).
-			Assert(jen.Op("*").Qual(vivardPackage, "ScriptingService")).Dot("Engine").Params()).Line()
+			Assert(jen.Op("*").Qual(scriptingEnginePackage, "Service"))).Line()
 		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(scriptingEngineField).Dot("SetContext").Params(jen.Map(jen.String()).Interface().Values(jen.Dict{
 			// jen.Lit("SequenceProvider"): jen.Id(EngineVar).Dot("seqProv"),
 			jen.Lit("eng"): jen.Id(EngineVar),
@@ -379,7 +417,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 						}
 						if itsOneToMany {
 							if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
-								if d.HasModifier(AttrModifierEmbeeded) {
+								if d.HasModifier(AttrModifierEmbedded) {
 									g.If(jen.Id("obj").Dot(fieldName).Op("!=").Nil()).Block(
 										jen.Return(jen.Id("obj").Dot(fieldName), jen.Nil()),
 									)
@@ -466,7 +504,15 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 									return
 								}
 							} else if d.Type.Array != nil {
-								cg.createArraySetter(g, d.Type.Array, "a", "val", "i")
+								tr := d.Type.Array
+								if d.HasModifier(AttrModifierEmbeddedRef) {
+									if t, ok := cg.desc.FindType(tr.Type); ok {
+										if idfld := t.entry.GetIdField(); idfld != nil {
+											tr = idfld.Type
+										}
+									}
+								}
+								cg.createArraySetter(g, tr, "a", "val", "i")
 								g.Id("obj").Dot(fieldName).Op("=").Id("a")
 							} else if d.Type.Map != nil {
 								cg.createMapSetter(g, d.Type.Map, "m", "val", "i")
@@ -515,7 +561,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 			setter := jen.Id("o").Dot(fieldName).Op("=")
 			getter := jen.Return(jen.Id("o").Dot(fieldName))
 			nullFuncs := &jen.Statement{}
-			if pointer && !d.HasModifier(AttrModifierEmbeeded) {
+			if pointer && !d.HasModifier(AttrModifierEmbedded) {
 				getter = jen.If(jen.Id("o").Dot(fieldName).Op("==").Nil()).
 					Block(jen.Return(cg.b.goEmptyValue(d.Type, true))).
 					Else().Block(jen.Return(jen.Op("*").Id("o").Dot(fieldName)))
@@ -523,7 +569,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 				// n = n.Op("*")
 				setter.Add(jen.Op("&"))
 			}
-			if pointer || d.HasModifier(AttrModifierOneToMany) || d.HasModifier(AttrModifierEmbeeded) || itsManyToMany || d.Type.Array != nil || d.Type.Map != nil {
+			if pointer || d.HasModifier(AttrModifierOneToMany) || d.HasModifier(AttrModifierEmbedded) || itsManyToMany || d.Type.Array != nil || d.Type.Map != nil {
 				nullFuncs = jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(cg.b.GetMethodName(d, CGIsNullMethod)).Params().Bool().Block(
 					jen.Return(jen.Id("o").Dot(fieldName).Op("==").Nil()),
 				).Line().
@@ -617,19 +663,19 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 			fields[jen.Id(fieldName)] = jen.Id("id")
 		} else if d.Type.NonNullable {
 			//TODO: initialize if set default annotation
-			if d.Type.Complex && d.HasModifier(AttrModifierEmbeeded) && d.Type.Array == nil && d.Type.Map == nil {
+			if d.Type.Complex && d.HasModifier(AttrModifierEmbedded) && d.Type.Array == nil && d.Type.Map == nil {
 				ft, ok := cg.desc.FindType(d.Type.Type)
 				if !ok {
 					return fmt.Errorf("at %v: type not found for embedded field: %s", d.Pos, d.Type.Type)
 				}
-				//TODO: check package
+				engVar := cg.desc.CallFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
 				//TODO: check that it is not necessary add params to initializer
 				fields[jen.Id(fieldName)] = jen.Id(d.Name)
 				idstmt.Add(
-					jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Id(EngineVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(jen.Id("ctx")),
+					jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(jen.Id("ctx")),
 				).Line()
 			} else {
-				fields[jen.Id(fieldName)] = cg.b.goEmptyValue(d.Type, !d.HasModifier(AttrModifierEmbeeded))
+				fields[jen.Id(fieldName)] = cg.b.goEmptyValue(d.Type, !d.HasModifier(AttrModifierEmbedded))
 			}
 			if err != nil {
 				return
@@ -883,6 +929,19 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 		ent.Features.Set(FeatGoKind, FCGBaseTypeAccessorInterface, ent.Name+"er")
 		ent.Features.Set(FeatGoKind, FCGBaseTypeAccessorName, "Get"+ent.Name)
 	}
+	// if dfn, ok := ent.Features.GetString(FeatGoKind, FCGDeletedFieldName); ok {
+	// 	deletedField := &Field{
+	// 		Pos:      ent.Pos,
+	// 		Name:     dfn,
+	// 		Type:     &TypeRef{Type: TipDate},
+	// 		Features: Features{},
+	// 		parent:   ent,
+	// 	}
+	// 	deletedField.Features.Set(FeaturesDBKind, FCGName, mdDeletedFieldName)
+	// 	deletedField.Features.Set(FeaturesCommonKind, FCGDeletedField, true)
+	// 	ent.Fields = append(ent.Fields, deletedField)
+	// 	ent.FieldsIndex[dfn] = deletedField
+	// }
 	for _, f := range ent.Fields {
 		fname := f.Name
 		if n, ok := f.Annotations.GetStringAnnotation(codeGeneratorAnnotation, cgaNameTag); ok {
@@ -901,7 +960,7 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 			!itsManyToMany &&
 			f.Type.Array == nil &&
 			f.Type.Map == nil &&
-			!f.HasModifier(AttrModifierEmbeeded)
+			!f.HasModifier(AttrModifierEmbedded)
 
 		f.Features.Set(FeatGoKind, FCGPointer, isPointer)
 		ftype := cg.goType(f.Type)
@@ -970,11 +1029,11 @@ func (cg *CodeGenerator) goType(ref *TypeRef) (f *jen.Statement) {
 				f = cg.goType(it.Type)
 			} else {
 				f = jen.Op("*")
-				// if b.File.Package != dt.pckg {
-				// 	f = f.Qual(dt.pckg, dt.name)
-				// } else {
-				f = f.Id(dt.name)
-				// }
+				if dt.pckg != cg.desc.Name {
+					f = f.Qual(dt.packagePath, dt.name)
+				} else {
+					f = f.Id(dt.name)
+				}
 			}
 		} else {
 			cg.desc.AddError(fmt.Errorf("undefined type: %s", ref.Type))

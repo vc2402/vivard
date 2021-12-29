@@ -260,29 +260,13 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 	if name, ok := e.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
 		fname := fmt.Sprintf("%sTypeGenerator", name)
 		gqlFields := jen.Dict{}
-		// if e.BaseTypeName != "" {
-		// 	f := e.GetBaseField()
-		// 	fieldName, _ := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
-		// 	t, err := cg.getGQLType(f.Type)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// 	gqlFields[jen.Lit(fieldName)] = jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-		// 		jen.Id("Type"): t,
-		// 		jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).Block(
-		// 			jen.Id("obj").Op(":=").Id("p").Dot("Source").Assert(jen.Op("*").Id(name)),
-		// 			jen.Return(jen.Id("obj").Dot(fieldName), jen.Nil()),
-		// 		),
-		// 	})
-		// 	cg.desc.AddBaseFieldTag(e, gqlTagJSON, fieldName)
-		// }
 		for _, f := range e.GetFields(true, true) {
 			fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
 			if !ok {
 				continue
 			}
 
-			t, err := cg.getGQLType(f.Type)
+			t, err := cg.getGQLType(f.Type, false, f.HasModifier(AttrModifierEmbeddedRef))
 			if err != nil {
 				return err
 			}
@@ -387,7 +371,7 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 			t, err := cg.getGQLType(
 				f.Type,
 				!(f.IsIdField() && f.HasModifier(AttrModifierIDAuto)),
-				false,
+				f.HasModifier(AttrModifierEmbeddedRef),
 				true, //input
 			)
 			if err != nil {
@@ -1157,7 +1141,7 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 			if len(skipNotNull) > 1 && skipNotNull[1] {
 				if t, ok := cg.desc.FindType(ref.Type); ok {
 					if idfld := t.entry.GetIdField(); idfld != nil {
-						ret, err = cg.getGQLType(idfld.Type)
+						ret, err = cg.getGQLType(idfld.Type, true)
 						if err != nil {
 							return
 						}

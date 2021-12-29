@@ -43,6 +43,8 @@ const (
 const apolloClientInclude = "import { ApolloClient } from 'apollo-client';\n"
 const gqlInclude = "import gql from 'graphql-tag';\n"
 
+//TODO ref field is int not an object
+
 type GQLCLientGenerator struct {
 	desc *gen.Package
 }
@@ -81,7 +83,7 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 					}
 				}
 				if idfld := t.GetIdField(); idfld != nil {
-					t.Features.Set(Features, FIDType, cg.GetJSTypeName(idfld.Type))
+					t.Features.Set(Features, FIDType, cg.GetJSTypeName(idfld.Type, false))
 				}
 				t.Features.Set(Features, FInstanceGenerator, "New"+t.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "")+"Instance")
 				var tf *gen.Field
@@ -96,8 +98,8 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 						}
 					}
 					// f.Annotations.AddTag(Annotation, AnnotationType, cg.GetJSTypeName(f.Type))
-					f.Features.Set(Features, FType, cg.GetJSTypeName(f.Type))
-					f.Features.Set(Features, FInputType, cg.GetJSInputTypeName(f.Type))
+					f.Features.Set(Features, FType, cg.GetJSTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef)))
+					f.Features.Set(Features, FInputType, cg.GetJSInputTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef)))
 					if title, ok := f.Annotations.GetBoolAnnotation(Annotation, AnnotationTitle); ok && title {
 						tf = f
 					}
@@ -134,19 +136,27 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	outFile.WriteString(apolloClientInclude)
 	outFile.WriteString(gqlInclude)
 	imports := map[string][]string{}
+	addImport := func(fileName string, typeName string) {
+		for _, g := range imports[fileName] {
+			if g == typeName {
+				return
+			}
+		}
+		imports[fileName] = append(imports[fileName], typeName)
+	}
 	for _, t := range b.File.Entries {
 		for _, f := range t.GetFields(true, true) {
 			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, false); tt != nil && tt.File != b.File {
-				imports[tt.File.Name] = append(imports[tt.File.Name], t)
+				addImport(tt.File.Name, t)
 				if f.Type.NonNullable && f.Type.Type != "" {
 					ft, ok := cg.desc.FindType(f.Type.Type)
 					if ok {
-						imports[tt.File.Name] = append(imports[tt.File.Name], ft.Entity().FS(Features, FInstanceGenerator))
+						addImport(tt.File.Name, ft.Entity().FS(Features, FInstanceGenerator))
 					}
 				}
 			}
 			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, true); tt != nil && tt.File != b.File {
-				imports[tt.File.Name] = append(imports[tt.File.Name], t)
+				addImport(tt.File.Name, t)
 			}
 		}
 	}
@@ -354,42 +364,48 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					Args:      ad,
 					Fields:    make([]string, len(fields)),
 				}
-				j := 0
-				for _, f := range fields {
-					if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
-						continue
-					}
-					// if f.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
-					// 	continue
-					// }
-					if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
-						if f.Type.Complex {
-							if f.Type.Array != nil {
-								if i == gen.GQLOperationGet {
+				if i == gen.GQLOperationDelete {
+					params.Fields = []string{}
+				} else {
+					j := 0
+					for _, f := range fields {
+						if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
+							continue
+						}
+						// if f.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
+						// 	continue
+						// }
+						if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
+							if f.Type.Complex {
+								if f.Type.Array != nil {
+									if i == gen.GQLOperationGet {
+										n, err = cg.getQueryForEmbededType(n, f)
+										if err != nil {
+											cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
+											continue
+										}
+									} else if i == gen.GQLOperationFind && f.HasModifier(gen.AttrModifierEmbeddedRef) {
+										// nothing to do - it jus n and should be
+									} else {
+										n = ""
+									}
+								} else {
 									n, err = cg.getQueryForEmbededType(n, f)
 									if err != nil {
 										cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
 										continue
 									}
-								} else {
-									n = ""
-								}
-							} else {
-								n, err = cg.getQueryForEmbededType(n, f)
-								if err != nil {
-									cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
-									continue
 								}
 							}
-						}
-						params.Fields[j] = n
-						if n != "" {
-							j++
+							params.Fields[j] = n
+							if n != "" {
+								j++
+							}
 						}
 					}
-				}
-				if len(params.Fields) > j {
-					params.Fields = params.Fields[:j]
+					if len(params.Fields) > j {
+						params.Fields = params.Fields[:j]
+					}
 				}
 				th := &templateHolder{templ: template.New("QUERY_VAR")}
 				th.parse(queryTemplate).
@@ -411,7 +427,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 		ad := []ArgDef{}
 		req := m.FS(gen.GQLFeatures, gen.GQLFMethodType)
 		jsarg := ""
-		rt := cg.GetJSTypeName(m.RetValue) //cg.desc.GetFeature(m, gen.GQLFeatures, gen.GQLFMethodResultTypeName).(string)
+		rt := cg.GetJSTypeName(m.RetValue, false) //cg.desc.GetFeature(m, gen.GQLFeatures, gen.GQLFMethodResultTypeName).(string)
 		idfld := e.GetIdField()
 		if idfld != nil {
 			if idt, ok := idfld.Features.GetString(gen.GQLFeatures, gen.GQLFTypeTag); ok {
@@ -425,7 +441,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 			ad = append(ad,
 				ArgDef{Name: a.Name,
 					Type:    a.Features.String(gen.GQLFeatures, gen.GQLFTypeTag),
-					JSType:  cg.GetJSTypeName(a.Type),
+					JSType:  cg.GetJSTypeName(a.Type, false),
 					NotNull: a.Type.NonNullable})
 		}
 		qn := m.FS(gen.GQLFeatures, gen.GQLFMethodName)
@@ -461,7 +477,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 				if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
 					if f.Type.Complex {
 						if f.Type.Array != nil {
-							//TODO: annotation to fullfill complex types attrs?
+							//TODO: annotation to fulfill complex types attrs?
 							// 	if i == gen.GQLOperationGet {
 							// 		n, err = cg.getQueryForEmbededType(n, f)
 							// 		if err != nil {
@@ -512,9 +528,9 @@ func (th *templateHolder) parse(str string) *templateHolder {
 	return th
 }
 
-func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef) (ret string) {
+func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef, asRef bool) (ret string) {
 	if ref.Array != nil {
-		params := cg.GetJSTypeName(ref.Array)
+		params := cg.GetJSTypeName(ref.Array, asRef)
 		ret = fmt.Sprintf("%s[]", params)
 	} else if ref.Map != nil {
 		valtype := "string"
@@ -523,25 +539,34 @@ func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef) (ret string) {
 		}
 		ret = fmt.Sprintf("{key: string, val: %s}[]", valtype)
 	} else {
-		switch ref.Type {
-		case gen.TipBool:
-			ret = "boolean"
-		case gen.TipString:
-			ret = "string"
-		case gen.TipInt, gen.TipFloat:
-			ret = "number"
-		case gen.TipDate:
-			ret = "string"
-		default:
-			ret = cg.GetJSEntityTypeName(ref.Type)
+		if asRef {
+			if t, ok := cg.desc.FindType(ref.Type); ok {
+				if idfld := t.Entity().GetIdField(); idfld != nil {
+					ref = idfld.Type
+				}
+			}
+		}
+		if ret == "" {
+			switch ref.Type {
+			case gen.TipBool:
+				ret = "boolean"
+			case gen.TipString:
+				ret = "string"
+			case gen.TipInt, gen.TipFloat:
+				ret = "number"
+			case gen.TipDate:
+				ret = "string"
+			default:
+				ret = cg.GetJSEntityTypeName(ref.Type)
+			}
 		}
 	}
 	return ret
 }
 
-func (cg *GQLCLientGenerator) GetJSInputTypeName(ref *gen.TypeRef) (ret string) {
+func (cg *GQLCLientGenerator) GetJSInputTypeName(ref *gen.TypeRef, asRef bool) (ret string) {
 	if ref.Array != nil {
-		params := cg.GetJSInputTypeName(ref.Array)
+		params := cg.GetJSInputTypeName(ref.Array, asRef)
 		ret = fmt.Sprintf("%s[]", params)
 	} else if ref.Map != nil {
 		valtype := "string"
@@ -550,17 +575,26 @@ func (cg *GQLCLientGenerator) GetJSInputTypeName(ref *gen.TypeRef) (ret string) 
 		}
 		ret = fmt.Sprintf("{key: string, val: %s}[]", valtype)
 	} else {
-		switch ref.Type {
-		case gen.TipBool:
-			ret = "boolean"
-		case gen.TipString:
-			ret = "string"
-		case gen.TipInt, gen.TipFloat:
-			ret = "number"
-		case gen.TipDate:
-			ret = "string"
-		default:
-			ret = cg.GetJSEntityInputTypeName(ref.Type)
+		if asRef {
+			if t, ok := cg.desc.FindType(ref.Type); ok {
+				if idfld := t.Entity().GetIdField(); idfld != nil {
+					ref = idfld.Type
+				}
+			}
+		}
+		if ret == "" {
+			switch ref.Type {
+			case gen.TipBool:
+				ret = "boolean"
+			case gen.TipString:
+				ret = "string"
+			case gen.TipInt, gen.TipFloat:
+				ret = "number"
+			case gen.TipDate:
+				ret = "string"
+			default:
+				ret = cg.GetJSEntityInputTypeName(ref.Type)
+			}
 		}
 	}
 	return ret
@@ -708,10 +742,10 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 		"NeedInit": func(f *gen.Field) bool {
 			return !f.Annotations.GetBoolAnnotationDef(gen.GQLAnnotation, gen.GQLAnnotationSkipTag, false) &&
 				(f.Type.NonNullable && f.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "") != "" ||
-					f.HasModifier(gen.AttrModifierEmbeeded))
+					f.HasModifier(gen.AttrModifierEmbedded))
 		},
 		"Init": func(f *gen.Field) string {
-			if f.HasModifier(gen.AttrModifierEmbeeded) {
+			if f.HasModifier(gen.AttrModifierEmbedded) {
 				if f.Type.Array != nil || f.Type.Map != nil {
 					return "[]"
 				}

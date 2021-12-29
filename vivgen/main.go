@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -12,9 +13,10 @@ import (
 
 func main() {
 	pflag.String("package", "test", "default package name")
+	pflag.String("in", ".", "Input directory")
 	pflag.String("out", ".", "Output directory")
 	pflag.String("clientOut", "/home/victor/work/vivasoft/vue/gen-test/src/generated", "Output directory for client files")
-	pflag.Bool("print", false, "Pribt result to stdout")
+	pflag.Bool("print", false, "Print result to stdout")
 	pflag.String("cfgPath", ".", "Path to config file")
 	pflag.String("cfg", "gen.json", "Config file name")
 
@@ -28,6 +30,14 @@ func main() {
 	if len(args) == 0 {
 		fmt.Println("no files to parse given")
 		return
+	}
+	in := viper.GetString("in")
+	if in != "" && in != "." {
+		for i, fn := range args {
+			if !filepath.IsAbs(fn) {
+				args[i] = filepath.Join(in, fn)
+			}
+		}
 	}
 	res, err := gen.Parse(args)
 	if err != nil {

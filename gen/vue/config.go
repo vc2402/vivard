@@ -485,7 +485,7 @@ func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs str
 			if f.Type.Array != nil {
 				tn = f.Type.Array.Type
 			}
-			t, ok := cg.b.Descriptor.FindType(tn)
+			t, ok := e.Pckg.FindType(tn)
 			if !ok {
 				cg.b.AddWarning(fmt.Sprintf("reference type not found: %s", tn))
 				continue

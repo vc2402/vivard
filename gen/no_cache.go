@@ -153,15 +153,17 @@ func (b *Builder) generateNew(t *Entity) error {
 			)
 		}
 
+		c.List(jen.Id("ret"), jen.Id("err")).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodCreate, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o")))
 		if _, hok := t.HaveHook(TypeHookCreate); hok {
-			c.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
-				Str: b.Descriptor.GetHookName(TypeHookCreate, nil),
-				Obj: "o",
-				// Args: map[string]interface{}{},
-			}))
+			c.If(jen.Err().Op("==").Nil()).Block(
+				b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
+					Str: b.Descriptor.GetHookName(TypeHookCreate, nil),
+					Obj: "o",
+					// Args: map[string]interface{}{},
+				}),
+			)
 		}
-		c.List(jen.Id("ret"), jen.Id("err")).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodCreate, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))).Line().
-			Return()
+		c.Return()
 	}).Line()
 
 	b.Functions.Add(f)

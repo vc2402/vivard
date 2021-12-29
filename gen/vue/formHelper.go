@@ -266,7 +266,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"FormComponentType": func(f fieldDescriptor) string {
 			if _, ok := f.fld.Parent().Annotations[gen.AnnotationFind]; ok {
 				fld, _ := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
-				return fld.Type.Type
+				if fld != nil {
+					return fld.Type.Type
+				}
 			}
 			if f.fld.Type.Map != nil {
 				return "map"
@@ -346,13 +348,15 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 				typename = tip.Array.Type
 			}
 			var lc string
-			if t, ok := cg.desc.FindType(typename); ok {
+			if t, ok := e.Pckg.FindType(typename); ok {
 				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 					// if f.fld.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 					// 	lc = t.Entity().FS(featureVueKind, fVKViewComponent)
 					// } else {
 					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
 					// }
+				} else {
+					typename = t.Entity().Name
 				}
 			}
 
@@ -411,7 +415,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			}
 			return ""
 		},
-		"RequiredComponents":   func() map[string]string { return components },
+		"RequiredComponents": func() map[string]string {
+			return components
+		},
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
 		"IsID": func(f fieldDescriptor, auto bool) bool {
 			if auto {
@@ -523,7 +529,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if f.fld.Type.Array != nil {
 				t = f.fld.Type.Array.Type
 			}
-			if e, ok := cg.desc.FindType(t); ok {
+			if e, ok := e.Pckg.FindType(t); ok {
 				name := e.Entity().FS(js.Features, js.FInstanceGenerator)
 				// it is too late to do it here... will do earlier
 				//typesFromTS = append(typesFromTS, name)

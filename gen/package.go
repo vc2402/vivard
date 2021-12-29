@@ -261,12 +261,45 @@ func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 							op = an.GetString(AnnFndTypeTag, AFTEqual)
 						}
 						searchField := t.entry.GetField(fldName)
-						if searchField == nil {
-							return fmt.Errorf("at %v: can not find field %s for find attr %s", f.Pos, fldName, f.Name)
-						}
 						f.Features.Set(FeaturesAPIKind, FAPIFindParam, op)
-						f.Features.Set(FeaturesAPIKind, FAPIFindFor, searchField)
+						f.Features.Set(FeaturesAPIKind, FAPIFindForName, fldName)
+						if searchField == nil {
+							if fldName != AFFDeleted {
+								return fmt.Errorf("at %v: can not find field %s for find attr %s", f.Pos, fldName, f.Name)
+							}
+						} else {
+							f.Features.Set(FeaturesAPIKind, FAPIFindFor, searchField)
+						}
 
+					}
+				}
+			}
+		case AnnotationDeletable:
+			if !a.GetBool(deletableAnnotationIgnore, false) {
+				e.Features.Set(FeatGoKind, FCGDeletable, true)
+				if tag := a.GetTag(deletableAnnotationWithField); tag != nil /* || cg.options.GenerateDeletedField  */ {
+					dfn := deletedFieldName
+					if tag != nil {
+						if n, ok := tag.GetString(); ok {
+							dfn = n
+						} else if b, ok := tag.GetBool(); ok && !b {
+							dfn = ""
+						}
+					}
+					if dfn != "" {
+						e.Features.Set(FeatGoKind, FCGDeletedFieldName, dfn)
+						deletedField := &Field{
+							Pos:         e.Pos,
+							Name:        dfn,
+							Type:        &TypeRef{Type: TipDate},
+							Features:    Features{},
+							Annotations: Annotations{},
+							parent:      e,
+						}
+						deletedField.Features.Set(FeaturesDBKind, FCGName, mdDeletedFieldName)
+						deletedField.Features.Set(FeaturesCommonKind, FCGDeletedField, true)
+						e.Fields = append(e.Fields, deletedField)
+						e.FieldsIndex[dfn] = deletedField
 					}
 				}
 			}
@@ -338,14 +371,14 @@ func (desc *Package) checkTypeRelations(t *Entity) error {
 				tt.entry.Features.Set(FeaturesCommonKind, FCForeignKeyField, fkField)
 				tt.entry.Features.Set(FeaturesCommonKind, FCSkipAccessors, true)
 
-				f.Features.Set(FeaturesCommonKind, FCIgnore, !f.HasModifier(AttrModifierEmbeeded))
+				f.Features.Set(FeaturesCommonKind, FCIgnore, !f.HasModifier(AttrModifierEmbedded))
 				f.Features.Set(FeaturesCommonKind, FCOneToManyType, tt.entry)
 				f.Features.Set(FeaturesCommonKind, FCOneToManyField, fkField)
 			} else {
 				return fmt.Errorf("undefined type %s for foreign-key field ", f.Type.Array.Type)
 			}
 		} else if f.Type.Array != nil {
-			if refT, ok := desc.FindType(f.Type.Array.Type); ok {
+			if refT, ok := desc.FindType(f.Type.Array.Type); ok && !f.HasModifier(AttrModifierEmbeddedRef) {
 				f.Features.Set(FeaturesCommonKind, FCManyToManyType, refT.entry)
 				f.Features.Set(FeaturesCommonKind, FCManyToManyIDField, refT.entry.GetIdField())
 				refT.entry.Features.Set(FeaturesCommonKind, FCRefsAsManyToMany, true)
@@ -380,6 +413,7 @@ func (desc *Package) generateEngine() error {
 		)
 	}
 	desc.Engine.file = jen.NewFile(desc.Name)
+	desc.Engine.file.HeaderComment(fmt.Sprintf("Code generated for package %s by vivgen. DO NOT EDIT.", desc.Name))
 	desc.Engine.file.Add(
 		jen.Type().Id("Engine").Struct(desc.Engine.Fields).Line(),
 		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Name").Params().Parens(jen.String()).Block(
@@ -387,7 +421,11 @@ func (desc *Package) generateEngine() error {
 				jen.Lit(desc.Name),
 			),
 		).Line(),
-		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Prepare").Params(jen.Id("v").Op("*").Qual(vivardPackage, "Engine")).Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
+		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Prepare").
+			Params(
+				jen.Id("v").Op("*").Qual(vivardPackage, "Engine"),
+				//jen.Id("_").Op("*").Qual(dependenciesPackage, "Provider"),
+			).Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
 			g.Var().Id("err").Id("error")
 			g.Id("eng").Dot(EngineVivard).Op("=").Id("v")
 			if desc.Features.Bool(FeatGoKind, FCGCronRequired) {

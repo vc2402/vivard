@@ -350,6 +350,7 @@ func (p *Project) Generate() (err error) {
 			pckg.builders = append(pckg.builders, bldr)
 			pckg.Engine.Initializator.Add(jen.Id(EngineVar).Dot(fname).Params()).Line()
 		}
+		pckg.generateEngine()
 	}
 
 	return

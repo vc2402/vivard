@@ -397,7 +397,6 @@ func (desc *Package) doGenerate(bldr *Builder) error {
 			return err
 		}
 	}
-	desc.generateEngine()
 	return nil
 }
 

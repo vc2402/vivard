@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
@@ -30,11 +31,13 @@ const (
 	sRotating              = "rotating"
 	sRotatingRotationTime  = "rotationtime"
 	sRotatingMaxAge        = "maxage"
+	sRotatingMaxFiles      = "maxfiles"
 )
 
 type rotatingFileConfig struct {
 	maxAge       time.Duration
 	rotationTime time.Duration
+	maxFiles     int
 }
 type logFileConfig struct {
 	path      string
@@ -45,7 +48,7 @@ type logFileConfig struct {
 
 func initLogrus(config map[string]interface{}) (*logrus.Logger, error) {
 	var logger *logrus.Logger = logrus.StandardLogger()
-	if config != nil && len(config) > 0 {
+	if len(config) > 0 {
 		console, _ := config[sConsole].(bool)
 		lev, ok := config[sLevel].(string)
 		if !ok {
@@ -90,7 +93,7 @@ func initLogrus(config map[string]interface{}) (*logrus.Logger, error) {
 		logger.SetFormatter(formatter)
 		if main != nil {
 			if main.rotating == nil {
-				main.rotating = &rotatingFileConfig{maxAge: -1, rotationTime: -1}
+				main.rotating = &rotatingFileConfig{maxAge: 0, rotationTime: 24 * time.Hour, maxFiles: 7}
 			}
 			w, err := main.rotating.getWriter(main.path)
 			if err != nil {
@@ -124,10 +127,6 @@ func initLogrus(config map[string]interface{}) (*logrus.Logger, error) {
 		}
 	}
 	return logger, nil
-	// logrus_mate.Hijack(
-	// 	logrus.StandardLogger(),
-	// 	logrus_mate.ConfigFile(fileName),
-	// )
 }
 
 func initLogReadFileConfig(cfg map[string]interface{}) (*logFileConfig, error) {
@@ -186,12 +185,20 @@ func initLogReadFileConfig(cfg map[string]interface{}) (*logFileConfig, error) {
 					}
 					ret.rotating.rotationTime = rt
 				}
-				if ageCfg, ok := rotCfg[sRotatingRotationTime].(string); ok {
+				if ageCfg, ok := rotCfg[sRotatingMaxAge].(string); ok {
 					age, err := time.ParseDuration(ageCfg)
 					if err != nil {
 						return nil, fmt.Errorf("while parsing rotation age: %w", err)
 					}
 					ret.rotating.maxAge = age
+					ret.rotating.maxFiles = 0
+				} else if mfCfg, ok := rotCfg[sRotatingMaxFiles]; ok {
+					mf, err := parseInt(mfCfg)
+					if err != nil {
+						return nil, fmt.Errorf("while parsing rotation max files count: %w", err)
+					}
+					ret.rotating.maxFiles = mf
+					ret.rotating.maxAge = 0
 				}
 			}
 		}
@@ -266,6 +273,27 @@ func (rfc *rotatingFileConfig) getWriter(path string) (io.Writer, error) {
 		absPath+".%Y%m%d%H%M",
 		rotatelogs.WithLinkName(absPath),
 		rotatelogs.WithMaxAge(rfc.maxAge),
+		rotatelogs.WithRotationCount(uint(rfc.maxFiles)),
 		rotatelogs.WithRotationTime(rfc.rotationTime),
 	)
+}
+
+func parseInt(val interface{}) (ret int, err error) {
+	switch v := val.(type) {
+	case int:
+		ret = v
+	case int32:
+		ret = int(v)
+	case int64:
+		ret = int(v)
+	case float32:
+		ret = int(v)
+	case float64:
+		ret = int(v)
+	case string:
+		ret, err = strconv.Atoi(v)
+	default:
+		err = fmt.Errorf("invalid value for int: %v (%T)", val, val)
+	}
+	return
 }

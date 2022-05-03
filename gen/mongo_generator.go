@@ -91,6 +91,37 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 	return false, nil
 }
 
+//ProvideFeature from FeatureProvider interface
+func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+	switch kind {
+	case FeaturesDBKind:
+		switch name {
+		case FDBFlushDict:
+			if t, ok := obj.(*Entity); ok && t.HasModifier(TypeModifierDictionary) {
+				return func(args ...interface{}) jen.Code {
+					obj := jen.Id("items")
+					if len(args) > 0 {
+						n, ok := args[0].(string)
+						if ok {
+							obj = jen.Id(n)
+						}
+					}
+
+					return jen.
+						/*List(jen.Id("_"), jen.Id("err")).Op(":=").*/
+						For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Add(obj)).Block(
+						jen.Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(t))).Dot("InsertOne").Params(
+							jen.Id("ctx"),
+							jen.Id("o"),
+						),
+					)
+				}, FeatureProvided
+			}
+		}
+	}
+	return nil, FeatureNotProvided
+}
+
 func (cg *MongoGenerator) Prepare(desc *Package) error {
 	cg.init()
 	cg.desc = desc
@@ -580,16 +611,15 @@ func (cg *MongoGenerator) generateLookupFunc(e *Entity) error {
 func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 	if it, ok := e.Features.GetEntity(FeaturesAPIKind, FAPIFindParamType); ok {
 		name := e.Name
+		generatorFuncName := fmt.Sprintf("generateQueryFrom%s", it.Name)
 		fname := cg.desc.GetMethodName(MethodFind, name)
 		deletedFound := false
-		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
-			jen.Id("ctx").Qual("context", "Context"),
+		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(generatorFuncName).Params(
 			jen.Id("query").Op("*").Id(it.Name),
-		).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
+		).Parens(jen.List(jen.Interface(), jen.Error())).BlockFunc(func(g *jen.Group) {
 			addSkipDeletedToQuery := func() *jen.Statement {
 				return jen.Id("q").Index(jen.Lit(mdDeletedFieldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$exists"): jen.Lit(0)})
 			}
-			g.Id("ret").Op(":=").Index().Op("*").Id(name).Values(jen.Dict{})
 			g.Id("q").Op(":=").Qual(bsonPackage, "M").Values()
 			possiblyFilledFields := map[string]struct{}{}
 			for _, f := range it.Fields {
@@ -619,10 +649,6 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 					}
 				}).BlockFunc(func(g *jen.Group) {
 					if f.Type.Array != nil {
-						// g.Id("values").Op(":=").Make(jen.Index().Qual(bsonPackage, "A"), jen.Len(jen.Id("query").Dot(f.Name)))
-						// g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("query").Dot(f.Name)).Block(
-						// 	jen.Id("values").Index(jen.Id("i")).Op("=").Id("v"),
-						// )
 						g.Id("q").Index(jen.Lit(mngFldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 							jen.Lit("$in"): jen.Id("query").Dot(f.Name),
 						})
@@ -677,6 +703,12 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 								jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
 							})
+						case AFTIsNull:
+							g.Id("nullOp").Op(":=").Lit("$ne")
+							g.If(jen.Op("*").Id("query").Dot(f.Name)).Block(jen.Id("nullOp").Op("=").Lit("$eq"))
+							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+								jen.Id("nullOp"): jen.Nil(),
+							})
 						case AFTIgnore:
 							if mngFldName == mdDeletedFieldName && f.Type.Type == TipBool {
 								arg := jen.Id("query").Dot(f.Name)
@@ -695,14 +727,6 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 						possiblyFilledFields[mngFldName] = struct{}{}
 					}
 				}).Add(elseStmt)
-				// Else().BlockFunc(func(g *jen.Group) {
-				// 	if mngFldName == mdDeletedFieldName {
-				// 		g.Add(addSkipDeletedToQuery())
-				// 	}
-				// })
-				// if mngFldName == mdDeletedFieldName {
-				// 	g.Else().Block(addSkipDeletedToQuery())
-				// }
 			}
 			if e.BaseTypeName != "" {
 				g.Add(cg.addDescendantsToQuery(e, "q"))
@@ -710,6 +734,18 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 			if !deletedFound {
 				g.Add(addSkipDeletedToQuery())
 			}
+			g.Return(
+				jen.List(jen.Id("q"), jen.Nil()),
+			)
+		}).Line()
+
+		cg.b.Functions.Add(f)
+		f = jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+			jen.Id("ctx").Qual("context", "Context"),
+			jen.Id("query").Op("*").Id(it.Name),
+		).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
+			g.Id("ret").Op(":=").Index().Op("*").Id(name).Values(jen.Dict{})
+			g.List(jen.Id("q"), jen.Id("_")).Op(":=").Id(EngineVar).Dot(generatorFuncName).Params(jen.Id("query"))
 			g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
 				jen.Id("ctx"),
 				jen.Id("q"),

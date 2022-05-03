@@ -372,9 +372,6 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
 							continue
 						}
-						// if f.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
-						// 	continue
-						// }
 						if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
 							if f.Type.Complex {
 								if f.Type.Array != nil {
@@ -427,20 +424,31 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 		ad := []ArgDef{}
 		req := m.FS(gen.GQLFeatures, gen.GQLFMethodType)
 		jsarg := ""
-		rt := cg.GetJSTypeName(m.RetValue, false) //cg.desc.GetFeature(m, gen.GQLFeatures, gen.GQLFMethodResultTypeName).(string)
+		rt := cg.GetJSTypeName(m.RetValue, false)
 		idfld := e.GetIdField()
 		if idfld != nil {
 			if idt, ok := idfld.Features.GetString(gen.GQLFeatures, gen.GQLFTypeTag); ok {
-				ad = append(ad, ArgDef{Name: "id", //idfld.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""),
+				ad = append(ad, ArgDef{Name: "id",
 					Type:    idt,
-					JSType:  e.FS(Features, FIDType), //cg.GetJSTypeName(idfld.Type),
+					JSType:  e.FS(Features, FIDType),
 					NotNull: true})
 			}
 		}
 		for _, a := range m.Params {
+			var gqlType string
+			if a.Type.Complex {
+				if t, ok := cg.desc.FindType(a.Type.Type); ok {
+					gqlType = t.Entity().Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
+				} else {
+					cg.desc.AddWarning(fmt.Sprintf("at %v: type %s not found for parameter; skipping", a.Pos, a.Type.Type))
+				}
+			} else {
+				gqlType = a.Features.String(gen.GQLFeatures, gen.GQLFTypeTag)
+
+			}
 			ad = append(ad,
 				ArgDef{Name: a.Name,
-					Type:    a.Features.String(gen.GQLFeatures, gen.GQLFTypeTag),
+					Type:    gqlType,
 					JSType:  cg.GetJSTypeName(a.Type, false),
 					NotNull: a.Type.NonNullable})
 		}
@@ -476,27 +484,13 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 				}
 				if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
 					if f.Type.Complex {
-						if f.Type.Array != nil {
-							//TODO: annotation to fulfill complex types attrs?
-							// 	if i == gen.GQLOperationGet {
-							// 		n, err = cg.getQueryForEmbededType(n, f)
-							// 		if err != nil {
-							// 			cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
-							// 			continue
-							// 		}
-							// 	} else {
-							// 		n = ""
-							// 	}
-							// } else {
-							n, err = cg.getQueryForEmbededType(n, f)
-							if err != nil {
-								cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
-								continue
-							}
-							// }
+						// if f.Type.Array != nil {
+						n, err = cg.getQueryForEmbededType(n, f)
+						if err != nil {
+							cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
+							continue
 						}
-						// params.Fields[j] = n
-						// j++
+						// }
 					}
 					params.Fields[j] = n
 					if n != "" {

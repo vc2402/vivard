@@ -65,8 +65,9 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	// }
 
 	l := strings.Trim(m.Current()[0], " \t")
-	r := regexp.MustCompile(`^\s*hardcoded\s*\{$`)
-	if !r.MatchString(l) {
+	r := regexp.MustCompile(`^\s*(hardcoded)|(init-values)\s*\{$`)
+	match := r.FindStringSubmatch(l)
+	if match == nil {
 		return
 	}
 	if m.TypeRef == nil {
@@ -77,6 +78,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	phase := 0
 	kind := 0
 	items := []jen.Code{}
+	readonly := match[1] != ""
 
 	flush := func() error {
 		if obj != nil {
@@ -136,9 +138,13 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	}
 	write := func() {
 		flush()
-		arr := jen.Index().Op("*").Id(m.TypeRef.Name).Values(items...)
-		m.TypeRef.Features.Set(FeatGoKind, FCDictGetter, arr)
-		m.TypeRef.Features.Set(FeaturesCommonKind, FCReadonly, true)
+		arr := jen.List(jen.Index().Op("*").Id(m.TypeRef.Name).Values(items...), jen.Nil())
+		if readonly {
+			m.TypeRef.Features.Set(FeatGoKind, FCDictGetter, arr)
+			m.TypeRef.Features.Set(FeaturesCommonKind, FCReadonly, true)
+		} else {
+			m.TypeRef.Features.Set(FeatGoKind, FCDictIniter, arr)
+		}
 
 	}
 	for pos := 1; pos < len(m.Current()); pos++ {
@@ -172,7 +178,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			}
 			err := hcparser.ParseString(l, buf)
 			if err != nil {
-				return false, err
+				return false, fmt.Errorf("while parsing hardcoded for '%s' (%s): %v", m.TypeRef.Name, l, err)
 			}
 			switch kind {
 			case 1:

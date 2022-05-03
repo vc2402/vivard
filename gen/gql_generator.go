@@ -1012,15 +1012,15 @@ func (cg *GQLGenerator) generateGQLMethodMutation(m *Method) (err error) {
 						id, jen.Id("p").Dot("Context"), true))
 					g.Add(returnIfErrValue(jen.Nil()))
 					g.ReturnFunc(func(g *jen.Group) {
-						args := map[string]interface{}{}
-						for _, p := range m.Params {
-							args[p.Name] = jen.Id(p.Name + "_Arg")
+						args := make([]HookArgParam, len(m.Params))
+						for i, p := range m.Params {
+							args[i] = HookArgParam{p.Name, jen.Id(p.Name + "_Arg")}
 						}
 						descr := HookArgsDescriptor{
 							Str: m.Name,
 							// Obj: jen.Id(EngineVar).Dot(m.parent.Name),
-							Ctx:  jen.Id("p").Dot("Context"),
-							Args: args,
+							Ctx:    jen.Id("p").Dot("Context"),
+							Params: args,
 						}
 						g.Add(cg.desc.CallFeatureHookFunc(m, FeaturesHookCodeKind, TypeHookMethod, descr))
 					})

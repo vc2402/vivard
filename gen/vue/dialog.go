@@ -5,6 +5,8 @@ import (
 	"os"
 )
 
+//TODO not to include create, set functions for readonly dictionaries
+
 func (h *helper) createDialog(path ...string) error {
 	p := h.e.FS(featureVueKind, fVKDialogComponentPath)
 	if len(path) > 0 {

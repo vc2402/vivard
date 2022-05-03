@@ -481,8 +481,8 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 							if _, hok := d.HaveHook(AttrHookSet); hok {
 								g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
 									Str: cg.desc.GetHookName(AttrHookSet, d),
-									Args: map[string]interface{}{
-										"val": jen.Op("&").Id("val"),
+									Params: []HookArgParam{
+										HookArgParam{"val", jen.Op("&").Id("val")},
 									},
 								}))
 							}
@@ -985,8 +985,8 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 		if _, hok := f.HaveHook(AttrHookSet); hok {
 			cg.desc.CallFeatureHookFunc(f, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
 				Str: cg.desc.GetHookName(AttrHookSet, f),
-				Args: map[string]interface{}{
-					"val": jen.Op("&").Id("val"),
+				Params: []HookArgParam{
+					HookArgParam{"val", jen.Op("&").Id("val")},
 				},
 			})
 		}

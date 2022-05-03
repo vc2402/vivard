@@ -443,7 +443,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"ConponentAddAttrs": func(f fieldDescriptor) string {
 			switch f.fld.Type.Type {
 			case gen.TipDate:
-				t := f.fld.Annotations.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType, vueATDate)
+				t := f.fld.Annotations.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType, vueATISODate)
 				return fmt.Sprintf(":type=\"'%s'\"", t)
 			}
 			return ""

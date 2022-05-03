@@ -19,6 +19,8 @@ const (
 	vueAnnotationDisplayType = "type"
 	vueAnnotationReadonly    = "readonly"
 
+	// use iso date for date field
+	vueATISODate = "isodate"
 	// use datetime for date field
 	vueATDate = "date"
 	// use datetime for date field

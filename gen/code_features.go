@@ -159,8 +159,8 @@ func (cg *CodeGenerator) getGoHookFuncFeature(name string) HookFeatureFunc {
 			if !skipEng {
 				g.Add(stmtFromInterfaceDef(args.Eng, "eng"))
 			}
-			for _, a := range args.Args {
-				g.Add(stmtFromInterfaceDef(a, nil))
+			for _, a := range args.Params {
+				g.Add(stmtFromInterfaceDef(a.Param, nil))
 			}
 		})
 	}
@@ -176,8 +176,8 @@ func (cg *CodeGenerator) getJSHookFuncFeature(name string) HookFeatureFunc {
 				m := jen.Dict{
 					jen.Line().Lit("obj"): stmtFromInterfaceDef(args.Obj, "obj"),
 				}
-				for n, a := range args.Args {
-					m[jen.Lit(n)] = stmtFromInterfaceDef(a, nil)
+				for _, p := range args.Params {
+					m[jen.Lit(p.Name)] = stmtFromInterfaceDef(p.Param, nil)
 				}
 				g.Add(jen.Dict{jen.Line().Lit("params"): jen.Map(jen.String()).Interface().Values(m)})
 			}),

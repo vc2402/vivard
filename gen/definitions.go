@@ -52,6 +52,11 @@ type DescriptorAware interface {
 //CodeHelperFunc Feature type for helping generate code (params depends on feature)
 type CodeHelperFunc func(args ...interface{}) jen.Code
 
+type HookArgParam struct {
+	Name  string
+	Param interface{}
+}
+
 //HookArgsDescriptor holds args for feature hook function
 type HookArgsDescriptor struct {
 	// Str  - string arg (defaultName for Go hooks)
@@ -62,8 +67,8 @@ type HookArgsDescriptor struct {
 	Eng interface{}
 	// Obj - variable name or object *jen.Statement if it is not "obj"
 	Obj interface{}
-	//Args - additional args with their names
-	Args map[string]interface{}
+	//Params - additional params with their names
+	Params []HookArgParam
 }
 
 //HookFeatureFunc func can be returned as feature that can create code for hook
@@ -217,6 +222,8 @@ const (
 	AFTContains = "contains"
 	//AFTIgnore - for deleted; if true - include deleted items
 	AFTIgnore = "ignore"
+	//AFTIsNull - null nullable fields (value should be bool)
+	AFTIsNull = "is-null"
 
 	// AnnotationCall - annotation for method
 	AnnotationCall = "call"
@@ -308,6 +315,8 @@ const (
 	FCListByIDCode = "fc-list-by-id"
 	//FCDictGetter - code for readonly dict getter (if any)
 	FCDictGetter = "fc-dict-getter"
+	//FCDictIniter - code for init dict values (if empty)
+	FCDictIniter = "fc-dict-initer"
 	//FCEngineVar - code feature for Field - returns code for engine to access this field (usualy *Engine but checks package)
 	FCEngineVar = "engine-var"
 	//FCDescendants - array of *Entity that are descendants of this type
@@ -320,6 +329,8 @@ const (
 
 	//FDBIncapsulate - bool; (for one-to-many field) store as array in document db
 	FDBIncapsulate = "incapsulate"
+	//FDBFlushDict - code for flushing whole dictionary to storage
+	FDBFlushDict = "flush_dict"
 )
 
 const (

@@ -234,10 +234,21 @@ func (ncg *DictionariesGenerator) generateDictGetter(t *Entity, idType *TypeRef)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
 		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")).Line().
 			Add(ncg.generateLockUnlockStmt(name, true)).
-			Return(
-				// TODO: check that item exists
-				jen.List(jen.Id(EngineVar).Dot(fldname).Index(jen.Id(EngineVar).Dot(idxname).Index(jen.Id("id"))), jen.Nil()),
+			If(
+				jen.List(jen.Id("idx"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("id")),
+				jen.Id("ok"),
+			).
+			Block(
+				jen.Return(
+					jen.List(jen.Id(EngineVar).Dot(fldname).Index(jen.Id("idx")), jen.Nil()),
+				),
+			).
+			Else().Block(
+			jen.Return(
+				jen.Nil(),
+				jen.Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", name)), jen.Id("id")),
 			),
+		),
 	).Line()
 
 	ncg.b.Functions.Add(f)
@@ -427,15 +438,31 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 				if c, ok := t.Features.Get(FeatGoKind, FCDictGetter); ok {
 					if code, ok := c.(jen.Code); ok {
 						// there is getter code
-						itemsCode = jen.Id("items").Op(":=").Add(code)
+						itemsCode = code
 					}
 				}
 				if itemsCode == nil {
 					// loading the cache
-					g.List(jen.Id("items"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodList, name)).Params(jen.Id("ctx"))
-					g.Add(returnIfErrValue())
-				} else {
-					g.Add(itemsCode)
+					itemsCode = jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodList, name)).Params(jen.Id("ctx"))
+				}
+				g.Var().Err().Error()
+				g.List(jen.Id("items"), jen.Id("err")).Op(":=").Add(itemsCode)
+				g.Add(returnIfErrValue())
+
+				if !t.Features.Bool(FeaturesCommonKind, FCReadonly) {
+					if c, ok := t.Features.Get(FeatGoKind, FCDictIniter); ok {
+						code := c.(jen.Code)
+						g.If(jen.Len(jen.Id("items")).Op("==").Lit(0)).BlockFunc(func(g *jen.Group) {
+							g.List(jen.Id("items"), jen.Id("err")).Op("=").Add(code)
+							g.Add(returnIfErrValue())
+							if f := ncg.desc.GetFeature(t, FeaturesDBKind, FDBFlushDict); f != nil {
+								fun, ok := f.(func(args ...interface{}) jen.Code)
+								if ok {
+									g.Add(fun("items"))
+								}
+							}
+						})
+					}
 				}
 				g.Id(EngineVar).Dot(fldname).Op("=").Id("items")
 				g.Id(EngineVar).Dot(idxname).Op("=").Map(idt).Int().Values()

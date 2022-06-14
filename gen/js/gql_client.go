@@ -159,6 +159,16 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 				addImport(tt.File.Name, t)
 			}
 		}
+		for _, m := range t.Methods {
+			for _, p := range m.Params {
+				if t, tt := cg.getTypeForImport(t.Pckg, p.Type, true); tt != nil && tt.File != b.File {
+					addImport(tt.File.Name, t)
+				}
+			}
+			if t, tt := cg.getTypeForImport(t.Pckg, m.RetValue, false); tt != nil && tt.File != b.File {
+				addImport(tt.File.Name, t)
+			}
+		}
 	}
 	for fn, tt := range imports {
 		outFile.WriteString(fmt.Sprintf("import {%s} from './%s';\n", strings.Join(tt, ", "), fn))
@@ -369,6 +379,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 				} else {
 					j := 0
 					for _, f := range fields {
+						//TODO exclude dictionaries for config
 						if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
 							continue
 						}
@@ -376,7 +387,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 							if f.Type.Complex {
 								if f.Type.Array != nil {
 									if i == gen.GQLOperationGet {
-										n, err = cg.getQueryForEmbededType(n, f)
+										n, err = cg.getQueryForEmbeddedType(n, f, e)
 										if err != nil {
 											cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
 											continue
@@ -387,7 +398,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 										n = ""
 									}
 								} else {
-									n, err = cg.getQueryForEmbededType(n, f)
+									n, err = cg.getQueryForEmbeddedType(n, f, e)
 									if err != nil {
 										cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
 										continue
@@ -449,7 +460,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 			ad = append(ad,
 				ArgDef{Name: a.Name,
 					Type:    gqlType,
-					JSType:  cg.GetJSTypeName(a.Type, false),
+					JSType:  cg.GetJSInputTypeName(a.Type, false),
 					NotNull: a.Type.NonNullable})
 		}
 		qn := m.FS(gen.GQLFeatures, gen.GQLFMethodName)
@@ -485,7 +496,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 				if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
 					if f.Type.Complex {
 						// if f.Type.Array != nil {
-						n, err = cg.getQueryForEmbededType(n, f)
+						n, err = cg.getQueryForEmbeddedType(n, f, e)
 						if err != nil {
 							cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
 							continue
@@ -661,8 +672,9 @@ func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }
-func (cg *GQLCLientGenerator) getQueryForEmbededType(field string, f *gen.Field) (ret string, err error) {
+func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field, baseType *gen.Entity) (ret string, err error) {
 	var t *gen.TypeRef
+	isConfig := baseType.HasModifier(gen.TypeModifierConfig)
 	if f.Type.Array != nil {
 		t = f.Type.Array
 	} else if f.Type.Map != nil {
@@ -674,7 +686,10 @@ func (cg *GQLCLientGenerator) getQueryForEmbededType(field string, f *gen.Field)
 	if tt, ok := f.Parent().Pckg.FindType(t.Type); ok || !t.Complex {
 		id := ""
 		title := ""
-		full := f.Type.Embedded /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
+		if isConfig && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
+			return
+		}
+		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
 		if ok {
 			for _, ff := range tt.Entity().GetFields(true, true) {
 				if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
@@ -682,7 +697,7 @@ func (cg *GQLCLientGenerator) getQueryForEmbededType(field string, f *gen.Field)
 				}
 				if ff.Type.Complex {
 					if n, ok := ff.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
-						r, e := cg.getQueryForEmbededType(n, ff)
+						r, e := cg.getQueryForEmbeddedType(n, ff, baseType)
 						if e != nil {
 							return "", e
 						}
@@ -708,7 +723,9 @@ func (cg *GQLCLientGenerator) getQueryForEmbededType(field string, f *gen.Field)
 		if strings.Trim(id, " \t") != "" || strings.Trim(title, " \t") != "" {
 			ret = fmt.Sprintf("%s { %s %s }", field, id, title)
 		} else {
-			ret = field
+			if !isConfig {
+				ret = field
+			}
 		}
 	} else {
 		err = fmt.Errorf("type %s not found for %s", t.Type, field)

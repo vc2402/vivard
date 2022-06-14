@@ -16,6 +16,7 @@ const (
 	mongoAnnotationTagGenerateIDGenerator = "idGenerator"
 	mongoAnnotationTagIncapsulate         = "incapsulate"
 	mongoAnnotationTagAddBsonTag          = "bsonTag"
+	mongoAnnotationOrder                  = "sort"
 	mongoAnnotationDeleteMethod           = "deleteMethod"
 	madmUpdate                            = "update"
 	madmDelete                            = "delete"
@@ -43,6 +44,7 @@ const (
 	mongoFeatures FeatureKind = "mongo"
 	mfInited                  = "inited"
 	mfDelete                  = "delete"
+	mfSortField               = "sort-field"
 )
 
 const (
@@ -61,7 +63,7 @@ type MongoGenerator struct {
 }
 
 func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
-	_, fld := item.(*Field)
+	f, fld := item.(*Field)
 	_, ent := item.(*Entity)
 	cg.init()
 	if ann.Name == mongoAnnotation || ann.Name == dbAnnotation {
@@ -77,6 +79,10 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 			case mongoAnnotationDeleteMethod:
 				if m, ok := v.GetString(); !ok || m != madmUpdate && m != madmDelete {
 					return true, fmt.Errorf("at %v: invalid value for %s annotation: %v", ann.Pos, v.Key, v.Value)
+				}
+			case mongoAnnotationOrder:
+				if fld {
+					f.parent.Features.Set(mongoFeatures, mfSortField, item)
 				}
 			default:
 				return true, fmt.Errorf("at %v: unknown mongo annotation parameter: %s", ann.Pos, v.Key)
@@ -209,7 +215,7 @@ func (cg *MongoGenerator) Prepare(desc *Package) error {
 					}
 				}
 				if f.HasModifier(AttrModifierOneToMany) {
-					inc := true
+					inc := false
 					if in, ok := f.Annotations.GetBoolAnnotation(mongoAnnotation, mongoAnnotationTagIncapsulate); ok {
 						inc = in
 					} else if in, ok := f.Annotations.GetBoolAnnotation(dbAnnotation, mongoAnnotationTagIncapsulate); ok {
@@ -484,9 +490,24 @@ func (cg *MongoGenerator) generateListFunc(e *Entity) error {
 		if e.BaseTypeName != "" {
 			g.Add(cg.addDescendantsToQuery(e, "query"))
 		}
+		if f, ok := e.Features.Get(mongoFeatures, mfSortField); ok {
+			fld, ok := f.(*Field)
+			if !ok {
+				cg.desc.AddError(fmt.Errorf("at %v: internal error in mongo:listAll: sort feature is not a field: %T", e.Pos, f))
+				return
+			}
+			g.Id("op").Op(":=").Qual(optionsPackage, "Find").Call().Dot("SetSort").Params(
+				jen.Qual(bsonPackage, "M").Values(jen.Dict{
+					jen.Lit(cg.fieldName(fld)): jen.Lit(1),
+				}),
+			)
+		} else {
+			g.Id("op").Op(":=").Qual(optionsPackage, "Find").Call()
+		}
 		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
 			jen.Id("ctx"),
 			jen.Id("query"),
+			jen.Id("op"),
 		)
 		g.Add(returnIfErrValue(jen.Nil()))
 		g.Defer().Id("curr").Dot("Close").Params(jen.Id("ctx"))
@@ -561,6 +582,7 @@ func (cg *MongoGenerator) generateReplaceFKFunc(e *Entity) error {
 		returnIfErr(),
 		jen.Id("items").Op(":=").Make(jen.Index().Interface(), jen.Len(jen.Id("vals"))),
 		jen.For(jen.List(jen.Id("i"), jen.Id("v").Op(":=").Range().Id("vals"))).Block(
+			//TODO fill the parent reference field
 			jen.Id("items").Index(jen.Id("i")).Op("=").Id("v"),
 		),
 		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("InsertMany").Params(
@@ -781,6 +803,7 @@ func (cg *MongoGenerator) generateMongoIDGeneratorFunc(e *Entity) error {
 }
 
 func (cg *MongoGenerator) generateCongifLoadFunc(e *Entity) error {
+	//TODO: add check that object is nil and initialize it in this case
 	name := e.Name
 	fname := cg.desc.GetMethodName(MethodLoad, name)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
@@ -795,9 +818,19 @@ func (cg *MongoGenerator) generateCongifLoadFunc(e *Entity) error {
 			jen.Id("idVal").Op(":=").Id("curr").Dot("Current").Dot("Lookup").Call(jen.Lit("_id")).Dot("StringValue").Call(),
 			jen.Switch(jen.Id("idVal")).BlockFunc(func(sg *jen.Group) {
 				for _, f := range e.Fields {
-					sg.Case(jen.Lit(f.Name)).Block(
-						jen.Id("curr").Dot("Current").Dot("Lookup").Call(jen.Lit("value")).Dot("Unmarshal").Call(jen.Op("&").Id("ret").Dot(f.Name)),
-					)
+					// isPointer := f.FB(FeatGoKind, FCGPointer)
+					ft, complex := cg.desc.FindType(f.Type.Type)
+					sg.Case(jen.Lit(f.Name)).BlockFunc(func(g *jen.Group) {
+						g.Id("curr").Dot("Current").Dot("Lookup").Call(jen.Lit("value")).Dot("Unmarshal").Call(jen.Op("&").Id("ret").Dot(f.Name))
+						if /*isPointer &&*/ complex {
+							engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
+							g.If(jen.Id("ret").Dot(f.Name).Op("==").Nil()).Block(
+								jen.List(jen.Id("ret").Dot(f.Name), jen.Id("_")).Op("=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(
+									jen.Id("ctx"),
+								),
+							)
+						}
+					})
 				}
 			}),
 		),

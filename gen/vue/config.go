@@ -67,9 +67,8 @@ const configTabsHTMLTemplate = `
 `
 const configTreeHTMLTemplate = `
 {{define "TEMPL_CONFIG"}}
-	<v-container>
-    <v-row>
-      <v-col>
+	<div class="d-flex flex-row" style="height:100%;">
+      <div class="d-flex flex-column px-8 pt-2" style="height:100%; overflow-y: auto">
         <v-treeview
           :items="items"
 					rounded
@@ -79,16 +78,15 @@ const configTreeHTMLTemplate = `
 					return-object
 					@update:active="activeChanged"
         ></v-treeview>
-      </v-col>
+      </div>
       <v-divider vertical></v-divider>
-      <v-col
-        class="pa-6"
-        cols="8"
+      <div 
+        class="d-flex flex-column px-8 py-4"
       >
-			<v-row>
+			<div  class="d-flex flex-row py-4">
 				<v-btn text @click="save" color="primary">  <v-icon>mdi-content-save-all</v-icon> Save</v-btn>
 				<v-btn text @click="load" color="primary">  <v-icon>mdi-refresh</v-icon> Reload</v-btn>
-			</v-row>
+			</div>
       <v-divider></v-divider>
 			
         <template v-if="!active">
@@ -99,9 +97,8 @@ const configTreeHTMLTemplate = `
 						{{template "CONF_VALUE" (Leaf .)}}
 					</div>{{end}}
         </template>
-      </v-col>
-    </v-row>
-  </v-container>
+      </div>
+  </div>
 {{end}}
 `
 

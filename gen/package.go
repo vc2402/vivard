@@ -369,7 +369,7 @@ func (desc *Package) checkTypeRelations(t *Entity) error {
 				fkField.Modifiers = []*EntryModifier{{AttrModifier: string(AttrModifierForeignKey)}}
 				tt.entry.Features.Set(FeaturesCommonKind, FCForeignKey, t)
 				tt.entry.Features.Set(FeaturesCommonKind, FCForeignKeyField, fkField)
-				tt.entry.Features.Set(FeaturesCommonKind, FCSkipAccessors, true)
+				// tt.entry.Features.Set(FeaturesCommonKind, FCSkipAccessors, true)
 
 				f.Features.Set(FeaturesCommonKind, FCIgnore, !f.HasModifier(AttrModifierEmbedded))
 				f.Features.Set(FeaturesCommonKind, FCOneToManyType, tt.entry)

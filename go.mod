@@ -12,5 +12,5 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.7.1
-	github.com/vc2402/vivard/dependencies v0.0.0-20210612163237-72fa0af518f6
+	github.com/vc2402/vivard/dependencies v0.0.0-20220503134608-ecf7df7f24c3
 )

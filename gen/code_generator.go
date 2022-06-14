@@ -629,7 +629,7 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 			initstmt.Add(jen.Id("t").Op(":=").Id(tn)).Line()
 			initstmt.Add(jen.If(jen.Len(jen.Id("tip")).Op(">").Lit(0)).Block(
 				jen.Id("t").Op("=").Id("tip").Index(jen.Lit(0)),
-			))
+			)).Line()
 			params[1] = jen.Id("t")
 		}
 		initstmt.Add(jen.List(jen.Id("base"), jen.Id("_")).Op(":=").
@@ -638,6 +638,12 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 	}
 	for _, d := range ent.Fields {
 		if d.HasModifier(AttrModifierAuxiliary) {
+			continue
+		}
+		if ignore, ok := d.Features.GetBool(FeaturesCommonKind, FCIgnore); ok && ignore {
+			continue
+		}
+		if d.FB(FeatGoKind, FCGCalculated) {
 			continue
 		}
 		if d.Name == ExtendableTypeDescriptorFieldName {
@@ -734,12 +740,23 @@ func (cg *CodeGenerator) generateInterface(ent *Entity) (err error) {
 		)
 	}
 	if ent.BaseTypeName != "" {
-		bt := ent.GetBaseType()
-		fname := bt.FS(FeatGoKind, FCGBaseTypeAccessorName)
-		cg.b.Functions.Add(
-			jen.Func().Parens(jen.Id("o").Op("*").Id(ent.Name)).Id(fname).Params().Op("*").Id(bt.Name).Block(
-				jen.Return(jen.Id("o").Dot(bt.Name))).Line(),
-		)
+		// bt := ent.GetBaseType()
+		// fname := bt.FS(FeatGoKind, FCGBaseTypeAccessorName)
+		// cg.b.Functions.Add(
+		// 	jen.Func().Parens(jen.Id("o").Op("*").Id(ent.Name)).Id(fname).Params().Op("*").Id(bt.Name).Block(
+		// 		jen.Return(jen.Id("o").Dot(bt.Name))).Line(),
+		// )
+		bt := ent
+		accessor := jen.Id("o") //.Dot(bt.Name)
+		for bt != nil && bt.BaseTypeName != "" {
+			bt = bt.GetBaseType()
+			fname := bt.FS(FeatGoKind, FCGBaseTypeAccessorName)
+			cg.b.Functions.Add(
+				jen.Func().Parens(jen.Id("o").Op("*").Id(ent.Name)).Id(fname).Params().Op("*").Id(bt.Name).Block(
+					jen.Return(jen.Add(accessor).Dot(bt.Name))).Line(),
+			)
+			accessor = jen.Add(accessor).Dot(bt.Name)
+		}
 	}
 	return nil
 }

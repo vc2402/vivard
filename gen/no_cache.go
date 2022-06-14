@@ -119,7 +119,6 @@ func (b *Builder) generateSetter(t *Entity) error {
 			g.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
 				Str: b.Descriptor.GetHookName(TypeHookChange, nil),
 				Obj: "o",
-				// Args: map[string]interface{}{},
 			}))
 		}
 		g.Return(

@@ -86,8 +86,12 @@ func (eng *Engine) SetConfValue(key string, val interface{}) error {
 }
 
 func (eng *Engine) ConfString(key string, def ...string) string {
-	if str, ok := eng.ConfValue(key).(string); ok {
+	val := eng.ConfValue(key)
+	if str, ok := val.(string); ok {
 		return str
+	}
+	if str, ok := val.(*string); ok && str != nil {
+		return *str
 	}
 	if len(def) > 0 {
 		return def[0]
@@ -95,6 +99,19 @@ func (eng *Engine) ConfString(key string, def ...string) string {
 	return ""
 }
 
+func (eng *Engine) ConfBool(key string, def ...bool) bool {
+	val := eng.ConfValue(key)
+	if b, ok := val.(bool); ok {
+		return b
+	}
+	if bp, ok := val.(*bool); ok && bp != nil {
+		return *bp
+	}
+	if len(def) > 0 {
+		return def[0]
+	}
+	return false
+}
 func (eng *Engine) ConfInt(key string, def ...int) int {
 	if val := eng.ConfValue(key); val != nil {
 		switch v := val.(type) {

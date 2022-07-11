@@ -41,10 +41,11 @@ const (
 )
 
 const (
-	mongoFeatures FeatureKind = "mongo"
-	mfInited                  = "inited"
-	mfDelete                  = "delete"
-	mfSortField               = "sort-field"
+	mongoFeatures     FeatureKind = "mongo"
+	mfInited                      = "inited"
+	mfDelete                      = "delete"
+	mfSortField                   = "sort-field"
+	mfCollectionConst             = "collection-const"
 )
 
 const (
@@ -116,7 +117,7 @@ func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj inte
 					return jen.
 						/*List(jen.Id("_"), jen.Id("err")).Op(":=").*/
 						For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Add(obj)).Block(
-						jen.Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(t))).Dot("InsertOne").Params(
+						jen.Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(t.FS(mongoFeatures, mfCollectionConst))).Dot("InsertOne").Params(
 							jen.Id("ctx"),
 							jen.Id("o"),
 						),
@@ -202,6 +203,8 @@ func (cg *MongoGenerator) Prepare(desc *Package) error {
 					t.Features.Set(mongoFeatures, mfDelete, dm)
 				}
 			}
+			collConstName := fmt.Sprintf("col%s%s", strings.ToUpper(t.Name)[:1], t.Name[1:])
+			t.Features.Set(mongoFeatures, mfCollectionConst, collConstName)
 			for _, f := range t.Fields {
 				if f.HasModifier(AttrModifierAuxiliary) {
 					f.Features.Set(FeaturesDBKind, FCIgnore, true)
@@ -256,6 +259,7 @@ func (cg *MongoGenerator) Generate(bldr *Builder) (err error) {
 	}
 	for _, t := range bldr.File.Entries {
 		if ignore, ok := t.Features.GetBool(FeaturesDBKind, FCIgnore); !ok || !ignore {
+			cg.generateConst(t)
 			if !t.HasModifier(TypeModifierConfig) {
 				err = cg.generateLoadFunc(t)
 				if err != nil {
@@ -345,6 +349,13 @@ func (cg *MongoGenerator) Generate(bldr *Builder) (err error) {
 	return nil
 }
 
+func (cg *MongoGenerator) generateConst(e *Entity) {
+	cn := cg.collectionName(e)
+	constName := e.FS(mongoFeatures, mfCollectionConst)
+	cg.b.consts["mongo_collections"] = append(cg.b.consts["mongo_collections"], jen.Id(constName).Op("=").Lit(cn))
+	return
+}
+
 func (cg *MongoGenerator) generateLoadFunc(e *Entity) error {
 	if e.HasModifier(TypeModifierConfig) {
 		return nil
@@ -358,7 +369,7 @@ func (cg *MongoGenerator) generateLoadFunc(e *Entity) error {
 	}
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
 		jen.Id("ret").Op(":=").Op("&").Id(name).Values(jen.Dict{}),
-		jen.Id("err").Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("FindOne").Params(
+		jen.Id("err").Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("FindOne").Params(
 			jen.Id("ctx"),
 			jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Id("id")}),
 		).Dot("Decode").Params(jen.Id("ret")),
@@ -395,7 +406,7 @@ func (cg *MongoGenerator) generateSaveFunc(e *Entity) error {
 			Parens(jen.List(jen.Op("*").Id(name), jen.Error())).
 			Block(
 				cg.desc.Project.OnHook(HookSave, HMStart, e, &GeneratorHookVars{Obj: "o"}),
-				jen.List(jen.Id(resultName), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("ReplaceOne").Params(
+				jen.List(jen.Id(resultName), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("ReplaceOne").Params(
 					jen.Id("ctx"),
 					jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Id("o").Dot(e.GetIdField().Name)}),
 					jen.Id("o"),
@@ -425,7 +436,7 @@ func (cg *MongoGenerator) generateCreateFunc(e *Entity) error {
 
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
 		jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name))).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
-		jen.List(jen.Id(resultName), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("InsertOne").Params(
+		jen.List(jen.Id(resultName), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("InsertOne").Params(
 			jen.Id("ctx"),
 			jen.Id("o"),
 		),
@@ -456,13 +467,13 @@ func (cg *MongoGenerator) generateRemoveFunc(e *Entity) error {
 			dm = m
 		}
 		if dm == madmDelete {
-			g.List(jen.Id("_"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("DeleteOne").Params(
+			g.List(jen.Id("_"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("DeleteOne").Params(
 				jen.Id("ctx"),
 				jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Id("id")}),
 			)
 		} else {
 			g.Id("now").Op(":=").Qual("time", "Now").Params()
-			g.List(jen.Id("_"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("UpdateOne").Params(
+			g.List(jen.Id("_"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("UpdateOne").Params(
 				jen.Id("ctx"),
 				jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Id("id")}),
 				jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$set"): jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit(mdDeletedFieldName): jen.Id("now")})}),
@@ -504,7 +515,7 @@ func (cg *MongoGenerator) generateListFunc(e *Entity) error {
 		} else {
 			g.Id("op").Op(":=").Qual(optionsPackage, "Find").Call()
 		}
-		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
+		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 			jen.Id("ctx"),
 			jen.Id("query"),
 			jen.Id("op"),
@@ -526,7 +537,7 @@ func (cg *MongoGenerator) generateListFKFunc(e *Entity) error {
 	fname := cg.desc.GetMethodName(MethodListFK, name)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("parentID").Int()).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).Block(
 		jen.Id("ret").Op(":=").Index().Op("*").Id(name).Values(jen.Dict{}),
-		jen.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
+		jen.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 			jen.Id("ctx"),
 			jen.Qual(bsonPackage, "M").Values(jen.DictFunc(func(d jen.Dict) {
 				// if ff, ok := e.Annotations.GetInterfaceAnnotation(codeGeneratorAnnotation, AnnotationTagForeignKeyField).(*Field); ok {
@@ -554,7 +565,7 @@ func (cg *MongoGenerator) generateRemoveFKFunc(e *Entity) error {
 	fname := cg.desc.GetMethodName(MethodRemoveFK, name)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("parentID").Int()).
 		Parens(jen.Id("err").Error()).Block(
-		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("DeleteMany").Params(
+		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("DeleteMany").Params(
 			jen.Id("ctx"),
 			jen.Qual(bsonPackage, "M").Values(jen.DictFunc(func(d jen.Dict) {
 				// if ff, ok := e.Annotations.GetInterfaceAnnotation(codeGeneratorAnnotation, AnnotationTagForeignKeyField).(*Field); ok {
@@ -585,7 +596,7 @@ func (cg *MongoGenerator) generateReplaceFKFunc(e *Entity) error {
 			//TODO fill the parent reference field
 			jen.Id("items").Index(jen.Id("i")).Op("=").Id("v"),
 		),
-		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("InsertMany").Params(
+		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("InsertMany").Params(
 			jen.Id("ctx"),
 			jen.Id("items"),
 		),
@@ -612,8 +623,8 @@ func (cg *MongoGenerator) generateLookupFunc(e *Entity) error {
 		if e.BaseTypeName != "" {
 			g.Add(cg.addDescendantsToQuery(e, "q"))
 		}
-
-		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
+		g.Qual("encoding/json", "Unmarshal").Params(jen.Op("[]").Byte().Parens(jen.Id("query")), jen.Op("&").Id("q"))
+		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 			jen.Id("ctx"),
 			//TODO use query
 			jen.Id("q"),
@@ -768,7 +779,7 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 		).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
 			g.Id("ret").Op(":=").Index().Op("*").Id(name).Values(jen.Dict{})
 			g.List(jen.Id("q"), jen.Id("_")).Op(":=").Id(EngineVar).Dot(generatorFuncName).Params(jen.Id("query"))
-			g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
+			g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 				jen.Id("ctx"),
 				jen.Id("q"),
 			)
@@ -808,7 +819,7 @@ func (cg *MongoGenerator) generateCongifLoadFunc(e *Entity) error {
 	fname := cg.desc.GetMethodName(MethodLoad, name)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
 		jen.List(jen.Id("ret"), jen.Id("_")).Op(":=").Id(EngineVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, e.Name)).Params(jen.Id("ctx")),
-		jen.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("Find").Params(
+		jen.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 			jen.Id("ctx"),
 			jen.Qual(bsonPackage, "M").Values(),
 		),
@@ -855,7 +866,7 @@ func (cg *MongoGenerator) generateConfigSaveFunc(e *Entity) error {
 		g.Var().Err().Error()
 		g.Id("opts").Op(":=").Qual(optionsPackage, "Update").Call().Dot("SetUpsert").Call(jen.Lit(true))
 		for _, f := range e.Fields {
-			g.List(jen.Id(resultName), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("UpdateOne").Params(
+			g.List(jen.Id(resultName), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("UpdateOne").Params(
 				jen.Id("ctx"),
 				jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Lit(f.Name)}),
 				jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$set"): jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("value"): jen.Id("o").Dot(f.Name)})}),
@@ -879,7 +890,7 @@ func (cg *MongoGenerator) generateConfigSaveFunc(e *Entity) error {
 				jen.Id("ctx").Qual("context", "Context"),
 				jen.Id("o").Add(fld.Features.Stmt(FeatGoKind, FCGAttrType)),
 			).Parens(jen.Err().Error()).BlockFunc(func(g *jen.Group) {
-				g.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Lit(cg.collectionName(e))).Dot("UpdateOne").Params(
+				g.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("UpdateOne").Params(
 					jen.Id("ctx"),
 					jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("_id"): jen.Lit(fld.Name)}),
 					jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$set"): jen.Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("value"): jen.Id("o")})}),

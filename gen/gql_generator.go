@@ -1207,20 +1207,20 @@ func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assign
 				jen.List(jen.Id("val"), jen.Id("ok")).Op(":=").Id("p").Dot("Args").Index(jen.Lit(name)).Assert(jen.Index().Interface()),
 				jen.Id("ok"),
 			).Block(
-				jen.Add(assignTo).Op("=").Make(jen.Index().Op("*").Add(cg.GetInputGoType(t.Array)), jen.Len(jen.Id("val"))),
+				jen.Add(assignTo).Op("=").Make(jen.Index(). /*Op("*").*/ Add(cg.GetInputGoType(t.Array)), jen.Len(jen.Id("val"))),
 				jen.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("val")).BlockFunc(func(g *jen.Group) {
 					if !t.Array.Complex {
-						g.Id("values").Index(jen.Id("i")).Op("=").Id("item").Assert(cg.GetInputGoType(t.Array))
+						g.Add(assignTo).Index(jen.Id("i")).Op("=").Id("item").Assert(cg.GetInputGoType(t.Array))
 					} else {
 						g.Var().Err().Error()
-						g.List(jen.Id("values").Index(jen.Id("i")), jen.Err()).Op("=").Add(cg.callInputParserMethod(jen.Id("p").Dot("Context"), t.Array.Type, "item", jen.Nil(), false))
+						g.List(jen.Add(assignTo).Index(jen.Id("i")), jen.Err()).Op("=").Add(cg.callInputParserMethod(jen.Id("p").Dot("Context"), t.Array.Type, "item", jen.Nil(), false))
 						g.Add(returnIfErrValue(jen.Nil()))
 					}
 				}),
 			).Else().Block(
 				jen.Return(
 					jen.Nil(),
-					jen.Qual("errors", "New").Dot("invalid type for array"),
+					jen.Qual("errors", "New").Params(jen.Lit("invalid type for array")),
 				),
 			)
 		} else {

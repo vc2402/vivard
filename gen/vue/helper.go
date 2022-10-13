@@ -24,22 +24,24 @@ type fields []fieldDescriptor
 type formTabs map[string]formTab
 
 type helperContext struct {
-	fields     fields
-	width      string
-	ann        annotationSet
-	kind       string
-	withRows   bool
-	withTabs   bool
-	useGrid    bool
-	title      string
-	tabs       formTabs
-	components map[string]componentDescriptor
+	fields       fields
+	width        string
+	ann          annotationSet
+	kind         string
+	withRows     bool
+	withTabs     bool
+	useGrid      bool
+	title        string
+	tabs         formTabs
+	components   map[string]componentDescriptor
+	needSecurity bool
 }
 
 type formTab struct {
-	id    string
+	ID    string
 	label string
 	order int
+	roles string
 }
 
 type fieldDescriptor struct {
@@ -96,7 +98,14 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			}
 			return true
 		},
-		"Label": func(f *gen.Field) string { return f.Name },
+		"Label": func(f *gen.Field) string {
+			name := f.Name
+			if an, ok := f.Annotations[vueAnnotation]; ok {
+				name = an.GetString(vcaLabel, name)
+			}
+			//TODO: make different label for tables?
+			return name
+		},
 		"FieldName": func(f *gen.Field) string {
 			return f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 		},
@@ -169,7 +178,12 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			return typesPath
 		},
 		//TODO: get title from annotations
-		"Title": func(e *gen.Entity) string { return e.Name },
+		"Title": func(e *gen.Entity) string {
+			if t, ok := e.Annotations.GetStringAnnotation(vueDialogAnnotation, vcaLabel); ok {
+				return t
+			}
+			return fmt.Sprintf(`"%s"`, e.Name)
+		},
 		"IDType": func(e *gen.Entity) string {
 			t, _ := e.Features.GetString(js.Features, js.FIDType)
 			return t
@@ -369,6 +383,12 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			}
 			return ret
 		},
+		"EditableInTable": func(f *gen.Field) string {
+			if f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vueATEditable, false) {
+				return "true"
+			}
+			return "false"
+		},
 		"CanBeMultiple": func(e *gen.Entity) bool {
 			// if refsManyToMany, ok := e.Features.GetBool(gen.FeaturesCommonKind, gen.FCRefsAsManyToMany); ok && refsManyToMany {
 			// 	return true
@@ -476,22 +496,23 @@ func getTabs(e *gen.Entity) (ret formTabs, def string) {
 	if ann := e.GetAnnotation(vueTabSet); ann != nil {
 		ret = map[string]formTab{}
 		for i, a := range ann.Values {
-			tab := formTab{id: a.Key, order: i, label: a.Key}
+			tab := formTab{ID: a.Key, order: i, label: a.Key}
 			if def == "" {
 				def = a.Key
 			}
 			if a.Value != nil && a.Value.String != nil {
 				tab.label = *a.Value.String
 			} else {
-				if ta := e.GetAnnotation(vueTabSet, a.Key); ta != nil {
+				if ta := e.GetAnnotation(vueTab, a.Key); ta != nil {
 					tab.order = ta.GetInt(vcaOrder, i)
 					tab.label = ta.GetString(vcaLabel, tab.label)
+					tab.roles = ta.GetString(vcaRoles, "")
 					if d := ta.GetBool(vcaDefault, false); d {
-						def = tab.id
+						def = tab.ID
 					}
 				}
 			}
-			ret[tab.id] = tab
+			ret[tab.ID] = tab
 		}
 	}
 	return

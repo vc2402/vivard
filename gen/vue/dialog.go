@@ -49,7 +49,7 @@ var htmlGridDialogTemplate = `
       >
         <v-layout row justify-space-between>
           <v-flex>
-            {{"{{title}}"}}
+            {{"{{title()}}"}}
           </v-flex>
           
           <v-spacer></v-spacer>
@@ -110,7 +110,6 @@ import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
 export default class {{.Name}}DialogComponent extends Vue {
   private value: {{TypeName .}} | null = null;
   private isNew = false;
-  private title: string = "{{Title .}}";
   private okText: string = "OK";
   private showDialog: boolean = false;
   private resolve: (res: {{TypeName .}}|null)=>void = () => {};
@@ -119,6 +118,9 @@ export default class {{.Name}}DialogComponent extends Vue {
   private problem = "";
   doNotGQL = {{NotExported .}}
   
+  title() {
+    return {{Title .}};
+  }
   show(v: {{TypeName .}}|{{IDType .}}|null): Promise<{{TypeName .}}|null> {
     this.showDialog = true;
     this.problem = "";

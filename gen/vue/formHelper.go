@@ -49,6 +49,12 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 	var dt string
 	if !skipTabs {
 		ctx.tabs, dt = getTabs(e)
+		for _, t := range ctx.tabs {
+			if t.roles != "" {
+				ctx.needSecurity = true
+				break
+			}
+		}
 	}
 
 	maxRow := -1
@@ -168,6 +174,12 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"TabLable": func(tab [][]fieldDescriptor) string {
 			if len(tab) > 0 && len(tab[0]) > 0 {
 				return ctx.tabs.getLabel(tab[0][0].tab)
+			}
+			return "-invalid-"
+		},
+		"TabID": func(tab [][]fieldDescriptor) string {
+			if len(tab) > 0 && len(tab[0]) > 0 {
+				return tab[0][0].tab
 			}
 			return "-invalid-"
 		},
@@ -494,6 +506,13 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"GUITableComponent": func(f fieldDescriptor) string {
 			return f.fld.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueATCustom, "")
 		},
+		"EditableInTable": func(f fieldDescriptor) string {
+			if f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vueATEditable, false) {
+				return "true"
+			}
+			return "false"
+		},
+
 		"CanBeMultiple": func() bool {
 			// if refsManyToMany, ok := e.Features.GetBool(gen.FeaturesCommonKind, gen.FCRefsAsManyToMany); ok && refsManyToMany {
 			// 	return true
@@ -557,6 +576,44 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 				return th.ctx.width
 			}
 			return "$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
+		},
+		"NeedSecurity": func() bool {
+			return ctx.needSecurity
+		},
+		"SecurityImport": func() string {
+			if ctx.needSecurity {
+				//TODO: get from options
+				return "import { LoginManager } from '@/plugins/loginManager';"
+			}
+			return ""
+		},
+		"SecurityInject": func() string {
+			if ctx.needSecurity {
+				//TODO: get from options
+				return "  @Inject(\"loginManager\") loginManager!: LoginManager;"
+			}
+			return ""
+		},
+		"RolesForTab": func(tab string) string {
+			for _, t := range ctx.tabs {
+				if t.ID == tab {
+					if t.roles != "" {
+						roles := strings.Split(t.roles, " ")
+						ret := ""
+						for i, r := range roles {
+							if r != "" {
+								if i > 0 {
+									ret += ", "
+								}
+								ret += fmt.Sprintf("'%s'", r)
+							}
+						}
+						return ret
+					}
+					break
+				}
+			}
+			return ""
 		},
 	}
 	th.templ.Funcs(funcs)

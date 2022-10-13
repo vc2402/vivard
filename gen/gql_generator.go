@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard"
@@ -170,7 +171,7 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 					}
 					m.Features.Set(GQLFeatures, GQLFMethodType, mtype)
 					for _, p := range m.Params {
-						tip := cg.GetGQLTypeName(p.Type)
+						tip := cg.GetGQLTypeName(p.Type, true)
 						p.Features.Set(GQLFeatures, GQLFTypeTag, tip)
 					}
 				}
@@ -1248,9 +1249,9 @@ func (cg *GQLGenerator) GetGQLEntityTypeName(name string) (ret string) {
 func (cg *GQLGenerator) GetGQLInputTypeName(name string) (ret string) {
 	return name + "Input"
 }
-func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef) (ret string) {
+func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef, forInput ...bool) (ret string) {
 	if ref.Array != nil {
-		params := cg.GetGQLTypeName(ref.Array)
+		params := cg.GetGQLTypeName(ref.Array, forInput...)
 		ret = fmt.Sprintf("[%s]", params)
 	} else if ref.Map != nil {
 		var err error
@@ -1272,7 +1273,11 @@ func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef) (ret string) {
 		case TipFloat:
 			ret = "Float"
 		default:
-			ret = cg.GetGQLEntityTypeName(ref.Type)
+			if len(forInput) > 0 && forInput[0] {
+				ret = cg.GetGQLInputTypeName(ref.Type)
+			} else {
+				ret = cg.GetGQLEntityTypeName(ref.Type)
+			}
 		}
 	}
 	if ref.NonNullable {
@@ -1287,7 +1292,21 @@ func (cg *GQLGenerator) GetInputGoType(ref *TypeRef) *jen.Statement {
 	return cg.b.GoType(ref)
 }
 func (cg *GQLGenerator) GetGQLFieldName(f *Field) string {
-	return strings.ToLower(f.Name[:1]) + f.Name[1:]
+	return toStartFromLower(f.Name)
+}
+
+func toStartFromLower(s string) string {
+	ret := make([]rune, len(s))
+	needConvert := true
+	for i, c := range s {
+		if needConvert && unicode.IsUpper(c) {
+			c = unicode.ToLower(c)
+		} else {
+			needConvert = false
+		}
+		ret[i] = c
+	}
+	return string(ret)
 }
 
 func (cg *GQLGenerator) GetGQLMethodName(e *Entity, m *Method) string {

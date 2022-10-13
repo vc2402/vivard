@@ -93,9 +93,9 @@ var htmlTablessFormTemplate = `
 var htmlTabbedFormTemplate = `
 {{define "FORM"}}
   <v-tabs>
-    {{range Tabs}}<v-tab>{{TabLable .}}</v-tab>
+    {{range Tabs}}<v-tab {{if NeedSecurity}}v-if="hasAccess('{{TabID .}}')"{{end}}>{{TabLable .}}</v-tab>
     {{end}}
-    {{range Tabs}}<v-tab-item>{{template "FORM_CONTENT" .}}</v-tab-item>
+    {{range Tabs}}<v-tab-item {{if NeedSecurity}}v-if="hasAccess('{{TabID .}}')"{{end}}>{{template "FORM_CONTENT" .}}</v-tab-item>
     {{end}}
   </v-tabs>
 {{end}}
@@ -106,7 +106,7 @@ var htmlGridFormTemplate = `
   <div class="d-flex flex-column">
     <slot name="pre-fields"></slot>
     {{range Rows .}}
-      <v-row justify="space-between">
+      <v-row justify="space-between" align="center">
         {{range .}}
         <v-col {{GridColAttrs .}}>
           {{if IsID . false}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>{{end}}
@@ -150,6 +150,7 @@ import { {{TypeName}}, {{InstanceGeneratorName}}, {{TypesFromTS}} } from '{{Type
 import {{.}} from './{{.}}.vue'{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
+{{if NeedSecurity}}{{SecurityImport}}{{end}}
 
 @Component({
   components:{
@@ -163,6 +164,7 @@ export default class {{Name}}DialogComponent extends Vue {
   @Prop() value!: {{TypeName}} | undefined;
   @Prop({default:false}) isNew!: boolean;
   @Prop({default:false}) disabled!: boolean;
+{{if NeedSecurity}}{{SecurityInject}}{{end}}
   
   @Emit("input")
   emitValue() {
@@ -188,8 +190,20 @@ export default class {{Name}}DialogComponent extends Vue {
     if(!this.value!.{{FieldName .}})
       this.value!.{{FieldName .}} = [];
     this.value!.{{FieldName .}}.push({{InstanceGeneratorForField .}})
+  }{{end}}{{end}}
+
+  {{if NeedSecurity}}hasAccess(tab: string): boolean {
+    let roles: string[] = [];
+    switch(tab) {
+      {{range Tabs}}{{if ne (RolesForTab (TabID .)) ""}}case '{{TabID .}}': roles = [{{RolesForTab (TabID .)}}]; break;{{end}}{{end}}
+      default: return true;
+    }
+    for(let r of roles) {
+      if(this.loginManager.hasRole(r))
+        return true;
+    }
+    return false;
   }{{end}}
-  {{end}}
 }
 </script>
 {{end}}

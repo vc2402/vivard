@@ -200,14 +200,14 @@ const htmlFormArrayAsChipsTemplate = `{{define "ARRAY_AS_CHIPS"}}<div class="d-f
     class="mx-3"
     ref="new{{FieldName .}}Input"
     label="New key" 
-    @keydown.enter="value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue); $refs.new{{FieldName .}}Input.internalValue = ''"
+    @keydown.enter="value.{{FieldName .}}?value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue):value.{{FieldName .}}=[$refs.new{{FieldName .}}Input.internalValue]; $refs.new{{FieldName .}}Input.internalValue = ''"
     :disabled="disabled"
   >
     <template v-slot:append-outer>
       <v-icon
-        :disabled="!$refs.new{{FieldName .}}Input.internalValue"
+        :disabled="!$refs.new{{FieldName .}}Input||!$refs.new{{FieldName .}}Input.internalValue"
         color="success"
-        @click="value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue); $refs.new{{FieldName .}}Input.internalValue = ''"
+        @click="value.{{FieldName .}}?value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue):value.{{FieldName .}}=[$refs.new{{FieldName .}}Input.internalValue]; $refs.new{{FieldName .}}Input.internalValue = ''"
       >mdi-plus-box</v-icon>
     </template>
   </v-text-field>

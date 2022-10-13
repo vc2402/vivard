@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	GQLClientOptions    = "gql-ts"
-	GQLClientPathOption = "path"
+	GQLClientOptions         = "gql-ts"
+	GQLClientPathOption      = "path"
+	GQLClientNamespaceOption = "useNamespace"
 
 	Annotation          = "js"
 	AnnotationName      = "name"
@@ -173,6 +174,15 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	for fn, tt := range imports {
 		outFile.WriteString(fmt.Sprintf("import {%s} from './%s';\n", strings.Join(tt, ", "), fn))
 	}
+	useNS := false
+	if opts, ok := cg.desc.Options().Custom[GQLClientOptions].(map[string]interface{}); ok {
+		if p, ok := opts[GQLClientNamespaceOption].(bool); ok {
+			useNS = p
+		}
+	}
+	if useNS {
+		outFile.WriteString(fmt.Sprintf("namespace %s {", b.File.Package))
+	}
 	for _, t := range b.File.Entries {
 		err := cg.generateQueriesFile(outFile, t)
 		if err != nil {
@@ -182,6 +192,9 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 		t.Features.Set(Features, FFilePath, p)
 	}
 	outFile.WriteString(cleanInputFunc)
+	if useNS {
+		outFile.WriteString("}")
+	}
 	return nil
 }
 

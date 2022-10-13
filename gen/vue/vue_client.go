@@ -33,6 +33,8 @@ const (
 	vueATValue = "value"
 	// tooltip descriptor
 	vueATTooltip = "tooltip"
+	// editable in table
+	vueATEditable = "editable"
 
 	//vueAnnotationComponent - string or bool for defining custom form component (in form: 'ComponentName from fileName') or request it's generation
 	// vueAnnotationFormComponent = "formComponent"
@@ -87,6 +89,8 @@ const (
 
 	//vcaLabel - label for field, title for dialog etc
 	vcaLabel = "label"
+	//vcaRoles - roles that has access to this element (tab currently)
+	vcaRoles = "roles"
 	//vcaOrder - order for field (int) if not specified - 1000
 	vcaOrder = "order"
 	//vcaRow - row int (if not set - 1; if not set for all of the field - will be formed with wrap)
@@ -605,7 +609,9 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 				if forTable {
 					cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find attr for table in type %s for %s", f.Pos, f.Type.Type, f.Name))
 				} else {
-					cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find title field in type %s for %s", f.Pos, f.Type.Type, f.Name))
+					if _, ok := t.Entity().Annotations[gen.AnnotationConfig]; !ok {
+						cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find title field in type %s for %s", f.Pos, f.Type.Type, f.Name))
+					}
 				}
 			}
 		} else {
@@ -802,7 +808,7 @@ const typeDescriptorTSTemplate = `
 export const {{TypeName .}}Descriptor = {
   id: "{{IDField .}}",
   headers: [{{range (GetFields .)}} {{if ShowInTable .}}
-  {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}"{{if ne (GUITableColor .) ""}}, color: "{{GUITableColor .}}"{{end}}{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}}{{if ne (GUITableTooltip .) ""}}, tooltip: "{{GUITableTooltip .}}"{{end}}}, {{end}}{{end}}]
+  {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}"{{if ne (GUITableColor .) ""}}, color: "{{GUITableColor .}}"{{end}}{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}}{{if ne (GUITableTooltip .) ""}}, tooltip: "{{GUITableTooltip .}}"{{end}}, editable: {{EditableInTable .}}}, {{end}}{{end}}]
 };
 `
 const vueDialogTSTemplate = `

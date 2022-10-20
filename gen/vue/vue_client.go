@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -209,7 +210,7 @@ func (cg *VueCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annota
 	// }
 	annname := strings.Split(ann.Name, ":")
 	switch annname[0] {
-	case vueAnnotation, vueDialogAnnotation, vueLookupAnnotation, vueTableAnnotation, vueFormAnnotation, vueViewAnnotation, vueTabSet:
+	case vueAnnotation, vueDialogAnnotation, vueLookupAnnotation, vueTableAnnotation, vueFormAnnotation, vueViewAnnotation, vueTabSet, vueTab:
 		return true, nil
 	case gen.AnnotationConfig:
 		if e, ok := item.(*gen.Entity); ok {
@@ -572,14 +573,32 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 }
 
 func (cg *VueCLientGenerator) getOutputDir() (ret string) {
+	ret = path.Join(cg.getClientOutputDir(), "components")
+	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
+	return
+}
+
+func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 	ret = "./gql-ts"
 	if opts, ok := cg.desc.Options().Custom[js.GQLClientOptions].(map[string]interface{}); ok {
 		if p, ok := opts[js.GQLClientPathOption].(string); ok {
 			ret = p
 		}
 	}
-	ret = path.Join(ret, "components")
-	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
+	return
+}
+
+func (cg *VueCLientGenerator) pathToRelative(p string) (ret string) {
+	var err error
+	ret, err = filepath.Rel(cg.getOutputDir(), p)
+	if err != nil {
+		cg.b.AddWarning(fmt.Sprintf("problem while getting relative path for '%s': %v", p, err))
+		ret = p
+	} else {
+		if ret[0] != '.' {
+			ret = fmt.Sprintf(".%c%s", filepath.Separator, ret)
+		}
+	}
 	return
 }
 

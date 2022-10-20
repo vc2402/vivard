@@ -58,8 +58,9 @@ type fieldDescriptor struct {
 	readonly bool
 }
 type componentDescriptor struct {
-	name string
-	path string
+	name    string
+	path    string
+	relPath string
 }
 
 func (cg *VueCLientGenerator) getTypesPath(e *gen.Entity) (string, error) {

@@ -63,6 +63,8 @@ const (
 	GQLFMethodType         = "method-type"
 	GQLFMethodTypeMutation = "mutation"
 	GQLFMethodTypeQuery    = "query"
+	//GQLFIDOnly use only id for embedded type
+	GQLFIDOnly = "id-only"
 
 	//GQLFMethodResultType - code generator for method's result type
 	GQLFMethodResultType = "result-type"
@@ -154,6 +156,11 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 							}
 							if idfld := ct.entry.GetIdField(); idfld != nil {
 								tip = cg.GetGQLTypeName(idfld.Type)
+								if ct.entry == t {
+									//TODO check for recursive types
+									f.Features.Set(GQLFeatures, GQLFIDOnly, true)
+									f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+								}
 							}
 						}
 					}
@@ -267,10 +274,11 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 				continue
 			}
 
-			t, err := cg.getGQLType(f.Type, false, f.HasModifier(AttrModifierEmbeddedRef))
+			t, err := cg.getGQLType(f.Type, false, f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly))
 			if err != nil {
 				return err
 			}
+
 			gqlFields[jen.Lit(fieldName)] = jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
 				jen.Id("Type"): t,
 				jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
@@ -1292,14 +1300,15 @@ func (cg *GQLGenerator) GetInputGoType(ref *TypeRef) *jen.Statement {
 	return cg.b.GoType(ref)
 }
 func (cg *GQLGenerator) GetGQLFieldName(f *Field) string {
-	return toStartFromLower(f.Name)
+	return toCamelCase(f.Name)
 }
 
-func toStartFromLower(s string) string {
+func toCamelCase(s string) string {
 	ret := make([]rune, len(s))
 	needConvert := true
-	for i, c := range s {
-		if needConvert && unicode.IsUpper(c) {
+	runes := []rune(s)
+	for i, c := range runes {
+		if needConvert && unicode.IsUpper(c) && (i < 2 || i >= len(runes)-2 || unicode.IsUpper(runes[i+1])) {
 			c = unicode.ToLower(c)
 		} else {
 			needConvert = false

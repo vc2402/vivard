@@ -702,6 +702,9 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 		if isConfig && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
 			return
 		}
+		if f.FB(gen.GQLFeatures, gen.GQLFIDOnly) {
+			return
+		}
 		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
 		if ok {
 			for _, ff := range tt.Entity().GetFields(true, true) {

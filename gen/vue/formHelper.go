@@ -35,9 +35,13 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 	ctx.components = map[string]componentDescriptor{}
 	if annSpec != "" {
 		name := fmt.Sprintf("Form%s", annSpec)
-		ctx.components["form"] = componentDescriptor{name: name, path: cg.getPathForComponent(e, name+".vue")}
+		p := cg.getPathForComponent(e, name+".vue")
+		rp := cg.pathToRelative(p)
+		ctx.components["form"] = componentDescriptor{name: name, path: p, relPath: rp}
 		name = fmt.Sprintf("Dialog%s", annSpec)
-		ctx.components["dialog"] = componentDescriptor{name: name, path: cg.getPathForComponent(e, name+".vue")}
+		p = cg.getPathForComponent(e, name+".vue")
+		rp = cg.pathToRelative(p)
+		ctx.components["dialog"] = componentDescriptor{name: name, path: p, relPath: rp}
 		skipTabs = ctx.ann.getBoolDef(vueSkipTabs, false)
 	}
 
@@ -567,7 +571,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		},
 		"SelfFormComponentPath": func() string {
 			if cd, ok := th.ctx.getComponentDescriptor("form"); ok {
-				return cd.path
+				return cd.relPath
 			}
 			return fmt.Sprintf("./%s.vue", e.FS(featureVueKind, fVKFormComponent))
 		},

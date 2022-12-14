@@ -99,8 +99,8 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 						}
 					}
 					// f.Annotations.AddTag(Annotation, AnnotationType, cg.GetJSTypeName(f.Type))
-					f.Features.Set(Features, FType, cg.GetJSTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef)))
-					f.Features.Set(Features, FInputType, cg.GetJSInputTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef)))
+					f.Features.Set(Features, FType, cg.GetJSTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly)))
+					f.Features.Set(Features, FInputType, cg.GetJSInputTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly)))
 					if title, ok := f.Annotations.GetBoolAnnotation(Annotation, AnnotationTitle); ok && title {
 						tf = f
 					}
@@ -209,6 +209,10 @@ func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeR
 			return "", nil
 		default:
 			dt, _ := pckg.FindType(ref.Type)
+			if dt == nil {
+				cg.desc.AddError(fmt.Errorf("type not found: %s", ref.Type))
+				return "", nil
+			}
 			e := dt.Entity()
 			if e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
 				return "", nil
@@ -405,7 +409,8 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 											cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
 											continue
 										}
-									} else if i == gen.GQLOperationFind && f.HasModifier(gen.AttrModifierEmbeddedRef) {
+									} else if i == gen.GQLOperationFind &&
+										(f.HasModifier(gen.AttrModifierEmbeddedRef) || !f.Type.Array.Complex) {
 										// nothing to do - it jus n and should be
 									} else {
 										n = ""
@@ -702,7 +707,8 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 		if isConfig && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
 			return
 		}
-		if f.FB(gen.GQLFeatures, gen.GQLFIDOnly) {
+		if f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly) {
+			ret = field
 			return
 		}
 		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
@@ -781,9 +787,16 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 					return t.Entity().FS(Features, FInstanceGenerator) + "()"
 				}
 				return "null"
-			} else {
-				return cg.GetJSEmptyVal(f.Type)
+			} else if f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly) {
+				if f.Type.Array != nil || f.Type.Map != nil {
+					return "[]"
+				}
+				t := f.Parent()
+				if idfld := t.GetIdField(); idfld != nil {
+					return cg.GetJSEmptyVal(idfld.Type)
+				}
 			}
+			return cg.GetJSEmptyVal(f.Type)
 		},
 		"GetFields": func(e *gen.Entity) []*gen.Field {
 			return e.GetFields(true, true)

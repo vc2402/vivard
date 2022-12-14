@@ -3,6 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
 func (h *helper) generateForm(formName string) error {
@@ -13,6 +14,7 @@ func (h *helper) generateForm(formName string) error {
 		parse(htmlFormInputTemplate).
 		parse(htmlFormTextInputTemplate).
 		parse(htmlFormDateInputTemplate).
+		parse(htmlFormColorInputTemplate).
 		parse(htmlFormMapInputTemplate).
 		parse(htmlFormArrayInputTemplate).
 		parse(htmlFormArrayAsListTemplate).
@@ -30,6 +32,7 @@ func (h *helper) generateForm(formName string) error {
 	if h.e.FB(featureVueKind, fVKFormRequired) {
 		// p := path.Join(h.outDir, h.e.Name+"Form.vue")
 		p := h.e.FS(featureVueKind, fVKFormComponentPath)
+		p = path.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -47,6 +50,7 @@ func (h *helper) generateForm(formName string) error {
 	}
 	if h.e.FB(featureVueKind, fVKFormListRequired) {
 		p := h.e.FS(featureVueKind, fVKFormListComponentPath)
+		p = path.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -66,6 +70,7 @@ func (h *helper) generateForm(formName string) error {
 	if h.e.FB(featureVueKind, fVKCardRequired) {
 		// p := path.Join(h.outDir, h.e.Name+"Form.vue")
 		p := h.e.FS(featureVueKind, fVKCardComponentPath)
+		p = path.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -154,6 +159,7 @@ const htmlFormInputTemplate = `{{define "FORM_INPUT_FIELD"}}{{if ne (CustomCompo
   {{else if eq (FormComponentType .) "float"}}{{template "TEXT_INPUT" .}}
   {{else if eq (FormComponentType .) "date"}}{{template "DATE_INPUT" .}}
   {{else if eq (FormComponentType .) "bool"}}{{template "BOOL_INPUT" .}}
+  {{else if eq (FormComponentType .) "color"}}{{template "COLOR_INPUT" .}}
   {{else if eq (FormComponentType .) "map"}}{{template "MAP_INPUT" .}}
   {{else if eq (FormComponentType .) "array"}}{{template "ARRAY_INPUT" .}}
   {{else}}{{template "LOOKUP_INPUT" .}}{{end}}{{end}}`
@@ -163,24 +169,47 @@ const htmlFormTextInputTemplate = `{{define "TEXT_INPUT"}}<v-text-field v-if="va
     label="{{Label .}}" {{InputAttrs .}}
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
-  >{{if FieldWithAppend .}}<template v-slot:append-outer>{{range AppendToField .}}{{.}}{{end}}</template>{{end}}</v-text-field>{{end}}`
+  >{{if FieldWithAppend .}}<template v-slot:append-outer>
+     {{range AppendToField .}}{{.}}{{end}}
+   </template>{{end}}{{if WithPrependIcon .}}<template v-slot:prepend>
+     {{PrependIcon .}}</template>{{end}}{{if WithAppendIcon .}}<template v-slot:append>
+     {{AppendIcon .}}</template>{{end}}</v-text-field>{{end}}`
 const htmlFormDateInputTemplate = `{{define "DATE_INPUT"}}<{{CustomComponent "date"}}  v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}"
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
-		{{ConponentAddAttrs .}}
+    {{ConponentAddAttrs .}}
   ></{{CustomComponent "date"}}>{{end}}`
+const htmlFormColorInputTemplate = `{{define "COLOR_INPUT"}}<{{CustomComponent "color"}}  v-if="value"
+    v-model="value.{{FieldName .}}"
+    label="{{Label .}}"
+    @change="changed('{{FieldName .}}')"
+    :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
+  ></{{CustomComponent "color"}}>{{end}}`
 const htmlFormMapInputTemplate = `{{define "MAP_INPUT"}}<{{CustomComponent "map"}}  v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}"
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
-		{{ConponentAddAttrs .}}
+    {{ConponentAddAttrs .}}
   ></{{CustomComponent "map"}}>{{end}}`
 const htmlFormArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}} :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"/>{{else if ArrayAsList .}}{{template "ARRAY_AS_LIST" .}}{{else if ArrayAsChips .}}{{template "ARRAY_AS_CHIPS" .}}{{end}}{{end}}`
 
-const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}} :disabled="{{if Readonly .}}true{{else}}disabled{{end}}">{{if FieldWithAppend .}}<template v-slot:append>{{range AppendToField .}}{{.}}{{end}}</template>{{end}}</{{LookupComponent . true}}>{{end}}`
+const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}} 
+<{{LookupComponent . true}}  
+  v-if="value" 
+  v-model="value.{{FieldName .}}" 
+  label="{{Label .}}" 
+  @change="changed('{{FieldName .}}')" 
+  {{LookupAttrs .}} 
+  :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"{{if ByRefField .}}
+  :returnId="true"
+  :hideAdd="true"{{end}}>{{if FieldWithAppend .}}
+    <template v-slot:append>{{range AppendToField .}}
+      {{.}}{{end}}
+    </template>{{end}}
+</{{LookupComponent . true}}>{{end}}`
 
 const htmlFormBoolInputTemplate = `{{define "BOOL_INPUT"}}<v-checkbox  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"/>{{end}}`
 
@@ -196,10 +225,16 @@ const htmlFormArrayAsListTemplate = `{{define "ARRAY_AS_LIST"}}<div class="d-fle
  {{end}}`
 
 const htmlFormArrayAsChipsTemplate = `{{define "ARRAY_AS_CHIPS"}}<div class="d-flex flex-row align-center" v-if="value">
+  <span class="mr-3">{{Label .}}:</span>
+  <v-chip-group column>
+    <v-chip v-for="(key, idx) in value.{{FieldName .}}" :key="key" close @click:close="value.{{FieldName .}}.splice(idx, 1)" color="primary">
+    {{"{{"}}key{{"}}"}}
+    </v-chip>
+  </v-chip-group>
   <v-text-field
     class="mx-3"
     ref="new{{FieldName .}}Input"
-    label="New key" 
+    label="Add" 
     @keydown.enter="value.{{FieldName .}}?value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue):value.{{FieldName .}}=[$refs.new{{FieldName .}}Input.internalValue]; $refs.new{{FieldName .}}Input.internalValue = ''"
     :disabled="disabled"
   >
@@ -211,11 +246,6 @@ const htmlFormArrayAsChipsTemplate = `{{define "ARRAY_AS_CHIPS"}}<div class="d-f
       >mdi-plus-box</v-icon>
     </template>
   </v-text-field>
-  <v-chip-group column>
-    <v-chip v-for="(key, idx) in value.{{FieldName .}}" :key="key" close @click:close="value.{{FieldName .}}.splice(idx, 1)" color="primary">
-    {{"{{"}}key{{"}}"}}
-    </v-chip>
-  </v-chip-group>
 </div>
 {{end}}`
 
@@ -226,14 +256,15 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, {{InstanceGeneratorName .}} } from '{{TypesFilePath .}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
 
 @Component({
+  name: "{{.Name}}DialogComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
     {{range AdditionalComponents}}
       {{.Comp}},{{end}}
   }
@@ -285,12 +316,13 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, {{InstanceGeneratorName .}} } from '{{TypesFilePath .}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 
 @Component({
+  name: "{{.Name}}FormListComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
   }
 })
 export default class {{.Name}}FormListComponent extends Vue {
@@ -328,14 +360,15 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, New{{TypeName .}}Instance } from '{{TypesFilePath .}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
 
 @Component({
+  name: "{{.Name}}DialogComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
     {{range AdditionalComponents}}
       {{.Comp}},{{end}}
   }

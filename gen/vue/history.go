@@ -3,6 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
 func (h *helper) generateHistoryComponent() error {
@@ -14,6 +15,7 @@ func (h *helper) generateHistoryComponent() error {
 		return fmt.Errorf("Error while parsing form template: %v", h.err)
 	}
 	p := h.e.FS(featureVueKind, fVKHistComponentPath)
+	p = path.Join(h.outDir, p)
 	f, err := os.Create(p)
 	if err != nil {
 		return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -91,12 +93,13 @@ const vueHistoryTSTemplate = `
 import { Component, Prop, Vue } from 'vue-property-decorator';
 import { {{TypeName}}, } from '{{TypesFilePath}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 
 @Component({
+  name: "{{Name}}HistoryComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
   }
 })
 export default class {{Name}}HistoryComponent extends Vue {

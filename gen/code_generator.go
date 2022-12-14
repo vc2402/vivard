@@ -76,6 +76,8 @@ type CodeGeneratorOptions struct {
 	GenerateRemoveOperation bool
 	// GenerateDeletedField - generate field Deleted *time.Time for every entity that can be deleted
 	GenerateDeletedField bool
+	// AllowEmbeddedArraysForDictionary - allow arrays of embedded types for dictionary
+	AllowEmbeddedArraysForDictionary bool
 }
 
 //CodeGenerator generates Go code (structs, methods, Engine object  and other)
@@ -384,7 +386,8 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 		cg.b.AddConst(constSection, jen.Id(cn).Id(tn).Op("=").Lit(typeName))
 	}
 	for _, d := range ent.Fields {
-		if ent.IsDictionary() && ( /*d.Type.Embedded != "" || */ d.Type.Array != nil) {
+		if ent.IsDictionary() && ( /*d.Type.Embedded != "" || */ d.Type.Array != nil && !d.HasModifier(AttrModifierEmbeddedRef)) &&
+			!d.HasModifier(AttrModifierEmbedded) || !cg.options.AllowEmbeddedArraysForDictionary {
 			return fmt.Errorf("%s:%s: only simple types allowed for Dictionary", ent.Name, d.Name)
 		}
 		fieldName := d.FS(FeatGoKind, FCGName)
@@ -1011,9 +1014,13 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 	return nil
 }
 
-func (cg *CodeGenerator) goType(ref *TypeRef) (f *jen.Statement) {
+func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statement) {
 	if ref.Array != nil {
-		return jen.Index().Add(cg.goType(ref.Array))
+		emb := embedded
+		if len(embedded) == 0 && ref.Embedded {
+			emb = []bool{true}
+		}
+		return jen.Index().Add(cg.goType(ref.Array, emb...))
 	}
 	if ref.Map != nil {
 		return jen.Map(jen.Id(ref.Map.KeyType)).Add(cg.goType(ref.Map.ValueType))
@@ -1035,6 +1042,7 @@ func (cg *CodeGenerator) goType(ref *TypeRef) (f *jen.Statement) {
 			if dt.entry.HasModifier(TypeModifierExternal) {
 				f = jen.Qual(dt.packagePath, dt.name)
 			} else if !ref.Embedded &&
+				(len(embedded) == 0 || !embedded[0]) &&
 				!dt.entry.HasModifier(TypeModifierEmbeddable) &&
 				!dt.entry.HasModifier(TypeModifierTransient) &&
 				!dt.entry.HasModifier(TypeModifierConfig) {

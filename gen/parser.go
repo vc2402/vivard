@@ -267,8 +267,15 @@ func (f *File) postProcess() error {
 				t.Fields = append(t.Fields, te.Field)
 				t.FieldsIndex[te.Field.Name] = te.Field
 				// stripAnnotations(te.Modifiers)
-				te.Field.Type.Complex = !IsPrimitiveType(te.Field.Type.Type)
-				te.Field.Type.Embedded = te.Field.HasModifier(AttrModifierEmbedded)
+				te.Field.PostProcess()
+				//te.Field.Type.Complex = !IsPrimitiveType(te.Field.Type.Type)
+				//te.Field.Type.Embedded = te.Field.HasModifier(AttrModifierEmbedded)
+				////trying to fill complex for ref types of arrays...
+				//arrType := te.Field.Type.Array
+				//for arrType != nil {
+				//	arrType.Complex = !IsPrimitiveType(arrType.Type)
+				//	arrType = arrType.Array
+				//}
 			} else if te.Method != nil {
 				te.Method.Modifiers = te.Modifiers
 				te.Method.Features = Features{}
@@ -456,6 +463,17 @@ func (f *Field) HasModifier(mod AttrModifier) bool {
 	return false
 }
 
+func (f *Field) PostProcess() {
+	f.Type.Complex = !IsPrimitiveType(f.Type.Type)
+	f.Type.Embedded = f.HasModifier(AttrModifierEmbedded)
+	//trying to fill complex for ref types of arrays...
+	arrType := f.Type.Array
+	for arrType != nil {
+		arrType.Complex = !IsPrimitiveType(arrType.Type)
+		arrType = arrType.Array
+	}
+}
+
 //Parent returns enclosing entity
 func (f *Field) Parent() *Entity {
 	return f.parent
@@ -584,6 +602,14 @@ func (a Annotations) GetStringAnnotationDef(name string, key string, def string)
 	if !ok {
 		val = def
 	}
+	return
+}
+func (a Annotations) GetStringAnnotationDefTrimmed(name string, key string, def string) (val string) {
+	val, ok := a.GetStringAnnotation(name, key)
+	if !ok {
+		val = def
+	}
+	val = strings.Trim(val, " \t\n")
 	return
 }
 func (a Annotations) GetBoolAnnotation(name string, key string) (val bool, ok bool) {

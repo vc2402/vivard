@@ -2,6 +2,8 @@ package vue
 
 import (
 	"fmt"
+	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -34,14 +36,14 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 	}
 	ctx.components = map[string]componentDescriptor{}
 	if annSpec != "" {
-		name := fmt.Sprintf("Form%s", annSpec)
+		name := fmt.Sprintf("%sForm%s", e.Name, annSpec)
 		p := cg.getPathForComponent(e, name+".vue")
-		rp := cg.pathToRelative(p)
-		ctx.components["form"] = componentDescriptor{name: name, path: p, relPath: rp}
-		name = fmt.Sprintf("Dialog%s", annSpec)
+		rp := cg.pathToRelative(cg.getOutputDirForEntity(e), p)
+		ctx.components["form"] = componentDescriptor{name: name, path: name + ".vue", relPath: rp}
+		name = fmt.Sprintf("%sDialog%s", e.Name, annSpec)
 		p = cg.getPathForComponent(e, name+".vue")
-		rp = cg.pathToRelative(p)
-		ctx.components["dialog"] = componentDescriptor{name: name, path: p, relPath: rp}
+		rp = cg.pathToRelative(cg.getOutputDirForEntity(e), p)
+		ctx.components["dialog"] = componentDescriptor{name: name, path: name + ".vue", relPath: rp}
 		skipTabs = ctx.ann.getBoolDef(vueSkipTabs, false)
 	}
 
@@ -151,9 +153,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		}
 	}
 	sort.Sort(&ctx.fields)
-	th := &helper{templ: template.New(name), cg: cg, e: e, idField: idf, outDir: outDir, ctx: ctx}
+	th := &helper{templ: template.New(name), cg: cg, e: e, idField: idf, outDir: outDir, ctx: ctx, components: map[string]vcComponentDescriptor{}}
 
-	components := map[string]string{}
+	//components := map[string]vcComponentDescriptor{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
 	typesFromTS := []string{}
 	funcs := template.FuncMap{
@@ -255,8 +257,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				cmp := qt.FS(featureVueKind, fVKLookupComponent)
-				if cmp != "" {
-					components[cmp] = cmp
+				p := qt.FS(featureVueKind, fVKLookupComponentPath)
+				if cmp != "" && p != "" {
+					hlp.addComponent(cmp, p, qt)
 					return cmp
 				}
 			}
@@ -292,28 +295,37 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if f.fld.Type.Array != nil {
 				return "array"
 			}
+			if col, ok := f.ann.getBool(vueATColorAttr); ok && col {
+				return "color"
+			}
+			if col, ok := f.fld.Annotations.GetBoolAnnotation(js.Annotation, js.AnnotationColor); ok && col {
+				return "color"
+			}
 			return f.fld.Type.Type
 		},
 		"FormComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKFormComponent)
-			// path := e.FS(featureVueKind, fVKFormComponentPath)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKFormComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"ViewComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKViewComponent)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKViewComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"DialogComponent": func(hlp *helper) string {
 			cmp := e.FS(featureVueKind, fVKDialogComponent)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKDialogComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"DictEditComponent": func(hlp *helper, addToRequired bool) string {
 			cmp := e.FS(featureVueKind, fVKDictEditComponent)
 			if addToRequired {
-				components[cmp] = cmp
+				p := e.FS(featureVueKind, fVKDictEditComponentPath)
+				th.addComponent(cmp, p, e)
 			}
 			return cmp
 		},
@@ -359,38 +371,40 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 				fld, _ := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
 				tip = fld.Type
 			}
-			typename := tip.Type
-			if tip.Array != nil {
-				typename = tip.Array.Type
+			for tip.Array != nil {
+				tip = tip.Array
 			}
-			var lc string
+			typename := tip.Type
+			var lc, lcp string
 			if t, ok := e.Pckg.FindType(typename); ok {
 				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
-					// if f.fld.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
-					// 	lc = t.Entity().FS(featureVueKind, fVKViewComponent)
-					// } else {
 					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
-					// }
-				} else {
-					typename = t.Entity().Name
+					lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+				}
+				if lc == "" {
+					ud := f.fld.FS(featureVueKind, fVKUseInDialog)
+
+					switch ud {
+					case fVKUseInDialogLookup:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					case fVKUseInDialogForm:
+						lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+					default:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					}
+					if lc != "" && lcp != "" {
+						if addToRequired {
+							th.addComponent(lc, lcp, t.Entity())
+						}
+					}
 				}
 			}
 
-			if lc == "" {
-				ud := f.fld.FS(featureVueKind, fVKUseInDialog)
-
-				switch ud {
-				//TODO: get name and path from features
-				case fVKUseInDialogLookup:
-					lc = typename + "LookupComponent"
-				case fVKUseInDialogForm:
-					lc = typename + "Form"
-				default:
-					lc = typename + "LookupComponent"
-				}
-			}
-			if addToRequired {
-				components[lc] = lc
+			if lc == "" || lcp == "" {
+				cg.desc.AddWarning(fmt.Sprintf("at %v: lookupComponent not found for field %s", f.fld.Pos, f.fld.Name))
 			}
 
 			return lc
@@ -399,12 +413,16 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			_, ok := f.fld.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy)
 			return ok
 		},
+		"ByRefField": func(f fieldDescriptor) bool {
+			return f.fld.HasModifier(gen.AttrModifierEmbeddedRef) || f.fld.FB(gen.GQLFeatures, gen.GQLFIDOnly)
+		},
 		"AppendToField": func(f fieldDescriptor) []string {
 			if he, ok := f.fld.Features.GetEntity(gen.FeatureHistKind, gen.FHHistoryEntity); ok {
 				hc := he.FS(featureVueKind, fVKHistComponent)
+				hcp := he.FS(featureVueKind, fVKHistComponentPath)
 				if hf, ok := f.fld.Features.GetField(gen.FeatureHistKind, gen.FHHistoryField); ok {
 					fn := hf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-					components[hc] = hc
+					th.addComponent(hc, hcp, he)
 					return []string{fmt.Sprintf("<%s v-if=\"value && value.%s\" :items=\"value.%s\"/>", hc, fn, fn)}
 				}
 			}
@@ -426,13 +444,20 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			return ""
 		},
 		"InputAttrs": func(f fieldDescriptor) string {
+			ret := ""
 			if f.mask != "" {
-				return fmt.Sprintf("v-mask=\"'%s'\"", f.mask)
+				ret = fmt.Sprintf("v-mask=\"'%s'\" ", f.mask)
 			}
-			return ""
+			if pref, ok := f.fld.Annotations.GetStringAnnotation(vueAnnotation, vcaPrefix); ok {
+				ret += fmt.Sprintf("prefix=\"%s\" ", pref)
+			}
+			if suff, ok := f.fld.Annotations.GetStringAnnotation(vueAnnotation, vcaSuffix); ok {
+				ret += fmt.Sprintf("suffix=\"%s\" ", suff)
+			}
+			return ret
 		},
-		"RequiredComponents": func() map[string]string {
-			return components
+		"RequiredComponents": func() map[string]vcComponentDescriptor {
+			return th.components
 		},
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
 		"IsID": func(f fieldDescriptor, auto bool) bool {
@@ -522,7 +547,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			// 	return true
 			// }
 			// return false
-			return e.IsDictionary()
+			return e.IsDictionary() || e.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vlaMultiple, false)
 		},
 		"LookupAttrs": func(f fieldDescriptor) (ret string) {
 			if _, itsManyToMany := f.fld.Features.GetEntity(gen.FeaturesCommonKind, gen.FCManyToManyType); itsManyToMany {
@@ -546,6 +571,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		},
 		"InstanceGeneratorName": func() string {
 			return e.FS(js.Features, js.FInstanceGenerator)
+		},
+		"IsNullable": func(f fieldDescriptor) bool {
+			return !f.fld.Type.NonNullable
 		},
 		"InstanceGeneratorForField": func(f fieldDescriptor) string {
 			t := f.fld.Type.Type
@@ -573,7 +601,11 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if cd, ok := th.ctx.getComponentDescriptor("form"); ok {
 				return cd.relPath
 			}
-			return fmt.Sprintf("./%s.vue", e.FS(featureVueKind, fVKFormComponent))
+			p := e.FS(featureVueKind, fVKFormComponentPath)
+			if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+				p = "." + string(os.PathSeparator) + p
+			}
+			return p
 		},
 		"DialogWidth": func() string {
 			if th.ctx.width != "" {

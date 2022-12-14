@@ -36,6 +36,8 @@ const (
 	vueATTooltip = "tooltip"
 	// editable in table
 	vueATEditable = "editable"
+	// use for color
+	vueATColorAttr = "color"
 
 	//vueAnnotationComponent - string or bool for defining custom form component (in form: 'ComponentName from fileName') or request it's generation
 	// vueAnnotationFormComponent = "formComponent"
@@ -64,6 +66,7 @@ const (
 	vueDialogAnnotation = "vue-dialog"
 
 	vueLookupAnnotation = "vue-lookup"
+	vlaMultiple         = "multiple"
 
 	vueTableAnnotation = "vue-table"
 	vtaUseIcon         = "useIcon"
@@ -102,15 +105,24 @@ const (
 	vcaTab = "tab"
 	//vcaIf - condition (js) when field is shown in form (inside "vue" annotation)
 	vcaIf = "if"
+	//vcaSuffix - text suffix for v-text-field
+	vcaSuffix = "suffix"
+	//vcaPrefix - text suffix for v-text-field
+	vcaPrefix = "prefix"
+	//vcaPrependIcon - icon to put before component: name [color [<other v-icon attrs, like small...]]
+	vcaPrependIcon = "prepend-icon"
+	//vcaAppendIcon - icon to put after component: name [color [<other v-icon attrs, like small...]]
+	vcaAppendIcon = "append-icon"
 
 	vcaDefault = "default"
 )
 
 const (
-	VCOptions             = "vue"
-	VCOptionDateComponent = "date"
-	VCOptionMapComponent  = "map"
-	VCOptionsApolloClient = "apollo-client"
+	VCOptions              = "vue"
+	VCOptionDateComponent  = "date"
+	VCOptionMapComponent   = "map"
+	VCOptionColorComponent = "color"
+	VCOptionsApolloClient  = "apollo-client"
 
 	vcoApolloClientDef = "this.$apollo.getClient()"
 )
@@ -232,13 +244,14 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 	if cg.options.ApolloClientVar == "" {
 		cg.options.ApolloClientVar = vcoApolloClientDef
 	}
-	outDir := cg.getOutputDir()
+	//outDir := cg.getOutputDir()
 	for _, file := range desc.Files {
 		for _, t := range file.Entries {
+			outDir := cg.getOutputDirForEntity(t)
 			t.Features.Set(featureVueKind, fVKOutDir, outDir)
 			if t.HasModifier(gen.TypeModifierConfig) {
-				p := path.Join(outDir, t.Name+".vue")
-				t.Features.Set(featureVueKind, fVKConfComponentPath, p)
+				//p := path.Join(outDir, t.Name+".vue")
+				t.Features.Set(featureVueKind, fVKConfComponentPath, t.Name+".vue")
 				// cg.processForConfig(t)
 			} else {
 				generateCommon := true
@@ -248,48 +261,48 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if generateCommon {
 					// lookup
 					n := t.Name + "LookupComponent"
-					p := path.Join(outDir, n+".vue")
+					//p := path.Join(outDir, n+".vue")
 					t.Features.Set(featureVueKind, fVKLookupComponent, n)
-					t.Features.Set(featureVueKind, fVKLookupComponentPath, p)
+					t.Features.Set(featureVueKind, fVKLookupComponentPath, n+".vue")
 
 					// type descriptor
-					p = path.Join(outDir, t.Name+"TypeDescriptor.ts")
-					t.Features.Set(featureVueKind, fVKTypeDescriptorPath, p)
+					//p = path.Join(outDir, t.Name+"TypeDescriptor.ts")
+					t.Features.Set(featureVueKind, fVKTypeDescriptorPath, t.Name+"TypeDescriptor.ts")
 					// form
 					if !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 						// form-list
 						if t.FB(featureVueKind, fVKFormListRequired) {
 							t.Features.Set(featureVueKind, fVKFormRequired, true)
 							c := t.Name + "FormListComponent"
-							p := path.Join(outDir, c) + ".vue"
+							//p := path.Join(outDir, c) + ".vue"
 							t.Features.Set(featureVueKind, fVKFormListComponent, c)
-							t.Features.Set(featureVueKind, fVKFormListComponentPath, p)
+							t.Features.Set(featureVueKind, fVKFormListComponentPath, c+".vue")
 						}
 						if a, ok := t.Annotations.GetStringAnnotation(vueFormAnnotation, vueAnnotationUse); ok {
 							c, p, ok := parseComponentAnnotation(a)
 							if !ok {
-								return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueAnnotation].Pos, a)
+								return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueFormAnnotation].Pos, a)
 							}
-							t.Features.Set(featureVueKind, fVKFormRequired, true)
+							t.Features.Set(featureVueKind, fVKFormRequired, false)
 							t.Features.Set(featureVueKind, fVKFormComponent, c)
 							t.Features.Set(featureVueKind, fVKFormComponentPath, p)
 						} else {
 							if ignore, ok := t.Annotations.GetBoolAnnotation(vueFormAnnotation, vueAnnotationIgnore); !ok || !ignore {
-								c := t.Name + "Form"
-								p := path.Join(outDir, c) + ".vue"
+								c := t.Name + "FormComponent"
+								//p := path.Join(outDir, c) + ".vue"
 								t.Features.Set(featureVueKind, fVKFormRequired, true)
 								t.Features.Set(featureVueKind, fVKFormComponent, c)
-								t.Features.Set(featureVueKind, fVKFormComponentPath, p)
+								t.Features.Set(featureVueKind, fVKFormComponentPath, c+".vue")
 							}
 						}
 					}
 					// do not generate by default
 					if create, ok := t.Annotations.GetBoolAnnotation(vueFormAnnotation, vfaCard); ok && create {
 						c := t.Name + "Card"
-						p := path.Join(outDir, c) + ".vue"
+						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKCardRequired, true)
 						t.Features.Set(featureVueKind, fVKCardComponent, c)
-						t.Features.Set(featureVueKind, fVKCardComponentPath, p)
+						t.Features.Set(featureVueKind, fVKCardComponentPath, c+".vue")
 					}
 				}
 
@@ -301,25 +314,26 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if a, ok := t.Annotations.GetStringAnnotation(vueViewAnnotation, vueAnnotationUse); ok {
 					c, p, ok := parseComponentAnnotation(a)
 					if !ok {
-						return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueAnnotation].Pos, a)
+						return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueViewAnnotation].Pos, a)
 					}
+					t.Features.Set(featureVueKind, fVKViewRequired, false)
 					t.Features.Set(featureVueKind, fVKViewComponent, c)
 					t.Features.Set(featureVueKind, fVKViewComponentPath, p)
 				} else {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueViewAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "View"
-						p := path.Join(outDir, c) + ".vue"
+						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKViewRequired, true)
 						t.Features.Set(featureVueKind, fVKViewComponent, c)
-						t.Features.Set(featureVueKind, fVKViewComponentPath, p)
+						t.Features.Set(featureVueKind, fVKViewComponentPath, c+".vue")
 					}
 				}
 				//history
 				if _, ok := t.Features.Get(gen.FeatureHistKind, gen.FHHistoryOf); ok {
 					c := t.Name + "HistComponent"
-					p := path.Join(outDir, c) + ".vue"
+					//p := path.Join(outDir, c) + ".vue"
 					t.Features.Set(featureVueKind, fVKHistComponent, c)
-					t.Features.Set(featureVueKind, fVKHistComponentPath, p)
+					t.Features.Set(featureVueKind, fVKHistComponentPath, c+".vue")
 				}
 				if t.FB(featureVueKind, fVKFormRequired) {
 					//let's check for lookups requirements
@@ -376,20 +390,20 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueDialogAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "DialogComponent"
-						p := path.Join(outDir, c) + ".vue"
+						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKDialogRequired, true)
 						t.Features.Set(featureVueKind, fVKDialogComponent, c)
-						t.Features.Set(featureVueKind, fVKDialogComponentPath, p)
+						t.Features.Set(featureVueKind, fVKDialogComponentPath, c+".vue")
 					}
 				}
 
 				if t.HasModifier(gen.TypeModifierDictionary) && !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "DictEditComponent"
-						p := path.Join(outDir, c) + ".vue"
+						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKDialogRequired, true)
 						t.Features.Set(featureVueKind, fVKDictEditComponent, c)
-						t.Features.Set(featureVueKind, fVKDictEditComponentPath, p)
+						t.Features.Set(featureVueKind, fVKDictEditComponentPath, c+".vue")
 					}
 				}
 			}
@@ -399,11 +413,10 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 }
 
 func (cg *VueCLientGenerator) Generate(b *gen.Builder) (err error) {
-	outDir := cg.getOutputDir()
 	cg.desc = b.Descriptor
 	cg.b = b
 	for _, t := range b.File.Entries {
-
+		outDir := cg.getOutputDirForEntity(t)
 		err := cg.generateFor(outDir, t)
 		if err != nil {
 			return err
@@ -416,6 +429,9 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 	// wr := os.Stdout
 	// tn := path.Base(e.Annotations.GetStringAnnotationDef(jsAnnotation, jsAnnotationFilePath, ""))
 	if e.HasModifier(gen.TypeModifierTransient) || e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
+		return
+	}
+	if ignore, ok := e.Annotations.GetBoolAnnotation(vueAnnotation, vueAnnotationIgnore); ok && ignore {
 		return
 	}
 
@@ -445,7 +461,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			// p = path.Join(outDir, e.Name+"LookupComponent.vue")
 			// e.Annotations.AddTag(vueAnnotation, vueAnnotationFilePath, p)
 			p := e.FS(featureVueKind, fVKLookupComponentPath)
-
+			p = path.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for LookupComponent for %s: %v", e.Name, err)
@@ -472,6 +488,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 		p := e.FS(featureVueKind, fVKTypeDescriptorPath)
 
 		if p != "" {
+			p = path.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for TypeDescriptor for %s: %v", e.Name, err)
@@ -490,6 +507,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 		p = e.FS(featureVueKind, fVKViewComponentPath)
 
 		if p != "" {
+			p = path.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for ViewComponent for %s: %v", e.Name, err)
@@ -588,12 +606,20 @@ func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 	return
 }
 
-func (cg *VueCLientGenerator) pathToRelative(p string) (ret string) {
-	var err error
-	ret, err = filepath.Rel(cg.getOutputDir(), p)
+func (cg *VueCLientGenerator) getOutputDirForEntity(e *gen.Entity) (ret string) {
+	dir := path.Join(cg.getOutputDir(), e.File.Package, e.File.Name)
+	err := os.MkdirAll(dir, os.ModeDir|os.ModePerm)
 	if err != nil {
-		cg.b.AddWarning(fmt.Sprintf("problem while getting relative path for '%s': %v", p, err))
-		ret = p
+		cg.desc.AddError(err)
+	}
+	return dir
+}
+func (cg *VueCLientGenerator) pathToRelative(from, to string) (ret string) {
+	var err error
+	ret, err = filepath.Rel(from, to)
+	if err != nil {
+		cg.b.AddWarning(fmt.Sprintf("problem while getting relative path for '%s': %v", to, err))
+		ret = to
 	} else {
 		if ret[0] != '.' {
 			ret = fmt.Sprintf(".%c%s", filepath.Separator, ret)
@@ -658,8 +684,8 @@ func (cg *VueCLientGenerator) processForConfig(t *gen.Entity) {
 
 func (cg *VueCLientGenerator) checkFieldIfStatment(t *gen.Entity, f *gen.Field) error {
 	// if iff, ok := f.Annotations.GetStringAnnotation(vueAnnotation, vcaIf); ok {
-	// 	// so far only boolean values
-	// 	parts := strings.Split(iff, ".")
+	//   // so far only boolean values
+	//   parts := strings.Split(iff, ".")
 	// }
 	return nil
 }
@@ -710,13 +736,14 @@ func (cg *VueCLientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName strin
 }
 
 func (cg *VueCLientGenerator) getPathForComponent(e *gen.Entity, name string) string {
-	return path.Join(e.FS(featureVueKind, fVKOutDir), e.Name+name)
+	outDir := cg.getOutputDirForEntity(e)
+	return path.Join(outDir, name)
 }
 
 func parseComponentAnnotation(ann string) (component string, path string, ok bool) {
-	re := regexp.MustCompile("^[ \\t]*([a-zA-Z_][a-zA_Z_0-9]*)[ \\t]+from[ \\t]+(([.@\\/][.\\/a-zA-Z0-9\\-_]*)|('([^']+)'))[ \\t]*$")
+	re := regexp.MustCompile(`^[ \t]*([a-zA-Z_][a-zA-Z_0-9]*)[ \t]+from[ \t]+(([.@/][./a-zA-Z0-9_-]*)|('([^']+)'))[ \t]*$`)
 	parts := re.FindStringSubmatch(ann)
-	if len(parts) == 5 {
+	if len(parts) == 6 {
 		component = parts[1]
 		if parts[5] != "" {
 			path = parts[5]
@@ -724,10 +751,16 @@ func parseComponentAnnotation(ann string) (component string, path string, ok boo
 			path = parts[3]
 		}
 	}
+	ok = component != "" && path != ""
 	return
 }
 
 type vcCustomComponentDescriptor struct {
+	Comp string
+	Imp  string
+}
+
+type vcComponentDescriptor struct {
 	Comp string
 	Imp  string
 }
@@ -809,12 +842,12 @@ var htmlDialogTemplate = `
 // const htmlDateInputTemplate = `{{define "DATE_INPUT"}}<{{CustomComponent "date"}}
 //     v-model="value.{{FieldName .}}"
 //     label="{{Label .}}"
-// 		{{ConponentAddAttrs .}}
+//     {{ConponentAddAttrs .}}
 //   ></{{CustomComponent "date"}}>{{end}}`
 // const htmlMapInputTemplate = `{{define "MAP_INPUT"}}<{{CustomComponent "map"}}
 //     v-model="value.{{FieldName .}}"
 //     label="{{Label .}}"
-// 		{{ConponentAddAttrs .}}
+//     {{ConponentAddAttrs .}}
 //   ></{{CustomComponent "map"}}>{{end}}`
 
 // const htmlArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}}/>{{end}}{{end}}`
@@ -837,14 +870,15 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{SaveQuery .}}, {{CreateQuery .}} } from '{{TypesFilePath .}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
 
 @Component({
+  name: "{{DialogComponent .}}", 
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
     {{range AdditionalComponents}}
       {{.Comp}},{{end}}
   }
@@ -964,6 +998,7 @@ import { {{TypeName .}}{{if ne (IDType .) "" }}, {{GetQuery .}}{{end}} } from '{
 {{FiltersImports}}
 
 @Component({
+  name: "{{.Name}}CardViewComponent",
   filters: { 
     {{Filter "date"}},
     {{Filter "number"}}
@@ -1038,7 +1073,7 @@ var htmlDictionaryLookupTemplate = `
       hide-no-data
       {{if CanBeMultiple .}}:multiple="multiple"
       :chips="multiple"
-			:disabled="disabled"
+      :disabled="disabled"
       small-chips{{end}}
       @update:search-input="onChange($event)"
     >
@@ -1047,10 +1082,10 @@ var htmlDictionaryLookupTemplate = `
           color="success"
           @click="onAdd()"
         >mdi-plus-box</v-icon>{{end}}
-				<slot name="append"></slot>
+        <slot name="append"></slot>
     </template>
     </v-autocomplete>
-    {{if LookupWithAdd .}}<{{DialogComponent .}} ref="dialog"/>{{end}}
+    {{if LookupWithAdd .}}<{{DialogComponent .}}  v-if="hideAdd == undefined" ref="dialog"/>{{end}}
   </div>
 </template>
 {{end}}
@@ -1065,32 +1100,39 @@ import { {{TypeName .}}, {{ListQuery .}} } from '{{TypesFilePath .}}';
 {{if LookupWithAdd .}}import {{DialogComponent .}} from './{{DialogComponent .}}.vue';{{end}}
 
 @Component({
+  name: "{{.Name}}LookupComponent",
   components: {
     {{if LookupWithAdd .}}{{DialogComponent .}}{{end}}
   }
 })
 export default class {{.Name}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}};
+  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}};
   @Prop() hint!: string;
   @Prop() label!: string;
-  @Prop() readonly!: boolean;{{if CanBeMultiple .}}
+  @Prop() readonly!: boolean;
+  @Prop({default:false}) returnId!: boolean;{{if CanBeMultiple .}}
   @Prop({default:false}) multiple!: boolean;{{end}}
   @Prop({default:true}) returnObject!: boolean
-  @Prop({default:undefined}) hideAdd: string|undefined
-	@Prop({default:false}) disabled!: boolean;{{if DictWithQualifier .}}
-	@Prop() qualifier: any;{{end}}
+  @Prop({default:undefined}) hideAdd: boolean|undefined
+  @Prop({default:false}) disabled!: boolean;{{if DictWithQualifier .}}
+  @Prop() qualifier: any;{{end}}
+
   private selected: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";
   
   @Watch('value') onValueChange() {
-    this.selected = this.value;
+    if(this.returnId) {
+      this.selected = this.items.find(it=>it.{{IDField .}} == this.value as {{IDType .}}) || null;
+    } else {
+      this.selected = this.value as {{TypeName .}};
+    }
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null {
     //delete (this.selected as any).__typename;
     this.emitChanged();
-    return this.selected;
+    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField .}} : this.selected;
   }
   @Emit('change') emitChanged() {
     
@@ -1098,12 +1140,15 @@ export default class {{.Name}}LookupComponent extends Vue {
   @Watch('selected') onSelectedChanged() {
     this.selectedChanged();
   } {{if DictWithQualifier .}}
-	@Watch('qualifier') onQualifierChanged() {
-		this.load();
-	}{{end}}
-  created() {
+  @Watch('qualifier') onQualifierChanged() {
     this.load();
-    if(this.value)
+  }{{end}}
+  created() {
+    this.onCreated();
+  }
+  async onCreated() {
+    await this.load();
+    if(this.value != undefined)
       this.onValueChange();
   }
   async load() {
@@ -1144,23 +1189,26 @@ const vueEntityLookupTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, {{LookupQuery .}} } from '{{TypesFilePath .}}';
+import { {{TypeName .}}, {{LookupQuery .}}, {{GetQuery .}} } from '{{TypesFilePath .}}';
 import {{DialogComponent .}} from './{{DialogComponent .}}.vue';
 
 @Component({
+  name: "{{.Name}}LookupComponent",
   components: {
     {{DialogComponent .}}
   }
 })
 export default class {{.Name}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}};
+  @Prop() value!: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|{{IDType .}};
   @Prop() hint!: string;
   @Prop() label!: string;
   @Prop() readonly!: boolean;
   @Prop({default:true}) returnObject!: boolean
   @Prop({default:undefined}) hideAdd: string|undefined
-	@Prop({default:false}) disabled!: boolean;
-  private selected: {{TypeName .}}|null = null;
+  @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple .}}
+  @Prop({default:false}) multiple!: boolean;{{end}}
+  private selected: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null = null;
+  @Prop({default:false}) returnId!: boolean;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";
@@ -1169,13 +1217,25 @@ export default class {{.Name}}LookupComponent extends Vue {
   private timer: any = null;
   
   @Watch('value') onValueChange() {
-    this.selected = this.value;
-    if(this.value)
-      this.items = [this.value];
+    if(this.returnId && this.value) {
+        this.fillSelectedFromId(this.value as {{IDType .}});
+    } else { {{if CanBeMultiple .}}
+      if(Array.isArray(this.value)) {
+        this.selected = this.value as {{TypeName .}}[];
+        //if(this.selected) {
+          //this.items = this.selected;
+        //}
+        return;
+      }{{end}}
+      this.selected = this.value as {{TypeName .}};
+      if(this.selected) {
+        this.items = [this.selected];
+      }
+    }
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|{{IDType .}}|null {
     //delete (this.selected as any).__typename;
-    return this.selected;
+    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField .}} : this.selected;
   }
   @Watch('selected') onSelectedChanged() {
     this.selectedChanged();
@@ -1221,12 +1281,22 @@ export default class {{.Name}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    if(this.selected && this.selected.{{ItemText .}}.toString() == event)
+    //if(this.selected && this.selected.{{ItemText .}} && this.selected.{{ItemText .}}.toString() == event)
+    if(this.searchString == event)
       return
     if(this.timer)
       clearTimeout(this.timer);
     this.timer = setTimeout(()=> this.doSearch(), 500);
     this.searchString = event;
+  }
+  async fillSelectedFromId(id: {{IDType .}}) {
+    try {
+      this.selected = await {{GetQuery .}}({{ApolloClient}}, id);
+      if(this.selected)
+        this.items = [this.selected];
+    } catch(exc) {
+      this.problem = exc.toString();
+    }
   }
 }
 </script>

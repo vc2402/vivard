@@ -150,6 +150,7 @@ func (hg *HistoryGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 				Tags:        map[string]string{},
 				Type:        &TypeRef{Array: &TypeRef{Type: he.Name, NonNullable: true}, NonNullable: true, Complex: true, Embedded: true},
 			}
+			hisField.PostProcess()
 			field.Parent().Fields = append(field.Parent().Fields, hisField)
 			field.Parent().FieldsIndex[hisField.Name] = hisField
 			if field.Parent().FS(FeaturesChangeDetectorKind, FCDRequired) == "" {

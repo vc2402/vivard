@@ -54,11 +54,13 @@ func main() {
 				WithCustom("gql-ts", map[string]interface{}{"path": viper.GetString("clientOut")}).
 				WithCustom("vue", &vue.VueClientOptions{
 					Components: map[string]vue.VCOptionComponentSpec{
-						vue.VCOptionDateComponent: {Name: "InputDateComponent", Import: "@/components/DateComponent.vue"},
-						vue.VCOptionMapComponent:  {Name: "KeyValueComponent", Import: "@/components/KVComponent.vue"},
+						vue.VCOptionDateComponent:  {Name: "InputDateComponent", Import: "@/components/DateComponent.vue"},
+						vue.VCOptionMapComponent:   {Name: "KeyValueComponent", Import: "@/components/KVComponent.vue"},
+						vue.VCOptionColorComponent: {Name: "ColorPickerComponent", Import: "@/components/ColorPickerComponent.vue"},
 					},
 					ApolloClientVar: "this.$apolloProvider.clients['statistics']",
-				}),
+				}).
+				WithCustom(gen.CodeGeneratorOptionsName, map[string]interface{}{"AllowEmbeddedArraysForDictionary": true}),
 		)
 		desc.With(&gen.GQLGenerator{}).
 			With(&gen.LoggerGenerator{}).

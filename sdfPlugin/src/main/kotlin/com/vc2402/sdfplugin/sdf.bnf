@@ -1,0 +1,98 @@
+{
+  parserClass="com.vc2402.sdfplugin.parser.Parser"
+
+  extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
+
+  psiClassPrefix="SDF"
+  psiImplClassSuffix="Impl"
+  psiPackage="com.vc2402.sdfplugin.psi"
+  psiImplPackage="com.vc2402.sdfplugin.psi.impl"
+
+  elementTypeHolderClass="com.vc2402.sdfplugin.psi.Types"
+  elementTypeClass="com.vc2402.sdfplugin.psi.ElementType"
+  tokenTypeClass="com.vc2402.sdfplugin.psi.TokenType"
+
+  psiImplUtilClass="com.vc2402.sdfplugin.psi.impl.ImplUtil"
+}
+
+sdfFile ::= DUMMYIDENTIFIER? comments? DUMMYIDENTIFIER? <package declaration>? declarations?
+
+comments ::= comment*
+
+comment ::= COMMENT_LINE
+
+<package declaration> ::= PACKAGE IDENTIFIER STATEMENT_END
+
+declarations ::= declaration*
+
+declaration ::= DUMMYIDENTIFIER
+    | type_declaration
+    | meta_declaration
+    | comment
+
+meta_declaration ::= META BR_OPEN IDENTIFIER BR_CLOSE
+    META_LINE*
+
+type_declaration ::= type_modifiers? (KW_TYPE IDENTIFIER | QUALIFIEDNAME) (DUMMYIDENTIFIER? EXTENDS DUMMYIDENTIFIER? IDENTIFIER | QUALIFIEDNAME)? DUMMYIDENTIFIER? BRACESOPEN DUMMYIDENTIFIER? entries MORE? BRACESCLOSE
+
+type_modifiers ::= type_modifier*
+
+type_modifier ::= IDENTIFIER
+    | TYPEMODIFIER
+    | annotation
+    | hook_tag
+
+entries ::= entry*
+
+entry ::= (field | method) (MODIFIEROPEN attr_modifiers MODIFIERCLOSE)? STATEMENT_END
+
+field ::= IDENTIFIER (SEMI | DUMMYIDENTIFIER) (type | DUMMYIDENTIFIER)
+
+method ::= IDENTIFIER BR_OPEN params? BR_CLOSE (SEMI DUMMYIDENTIFIER? type)?
+
+params ::= param ( COMMA param)*
+
+param ::= IDENTIFIER SEMI DUMMYIDENTIFIER? type
+
+type ::= (simple_type | IDENTIFIER | QUALIFIEDNAME | array_type | map_type) NOTNULL?
+
+simple_type ::= st_int | st_float | st_string | st_bool | st_date
+
+st_int ::= INT
+
+st_float ::= FLOAT
+
+st_string ::= STRING
+
+st_bool ::= BOOL
+
+st_date ::= DATE
+
+array_type ::= BRACKETOPEN DUMMYIDENTIFIER? type BRACKETCLOSE
+
+map_type ::= MAP BRACKETOPEN DUMMYIDENTIFIER? map_index_type BRACKETCLOSE DUMMYIDENTIFIER? type
+
+map_index_type ::= st_int | st_string
+
+attr_modifiers ::= attr_modifier*
+
+attr_modifier ::= DUMMYIDENTIFIER | HOOKTAG | ATTRMODIFIER | annotation
+
+annotation ::= DUMMYIDENTIFIER? ANNOTATIONTAG ( BR_OPEN annotation_values BR_CLOSE )?
+
+annotation_values ::= annotation_value*
+
+annotation_value ::= ann_param
+    | IDENTIFIER
+    | DUMMYIDENTIFIER
+
+ann_param ::= ann_param_name EQUAL ann_param_value
+
+ann_param_name ::= IDENTIFIER | KW_TYPE | ATTRMODIFIER | TYPEMODIFIER
+
+ann_param_value ::= DUMMYIDENTIFIER | NUMBER_VALUE | STRING_VALUE | BOOL_VALUE
+
+hook_tag ::= HOOKTAG "=" STRING_VALUE
+  | HOOKTAG
+
+//DUMMYIDENTIFIER ::= DUMMYIDENTIFIER

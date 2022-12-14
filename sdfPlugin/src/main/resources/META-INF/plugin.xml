@@ -1,0 +1,53 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>com.vc2402.sdfPlugin</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+    <name>SdfPlugin</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor email="vc2402+sdf@gmail.com" url="https://www.yourcompany.com">vc2402</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description><![CDATA[
+    SDF plugin.<br>
+    <em>Simple plugin for editing sdf-files</em>
+  ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+                name="SDF"
+                implementationClass="com.vc2402.sdfplugin.SDFFileType"
+                fieldName="INSTANCE"
+                language="sdf"
+                extensions="sdf"/>
+        <lang.parserDefinition
+                language="sdf"
+                implementationClass="com.vc2402.sdfplugin.SDFParserDefinition"/>
+        <lang.syntaxHighlighterFactory
+                language="sdf"
+                implementationClass="com.vc2402.sdfplugin.SDFSyntaxHighlighterFactory"/>
+        <completion.contributor
+                language="sdf"
+                implementationClass="com.vc2402.sdfplugin.SDFCompletionContributor" />
+        <lang.braceMatcher
+            language="sdf"
+            implementationClass="com.vc2402.sdfplugin.SDFBraceMatcher"/>
+        <typedHandler implementation="com.vc2402.sdfplugin.SDFTypeHandleDelegate"/>
+        <lang.commenter
+            language="sdf"
+            implementationClass="com.vc2402.sdfplugin.SDFCommenter"/>
+        <colorSettingsPage
+                implementation="com.vc2402.sdfplugin.SDFColorSettingsPage"/>
+    </extensions>
+</idea-plugin>

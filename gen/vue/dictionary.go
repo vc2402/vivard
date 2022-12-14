@@ -3,6 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
 func (h *helper) createDictEditor() error {
@@ -11,6 +12,7 @@ func (h *helper) createDictEditor() error {
 		return nil
 	}
 
+	p = path.Join(h.outDir, p)
 	f, err := os.Create(p)
 	defer f.Close()
 	if err != nil {
@@ -92,12 +94,13 @@ const vueDictTSTemplate = `{{define "TS"}}
 import { Component, Prop, Vue, Watch, Inject, Emit } from 'vue-property-decorator';
 import { {{TypeName}}, {{InstanceGeneratorName}}, {{ListQuery}} } from '{{TypesFilePath}}';
 import VueRx from 'vue-rx';
-{{range RequiredComponents}}import {{.}} from './{{.}}.vue'
+{{range RequiredComponents}}import {{.Comp}} from '{{.Imp}}';
 {{end}}
 
 @Component({
+  name: "{{DictEditComponent . false}}",
   components: {
-    {{range RequiredComponents}}{{.}},
+    {{range RequiredComponents}}{{.Comp}},
     {{end}}
   },
 })
@@ -113,7 +116,7 @@ export default class {{DictEditComponent . false}} extends Vue {
   {text:"", value: ""}];
   
   private loading = false;{{if DictWithQualifier .}}
-	qualifier: any = null;{{end}}
+    qualifier: any = null;{{end}}
 
   mounted() {
     this.load();

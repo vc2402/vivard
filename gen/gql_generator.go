@@ -285,6 +285,10 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 					// Block(resolve),
 					BlockFunc(func(g *jen.Group) {
 						g.Id("obj").Op(":=").Id("p").Dot("Source").Assert(jen.Op("*").Id(name))
+						if f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly) {
+							g.Return(jen.Id("obj").Dot(f.FS(FeatGoKind, FCGName)), jen.Nil())
+							return
+						}
 						if !f.Type.NonNullable && !f.HasModifier(AttrModifierCalculated) {
 							g.If(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCIsNullCode, "obj")).Block(
 								jen.Return(jen.Nil(), jen.Nil()),
@@ -380,7 +384,7 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 			t, err := cg.getGQLType(
 				f.Type,
 				!(f.IsIdField() && f.HasModifier(AttrModifierIDAuto)),
-				f.HasModifier(AttrModifierEmbeddedRef),
+				f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly),
 				true, //input
 			)
 			if err != nil {
@@ -469,7 +473,8 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 	const obj = "obj"
 	const idRequired = "idRequired"
 	name := t.Name
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cg.getInputParserMethodName(name)).Params(
+	funcName := cg.getInputParserMethodName(name)
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(funcName).Params(
 		jen.Id("ctx").Qual("context", "Context"),
 		jen.Id(arg).Interface(),
 		jen.Id(obj).Op("*").Id(name),
@@ -497,7 +502,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 				// useParser := f.Annotations.GetInterfaceAnnotation(codeGeneratorAnnotation, AnnotationTagOneToManyType) != nil
 				_, oneToMany := f.Features.GetEntity(FeaturesCommonKind, FCOneToManyType)
 				_, manyToMany := f.Features.GetEntity(FeaturesCommonKind, FCManyToManyType)
-				useParser := f.Type.Complex
+				useParser := f.Type.Complex && !f.HasModifier(AttrModifierEmbeddedRef) && !f.FB(GQLFeatures, GQLFIDOnly)
 				var assertion jen.Code
 				if useParser {
 					if oneToMany || manyToMany || f.Type.Array != nil {
@@ -508,7 +513,11 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 						assertion = jen.Interface()
 					}
 				} else {
-					assertion = cg.b.GoType(f.Type)
+					if f.Type.Array != nil {
+						assertion = jen.Index().Interface()
+					} else {
+						assertion = cg.b.GoType(f.Type)
+					}
 				}
 				stmt := jen.If(
 					jen.List(jen.Id("val"), jen.Id("ok")).Op(":=").Id("p").Index(jen.Lit(fieldName)).Assert(assertion),
@@ -594,7 +603,20 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 						}
 					} else {
 						// g.Id("obj").Dot(cg.b.GetMethodName(f, CGSetterMethod)).Parens(jen.Id("val"))
-						g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode))
+						if f.Type.Array != nil {
+							g.Id("attr").Op(":=").Make(cg.b.GoType(f.Type), jen.Len(jen.Id("val")), jen.Len(jen.Id("val")))
+							g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
+								jen.Id("attr").Index(jen.Id("i")).Op("=").Id("v").Assert(jen.Int()),
+							)
+							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode, "obj", "attr"))
+						} else {
+							if f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly) {
+								//TODO: may be problem with changes tracking...
+								g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode))
+							} else {
+								g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode))
+							}
+						}
 					}
 				})
 				if f.IsIdField() {
@@ -605,7 +627,9 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 				g.Add(stmt)
 			}
 		}).Else().Block(
-			jen.Return(jen.Nil(), jen.Qual("fmt", "Errorf").Params(jen.Lit("input should be 'map[string]interface{}' but got %T"), jen.Id(arg))),
+			jen.Return(jen.Nil(), jen.Qual("fmt", "Errorf").Params(
+				jen.Lit(fmt.Sprintf("%s: input should be 'map[string]interface{}' but got %%T", funcName)), jen.Id(arg)),
+			),
 		),
 		jen.Return(jen.Id(obj), jen.Err()),
 	).Line()

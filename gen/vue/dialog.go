@@ -3,16 +3,17 @@ package vue
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
 //TODO not to include create, set functions for readonly dictionaries
 
-func (h *helper) createDialog(path ...string) error {
+func (h *helper) createDialog(compPath ...string) error {
 	p := h.e.FS(featureVueKind, fVKDialogComponentPath)
-	if len(path) > 0 {
-		p = path[0]
+	if len(compPath) > 0 {
+		p = compPath[0]
 	}
-
+	p = path.Join(h.outDir, p)
 	f, err := os.Create(p)
 	defer f.Close()
 	if err != nil {
@@ -103,6 +104,7 @@ import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Rea
 import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
 
 @Component({
+  name: "{{.Name}}DialogComponent", 
   components:{
     {{SelfFormComponent}}
   }
@@ -121,15 +123,15 @@ export default class {{.Name}}DialogComponent extends Vue {
   title() {
     return {{Title .}};
   }
-  show(v: {{TypeName .}}|{{IDType .}}|null): Promise<{{TypeName .}}|null> {
+  show(v: {{TypeName .}}|{{IDType .}}|null|undefined, isNew?: boolean): Promise<{{TypeName .}}|null> {
     this.showDialog = true;
     this.problem = "";
-    if(!v) {
+    if(v === null || v === undefined) {
       this.value = New{{TypeName .}}Instance();
       this.isNew = true;
     } else if(typeof v === "object") {
       this.value = v;
-      this.isNew = false;
+      this.isNew = isNew === undefined? !v.{{IDField}} : isNew;
     } else {
       this.loadAndShow(v);
       this.isNew = false;

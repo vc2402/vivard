@@ -33,6 +33,8 @@ func (ch *configHelper) generate() error {
 		return fmt.Errorf("Error while parsing config template: %v", ch.err)
 	}
 	p := ch.e.FS(featureVueKind, fVKConfComponentPath)
+	p = path.Join(ch.outDir, p)
+
 	f, err := os.Create(p)
 	if err != nil {
 		return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -177,7 +179,7 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, {{GetQuery .}}, {{SaveQuery .}}, {{InstanceGeneratorName .}} } from '{{TypesFilePath .}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}';{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
 
@@ -186,7 +188,7 @@ type TreeItem = {id:string, name:string, leaf: boolean, children?: TreeItem[]};
 @Component({
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
     {{range AdditionalComponents}}
       {{.Comp}},{{end}}
   }
@@ -213,11 +215,12 @@ const cssConfigTemplate = `
 `
 
 type configHelper struct {
-	templ  *template.Template
-	e      *gen.Entity
-	cg     *VueCLientGenerator
-	outDir string
-	err    error
+	templ      *template.Template
+	e          *gen.Entity
+	cg         *VueCLientGenerator
+	components map[string]vcComponentDescriptor
+	outDir     string
+	err        error
 }
 
 type leafType int
@@ -245,11 +248,12 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 	if ext != "" {
 		tn = tn[:len(tn)-len(ext)]
 	}
-	typesPath := path.Join("../types", tn)
-	components := map[string]string{}
+	typesPath := path.Join("..", "..", "..", "/types", tn)
+	//components := map[string]string{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
 	leafs := map[string]leafDescriptor{}
 	tree := cg.buildLeafs(e, leafs)
+	th := &configHelper{templ: template.New(name), cg: cg, e: e, outDir: outDir, components: map[string]vcComponentDescriptor{}}
 	funcs := template.FuncMap{
 		"GetTreeItems": func(e *gen.Entity) string {
 			return tree
@@ -285,17 +289,20 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 		},
 		"FormComponent": func(leaf leafDescriptor) string {
 			cmp := leaf.Ent.FS(featureVueKind, fVKFormComponent)
-			components[cmp] = cmp
+			p := leaf.Ent.FS(featureVueKind, fVKFormComponentPath)
+			th.addComponent(cmp, p, leaf.Ent)
 			return cmp
 		},
 		"FormListComponent": func(leaf leafDescriptor) string {
 			cmp := leaf.Ent.FS(featureVueKind, fVKFormListComponent)
-			components[cmp] = cmp
+			p := leaf.Ent.FS(featureVueKind, fVKFormListComponentPath)
+			th.addComponent(cmp, p, leaf.Ent)
 			return cmp
 		},
 		"DictComponent": func(leaf leafDescriptor) string {
 			cmp := leaf.Ent.FS(featureVueKind, fVKDictEditComponent)
-			components[cmp] = cmp
+			p := leaf.Ent.FS(featureVueKind, fVKDictEditComponentPath)
+			th.addComponent(cmp, p, leaf.Ent)
 			return cmp
 		},
 		"GetQuery": func(e *gen.Entity) string {
@@ -322,29 +329,43 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 				fld, _ := f.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
 				tip = fld.Type
 			}
+			for tip.Array != nil {
+				tip = tip.Array
+			}
 			typename := tip.Type
-			if tip.Array != nil {
-				typename = tip.Array.Type
+			var lc, lcp string
+			if t, ok := e.Pckg.FindType(typename); ok {
+				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
+					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+					lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+				}
+				if lc == "" {
+					ud := f.FS(featureVueKind, fVKUseInDialog)
+					switch ud {
+					case fVKUseInDialogLookup:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					case fVKUseInDialogForm:
+						lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+					default:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					}
+					if lc != "" && lcp != "" {
+						if addToRequired {
+							th.addComponent(lc, lcp, t.Entity())
+						}
+					}
+				}
 			}
 
-			ud := f.FS(featureVueKind, fVKUseInDialog)
-			var lc string
-			switch ud {
-			//TODO: get name and path from features
-			case fVKUseInDialogLookup:
-				lc = typename + "LookupComponent"
-			case fVKUseInDialogForm:
-				lc = typename + "Form"
-			default:
-				lc = typename + "LookupComponent"
+			if lc == "" || lcp == "" {
+				cg.desc.AddWarning(fmt.Sprintf("at %v: lookupComponent not found for field %s", f.Pos, f.Name))
 			}
-			if addToRequired {
-				components[lc] = lc
-			}
-
 			return lc
 		},
-		"RequiredComponents":   func() map[string]string { return components },
+		"RequiredComponents":   func() map[string]vcComponentDescriptor { return th.components },
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
 		"IsID": func(f *gen.Field, auto bool) bool {
 			if auto {
@@ -455,7 +476,6 @@ import {RoundNumber} from '@/filters/numberFilter';
 		// },
 	}
 
-	th := &configHelper{templ: template.New(name), cg: cg, e: e, outDir: outDir}
 	th.templ.Funcs(funcs)
 	return th, nil
 }
@@ -466,6 +486,26 @@ func (th *configHelper) parse(str string) *configHelper {
 	}
 	th.templ, th.err = th.templ.Parse(str)
 	return th
+}
+
+func (th *configHelper) addComponent(cmp string, p string, entity *gen.Entity) {
+	if cmp != "" && p != "" {
+		if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+			if entity.File.Package == th.e.File.Package {
+				if entity.File.Name == th.e.File.Name {
+					p = "." + string(os.PathSeparator) + p
+				} else {
+					p = path.Join("..", entity.File.Name, p)
+				}
+			} else {
+				p = path.Join("..", "..", entity.File.Package, entity.File.Name, p)
+			}
+		}
+		th.components[cmp] = vcComponentDescriptor{
+			Comp: cmp,
+			Imp:  p,
+		}
+	}
 }
 
 func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs string, leafs map[string]leafDescriptor, tip leafType, path string, fromField *gen.Field) string {

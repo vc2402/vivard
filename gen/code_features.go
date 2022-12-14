@@ -21,7 +21,7 @@ func (cg *CodeGenerator) getIDFromObjectFuncFeature(t *Entity) CodeHelperFunc {
 		a.init("obj", "val", "ctx").parse(args)
 		idfld := t.GetIdField()
 		if idfld == nil {
-			cg.proj.AddError(fmt.Errorf("%s: no id field", t.GetName()))
+			cg.proj.AddError(fmt.Errorf("at %v: %s: no id field", t.Pos, t.GetName()))
 			return &jen.Statement{}
 		}
 		return a.get("obj").Dot(idfld.Name)
@@ -186,7 +186,7 @@ func (cg *CodeGenerator) getJSHookFuncFeature(name string) HookFeatureFunc {
 }
 
 func (cg *CodeGenerator) getAttrIsPointerFeature(f *Field) bool {
-	return cg.desc.Options().NullsHandling == NullablePointers && /* !d.Type.complex && */ !f.Type.NonNullable
+	return cg.desc.Options().NullsHandling == NullablePointers && /* !d.Type.complex && */ !f.Type.NonNullable && f.Type.Array == nil && f.Type.Map == nil
 }
 
 func stmtFromInterface(val interface{}) (ret *jen.Statement, err string) {

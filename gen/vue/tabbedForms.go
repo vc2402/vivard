@@ -3,9 +3,10 @@ package vue
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
-func (h *helper) generateGridForm(formName string, path ...string) error {
+func (h *helper) generateGridForm(formName string, compPath ...string) error {
 
 	baseTempl := htmlTablessFormTemplate
 	if h.ctx.withTabs {
@@ -22,6 +23,7 @@ func (h *helper) generateGridForm(formName string, path ...string) error {
 		parse(htmlFormInputTemplate).
 		parse(htmlFormTextInputTemplate).
 		parse(htmlFormDateInputTemplate).
+		parse(htmlFormColorInputTemplate).
 		parse(htmlFormMapInputTemplate).
 		parse(htmlFormArrayInputTemplate).
 		parse(htmlFormArrayAsListTemplate).
@@ -36,12 +38,13 @@ func (h *helper) generateGridForm(formName string, path ...string) error {
 		return fmt.Errorf("Error while parsing form template: %v", h.err)
 	}
 
-	if h.e.FB(featureVueKind, fVKFormRequired) || (len(path) > 0 && path[0] != "") {
+	if h.e.FB(featureVueKind, fVKFormRequired) || (len(compPath) > 0 && compPath[0] != "") {
 		// p := path.Join(h.outDir, h.e.Name+"GridForm.vue")
 		p := h.e.FS(featureVueKind, fVKFormComponentPath)
-		if len(path) > 0 && path[0] != "" {
-			p = path[0]
+		if len(compPath) > 0 && compPath[0] != "" {
+			p = compPath[0]
 		}
+		p = path.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -58,14 +61,15 @@ func (h *helper) generateGridForm(formName string, path ...string) error {
 		}
 	}
 
-	if h.e.FB(featureVueKind, fVKFormListRequired) || (len(path) > 1 && path[1] != "") {
+	if h.e.FB(featureVueKind, fVKFormListRequired) || (len(compPath) > 1 && compPath[1] != "") {
 		p := h.e.FS(featureVueKind, fVKFormListComponentPath)
-		if len(path) > 1 && path[1] != "" {
-			p = path[0]
+		if len(compPath) > 1 && compPath[1] != "" {
+			p = compPath[0]
 		}
 		if p == "" {
 			return fmt.Errorf("FormList: form list requested but path not generated for %s", h.e.Name)
 		}
+		p = path.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("FormList: Error opening file '%s': %v", p, err)
@@ -147,20 +151,21 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName}}, {{InstanceGeneratorName}}, {{TypesFromTS}} } from '{{TypesFilePath}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 {{range AdditionalComponents}}
 import {{.Comp}} from '{{.Imp}}';{{end}}
 {{if NeedSecurity}}{{SecurityImport}}{{end}}
 
 @Component({
+  name: "{{Name}}FormComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
     {{range AdditionalComponents}}
       {{.Comp}},{{end}}
   }
 })
-export default class {{Name}}DialogComponent extends Vue {
+export default class {{Name}}FormComponent extends Vue {
   @Prop() value!: {{TypeName}} | undefined;
   @Prop({default:false}) isNew!: boolean;
   @Prop({default:false}) disabled!: boolean;
@@ -228,12 +233,13 @@ import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName}}, {{InstanceGeneratorName}} } from '{{TypesFilePath}}';
 {{range RequiredComponents}}
-import {{.}} from './{{.}}.vue'{{end}}
+import {{.Comp}} from '{{.Imp}}'{{end}}
 
 @Component({
+  name: "{{.Name}}FormListComponent",
   components:{
     {{range RequiredComponents}}
-      {{.}},{{end}}
+      {{.Comp}},{{end}}
   }
 })
 export default class {{.Name}}FormListComponent extends Vue {

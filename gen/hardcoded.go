@@ -12,6 +12,13 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
+type Boolean bool
+
+func (b *Boolean) Capture(values []string) error {
+	*b = values[0] == "true"
+	return nil
+}
+
 type hardcoded struct {
 	Attrs []*hardcodedAttr `(@@)*`
 }
@@ -24,12 +31,14 @@ type hardcodedAttr struct {
 type hcValue struct {
 	Str  *string  `( @String `
 	Num  *float64 `| @Number `
-	Bool *bool    `| ("true" | "false") )`
+	Bool *Boolean `| @("true" | "false") )`
 }
 
 var (
 	hclex = lexer.Must(ebnf.New(`
 Ident = (alpha | "_") { "_" | alpha | digit } .
+True = "true" .
+False = "false" .
 String = "\"" { "\u0000"…"\uffff"-"\""-"\\" | "\\" any } "\"" .
 Number = ("." | digit) {"." | digit} .
 Whitespace = " " | "\t" | "\n" | "\r" .
@@ -121,7 +130,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 					if a.Value.Bool == nil {
 						return fmt.Errorf("invalid value for attr %s of type %s: %v", name, TipBool, *a)
 					}
-					val = jen.Lit(*a.Value.Bool)
+					val = jen.Lit(bool(*a.Value.Bool))
 				case TipDate:
 					return fmt.Errorf("type datetime of field %s can not be used for hardcoded", name)
 				default:

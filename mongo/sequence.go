@@ -88,10 +88,7 @@ func (s *Sequence) Next(ctx context.Context) (int, error) {
 		}
 	}
 	s.curr++
-	_, err = s.p.db.Collection(sequencesCollectionName).
-		UpdateOne(ctx,
-			bson.M{"_id": s.name}, bson.M{"$set": bson.M{"current": s.curr}},
-		)
+	err = s.save(ctx)
 	if err != nil {
 		s.p.log.Warnf("Sequence<%s>.Next: Update: %v", s.name, err)
 		return -1, err
@@ -106,6 +103,23 @@ func (s *Sequence) Current(ctx context.Context) (int, error) {
 		if err != nil {
 			return -1, err
 		}
+	}
+	return s.curr, nil
+}
+
+//SetCurrent sets current value of Sequence to value
+func (s *Sequence) SetCurrent(ctx context.Context, value int) (int, error) {
+	if s.curr == -1 || !sequencesAreCacheable {
+		err := s.load(ctx)
+		if err != nil {
+			return -1, err
+		}
+	}
+	s.curr = value
+	err := s.save(ctx)
+	if err != nil {
+		s.p.log.Warnf("Sequence<%s>.Next: Update: %v", s.name, err)
+		return -1, err
 	}
 	return s.curr, nil
 }
@@ -137,6 +151,14 @@ func (s *Sequence) load(ctx context.Context) error {
 		s.curr = 1
 	}
 	return err
+}
+
+func (s *Sequence) save(ctx context.Context) (err error) {
+	_, err = s.p.db.Collection(sequencesCollectionName).
+		UpdateOne(ctx,
+			bson.M{"_id": s.name}, bson.M{"$set": bson.M{"current": s.curr}},
+		)
+	return
 }
 
 func (msp *SequenceProvider) lookForSequence(seqName string) *Sequence {

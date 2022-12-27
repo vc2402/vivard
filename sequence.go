@@ -8,6 +8,8 @@ type Sequence interface {
 	Next(ctx context.Context) (int, error)
 	//Current returns current (last returned by Next) value
 	Current(ctx context.Context) (int, error)
+	//SetCurrent sets current value of Sequence to value
+	SetCurrent(ctx context.Context, value int) (int, error)
 }
 
 //SequenceProvider provides sequences

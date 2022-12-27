@@ -1,6 +1,6 @@
 module github.com/vc2402/vivard
 
-go 1.14
+go 1.18
 
 require (
 	github.com/graphql-go/graphql v0.7.9

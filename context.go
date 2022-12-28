@@ -7,21 +7,31 @@ type Context interface {
 	UserName() string
 	Source() string
 	HasRole(role string) bool
+	RolesMask() int
 	GetExt(key string) interface{}
 }
 
 type DefaultContext struct {
-	userID   int
-	userName string
-	source   string
-	roles    []string
-	ext      map[string]interface{}
+	userID    int
+	userName  string
+	source    string
+	roles     []string
+	rolesMask int
+	ext       map[string]interface{}
+}
+
+func (c DefaultContext) GetExt(key string) (interface{}, bool) {
+	if c.ext == nil {
+		return nil, false
+	}
+	ret, ok := c.ext[key]
+	return ret, ok
 }
 
 var ContextID = struct{}{}
 
-func NewContext(ctx context.Context, userID int, userName string, source string, roles []string, ext ...interface{}) context.Context {
-	newCtx := DefaultContext{userID: userID, userName: userName, source: source, roles: roles}
+func NewContext(ctx context.Context, userID int, userName string, source string, roles []string, rolesMask int, ext ...interface{}) context.Context {
+	newCtx := DefaultContext{userID: userID, userName: userName, source: source, roles: roles, rolesMask: rolesMask}
 	if len(ext) > 0 {
 		newCtx.ext = map[string]interface{}{}
 		for i := 0; i < len(ext)-1; i += 2 {
@@ -64,4 +74,8 @@ func (c DefaultContext) HasRole(role string) bool {
 
 func (c DefaultContext) Roles() []string {
 	return c.roles
+}
+
+func (c DefaultContext) RolesMask() int {
+	return c.rolesMask
 }

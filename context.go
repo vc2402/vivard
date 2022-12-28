@@ -7,6 +7,7 @@ type Context interface {
 	UserName() string
 	Source() string
 	HasRole(role string) bool
+	GetExt(key string) interface{}
 }
 
 type DefaultContext struct {
@@ -14,12 +15,22 @@ type DefaultContext struct {
 	userName string
 	source   string
 	roles    []string
+	ext      map[string]interface{}
 }
 
 var ContextID = struct{}{}
 
-func NewContext(ctx context.Context, userID int, userName string, source string, roles []string) context.Context {
-	return context.WithValue(ctx, ContextID, DefaultContext{userID: userID, userName: userName, source: source, roles: roles})
+func NewContext(ctx context.Context, userID int, userName string, source string, roles []string, ext ...interface{}) context.Context {
+	newCtx := DefaultContext{userID: userID, userName: userName, source: source, roles: roles}
+	if len(ext) > 0 {
+		newCtx.ext = map[string]interface{}{}
+		for i := 0; i < len(ext)-1; i += 2 {
+			if key, ok := ext[i].(string); ok {
+				newCtx.ext[key] = ext[i+1]
+			}
+		}
+	}
+	return context.WithValue(ctx, ContextID, newCtx)
 }
 
 func RequestContext(ctx context.Context) DefaultContext {
@@ -49,4 +60,8 @@ func (c DefaultContext) HasRole(role string) bool {
 		}
 	}
 	return false
+}
+
+func (c DefaultContext) Roles() []string {
+	return c.roles
 }

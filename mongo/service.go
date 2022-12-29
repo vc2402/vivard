@@ -53,6 +53,10 @@ func (ms *Service) Start(eng *vivard.Engine, prov dep.Provider) error {
 	return nil
 }
 
+func (ms *Service) Provide() interface{} {
+	return ms.DB()
+}
+
 func (ms *Service) DB() *mongo.Database {
 	if ms.db == nil {
 		panic("mongo service not initialized")

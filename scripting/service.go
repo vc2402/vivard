@@ -42,3 +42,7 @@ func (s *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
 func (s *Service) Start(eng *vivard.Engine, prov dep.Provider) error {
 	return nil
 }
+
+func (s *Service) Provide() interface{} {
+	return s
+}

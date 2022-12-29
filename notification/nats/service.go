@@ -28,6 +28,9 @@ func (ns *Service) Start(eng *vivard.Engine, prov dep.Provider) error {
 	return nil
 }
 
+func (ns *Service) Provide() interface{} {
+	return ns.Conn()
+}
 func (ns *Service) Conn() *ng.Conn {
 	return ns.conn
 }

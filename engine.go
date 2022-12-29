@@ -18,14 +18,22 @@ const (
 )
 
 type Service interface {
+	// Prepare will be called for each registered service before SubEngine's Prepare
 	Prepare(eng *Engine, provider dep.Provider) error
 	Start(eng *Engine, provider dep.Provider) error
+	// Provide should return some low level object, e.g. *sql.DB for sql Service
+	Provide() interface{}
 }
 
 type SubEngine interface {
 	Name() string
 	Prepare(engine *Engine) error
 	Start() error
+}
+
+// ServiceProvider may be implemented by SubEngine to register services
+type ServiceProvider interface {
+	ProvideServices(engine *Engine)
 }
 
 type Engine struct {
@@ -39,7 +47,7 @@ type Engine struct {
 
 type Generator func(eng *Engine) error
 
-//NewEngine creates new empty Engine object
+// NewEngine creates new empty Engine object
 func NewEngine() *Engine {
 	eng := &Engine{
 		services: map[string]Service{},
@@ -57,13 +65,13 @@ func NewEngine() *Engine {
 	return eng
 }
 
-//WithService add service to services list
+// WithService add service to services list
 func (eng *Engine) WithService(name string, srv Service) *Engine {
 	eng.services[name] = srv
 	return eng
 }
 
-//WithEngine add subengine to list
+// WithEngine add SubEngine to list
 func (eng *Engine) WithEngine(se SubEngine) *Engine {
 	eng.engines[se.Name()] = se
 	return eng
@@ -71,6 +79,11 @@ func (eng *Engine) WithEngine(se SubEngine) *Engine {
 
 //Start performs procedure of starting the engine
 func (eng *Engine) Start() error {
+	for _, s := range eng.engines {
+		if sp, ok := s.(ServiceProvider); ok {
+			sp.ProvideServices(eng)
+		}
+	}
 	for _, s := range eng.services {
 		err := s.Prepare(eng, eng)
 		if err != nil {

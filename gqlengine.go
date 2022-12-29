@@ -107,6 +107,10 @@ func (gqe *GQLEngine) Start(eng *Engine, _ dep.Provider) error {
 	return gqe.generate(eng)
 }
 
+func (gqe *GQLEngine) Provide() interface{} {
+	return gqe
+}
+
 func (gqe *GQLEngine) HTTPHandler() http.HandlerFunc {
 	pretty := true
 	h := handler.New(&handler.Config{

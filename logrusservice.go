@@ -28,6 +28,10 @@ func (ls *LogrusService) Start(eng *Engine, _ dep.Provider) error {
 	return nil
 }
 
+func (ls *LogrusService) Provide() interface{} {
+	return ls.Log()
+}
+
 func (ls *LogrusService) Log() *logrus.Entry {
 	return ls.log
 }

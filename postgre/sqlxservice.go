@@ -30,6 +30,10 @@ func (ss *Service) Start(eng *vivard.Engine, prov dep.Provider) error {
 	return nil
 }
 
+func (ss *Service) Provide() interface{} {
+	return ss.DB()
+}
+
 func (ss *Service) DB() *sqlx.DB {
 	return ss.db
 }

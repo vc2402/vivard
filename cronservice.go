@@ -22,6 +22,10 @@ func (cs *CRONService) Start(eng *Engine, _ dep.Provider) error {
 	return nil
 }
 
+func (cs *CRONService) Provide() interface{} {
+	return cs.Cron()
+}
+
 func (cs *CRONService) Cron() *cron.Cron {
 	return cs.cron
 }

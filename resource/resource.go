@@ -57,6 +57,6 @@ type ChangeNotifier interface {
 type Manager interface {
 	// FindResource looks for resource dy key and returns its id or ErrUnknownResource
 	FindResource(key Key) (ID, error)
-	//CreateResource creates new resource; parent may be nil
-	CreateResource(key Key, description string, parentKey *Key) (ID, error)
+	// CreateResource creates new resource; if parent is absent parentKey should be ""
+	CreateResource(key Key, description string, parentKey Key) (ID, error)
 }

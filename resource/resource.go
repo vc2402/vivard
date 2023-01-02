@@ -1,6 +1,7 @@
 package resource
 
 import (
+	"context"
 	"errors"
 )
 
@@ -74,9 +75,9 @@ type AccessChecker interface {
 	//  accessKind defines action performing with resource
 	//  return should be ErrForbidden if access is forbidden or nil if granted;
 	//  in general may contain other value (e.g. ErrUnknownResource)
-	CheckResourceAccess(id ID, objectID interface{}, accessKind AccessKind) (err error)
+	CheckResourceAccess(ctx context.Context, id ID, objectID interface{}, accessKind AccessKind) (err error)
 	// CheckResourceAccessByKey may be used for checking access by resource key; see CheckResourceAccess
-	CheckResourceAccessByKey(key Key, objectID interface{}, accessKind AccessKind) (err error)
+	CheckResourceAccessByKey(ctx context.Context, key Key, objectID interface{}, accessKind AccessKind) (err error)
 }
 
 type ChangeKind int

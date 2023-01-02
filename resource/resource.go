@@ -1,6 +1,8 @@
 package resource
 
-import "errors"
+import (
+	"errors"
+)
 
 var (
 	ErrForbidden       = errors.New("forbidden")
@@ -28,6 +30,42 @@ const (
 	AccessDelete
 	AccessList
 )
+
+const (
+	AccessReadMask   = 0x01 << AccessRead
+	AccessWriteMask  = 0x01 << AccessWrite
+	AccessCreateMask = 0x01 << AccessCreate
+	AccessDeleteMask = 0x01 << AccessDelete
+	AccessListMask   = 0x01 << AccessList
+)
+
+const AccessFullMask = AccessReadMask |
+	AccessWriteMask |
+	AccessCreateMask |
+	AccessDeleteMask |
+	AccessListMask
+
+var AccessMaskMapping = map[string]int{
+	"r": AccessReadMask,
+	"w": AccessWriteMask,
+	"c": AccessCreateMask,
+	"d": AccessDeleteMask,
+	"l": AccessListMask,
+}
+var AccessNames = []string{
+	"read",
+	"write",
+	"create",
+	"delete",
+	"list",
+}
+var AccessShortNames = []string{
+	"r",
+	"w",
+	"c",
+	"d",
+	"l",
+}
 
 //AccessChecker defines access check implementation interface
 type AccessChecker interface {

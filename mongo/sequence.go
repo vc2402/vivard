@@ -176,7 +176,7 @@ func (msp *SequenceProvider) createSequence(seqName string) *Sequence {
 	defer msp.seqMux.Unlock()
 	se, ok := msp.sequences[seqName]
 	if !ok {
-		se = &Sequence{p: msp, name: seqName, curr: 1}
+		se = &Sequence{p: msp, name: seqName, curr: -1}
 		msp.sequences[seqName] = se
 	}
 	return se

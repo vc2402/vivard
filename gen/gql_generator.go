@@ -34,6 +34,8 @@ var gqlOperationsNamesTemplates = [GQLOperationLast]string{
 	"find%s",
 }
 
+const gqlSetNullInputTemplate = "%sSetNull"
+
 const (
 	gqlDescriptorVarName = "gqlDesc"
 
@@ -59,17 +61,19 @@ const (
 	GQLFIdTypeTag     = "idType"
 	GQLFInputTypeName = "inputType"
 	GQLFMethodName    = "name"
-	//GQLFMethodType - GQLFMethodTypeMutation or GQLFMethodTypeQuery
+	// GQLFMethodType - GQLFMethodTypeMutation or GQLFMethodTypeQuery
 	GQLFMethodType         = "method-type"
 	GQLFMethodTypeMutation = "mutation"
 	GQLFMethodTypeQuery    = "query"
-	//GQLFIDOnly use only id for embedded type
+	// GQLFIDOnly use only id for embedded type
 	GQLFIDOnly = "id-only"
 
-	//GQLFMethodResultType - code generator for method's result type
+	// GQLFMethodResultType - code generator for method's result type
 	GQLFMethodResultType = "result-type"
-	//GQLFMethodResultTypeName - code generator for method's result type
+	// GQLFMethodResultTypeName - code generator for method's result type
 	GQLFMethodResultTypeName = "result-type-name"
+	// GQLFSetNullInputField name of boolean field in input type for setting null for nullbale field
+	GQLFSetNullInputField = "set-null-input-field"
 )
 
 var GQLOperationsAnnotationsTags = [GQLOperationLast]string{
@@ -138,8 +142,10 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 					if f.FB(FeaturesAPIKind, FCIgnore) {
 						continue
 					}
-					if _, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); !ok {
-						f.Annotations.AddTag(GQLAnnotation, GQLAnnotationNameTag, cg.GetGQLFieldName(f))
+					fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
+					if !ok {
+						fieldName = cg.GetGQLFieldName(f)
+						f.Annotations.AddTag(GQLAnnotation, GQLAnnotationNameTag, fieldName)
 					}
 					tip := cg.GetGQLTypeName(f.Type)
 					f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
@@ -165,6 +171,9 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 						}
 					}
 					f.Features.Set(GQLFeatures, GQLFArgTypeTag, tip)
+					if !f.Type.NonNullable {
+						f.Features.Set(GQLFeatures, GQLFSetNullInputField, fmt.Sprintf(gqlSetNullInputTemplate, fieldName))
+					}
 				}
 				for _, m := range t.Methods {
 					mname, ok := m.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
@@ -394,6 +403,11 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 			gqlFields[jen.Lit(fieldName)] = jen.Op("&").Qual(gqlPackage, "InputObjectFieldConfig").Values(jen.Dict{
 				jen.Id("Type"): t,
 			})
+			if setNullField := f.FS(GQLFeatures, GQLFSetNullInputField); setNullField != "" {
+				gqlFields[jen.Lit(setNullField)] = jen.Op("&").Qual(gqlPackage, "InputObjectFieldConfig").Values(jen.Dict{
+					jen.Id("Type"): jen.Qual(gqlPackage, "Boolean"),
+				})
+			}
 		}
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "InputObject").Block(
 			jen.Return(
@@ -623,7 +637,13 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 					stmt.Else().If(jen.Id(idRequired)).Block(
 						jen.Return(jen.Nil(), jen.Qual("errors", "New").Params(jen.Lit("id should be set"))),
 					)
+				} else if setNullField := f.FS(GQLFeatures, GQLFSetNullInputField); setNullField != "" {
+					stmt.Else().If(
+						jen.List(jen.Id("setNull"), jen.Id("ok")).Op(":=").Id("p").Index(jen.Lit(setNullField)).Assert(jen.Bool()),
+						jen.Id("ok").Op("&&").Id("setNull"),
+					).Block(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetNullCode))
 				}
+
 				g.Add(stmt)
 			}
 		}).Else().Block(
@@ -908,17 +928,25 @@ func (cg *GQLGenerator) generateGQLCreateMutation(t *Entity) error {
 						jen.If(
 							jen.List(jen.Id("val"), jen.Id("ok").Op(":=").Id("p").Dot("Args").Index(jen.Lit("val"))),
 							jen.Id("ok"),
-						).Block(
-							jen.List(jen.Id("obj"), jen.Err()).Op(":=").Add(cg.callInputParserMethod(jen.Id("p").Dot("Context"), name, "val", jen.Nil(), false)),
-							jen.Return(
+						).BlockFunc(func(g *jen.Group) {
+							if t.HasModifier(TypeModifierExtendable) {
+								g.List(jen.Id("obj"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(cg.desc.GetMethodName(MethodInit, name)).Params(jen.Id("p").Dot("Context"))
+								g.Add(returnIfErrValue(jen.Nil()))
+							} else {
+								g.Var().Id("obj").Op("*").Id(name)
+								g.Var().Err().Error()
+							}
+							g.List(jen.Id("obj"), jen.Err()).Op("=").Add(cg.callInputParserMethod(jen.Id("p").Dot("Context"), name, "val", jen.Id("obj"), false))
+
+							g.Return(
 								jen.List(
 									jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodNew, name)).Params(
 										jen.Id("p").Dot("Context"),
 										jen.Id("obj"),
 									),
 								),
-							),
-						).Else().Block(
+							)
+						}).Else().Block(
 							jen.Return(
 								jen.Nil(),
 								jen.Qual("errors", "New").Params(jen.Lit("set without val"))),

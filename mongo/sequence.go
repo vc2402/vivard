@@ -73,6 +73,33 @@ func (msp *SequenceProvider) Sequence(ctx context.Context, name string) (vivard.
 	return msp.sequence(ctx, name)
 }
 
+// ListSequences returns sequences with names containing mask (case-insensitive)
+func (msp *SequenceProvider) ListSequences(ctx context.Context, mask string) (map[string]int, error) {
+	query := bson.M{}
+	if mask != "" {
+		query["_id"] = bson.M{"$regex": mask, "$options": "i"}
+	}
+	cur, err := msp.db.Collection(sequencesCollectionName).Find(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	ret := map[string]int{}
+	for cur.Next(ctx) {
+		seq := map[string]interface{}{}
+		err = cur.Decode(&seq)
+		if err != nil {
+			return ret, err
+		}
+		name, _ := seq["_id"].(string)
+		val, _ := seq["current"].(int32)
+		ret[name] = int(val)
+		if len(ret) > 100 {
+			return ret, errors.New("too many records")
+		}
+	}
+	return ret, nil
+}
+
 func (msp *SequenceProvider) sequence(ctx context.Context, seqName string) (*Sequence, error) {
 	seq := msp.lookForSequence(seqName)
 	if seq == nil {

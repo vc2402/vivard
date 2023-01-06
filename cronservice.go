@@ -118,6 +118,10 @@ func (j *Job) Cancel() {
 	}
 }
 
+func (j *Job) IsRunning() bool {
+	return j.cancelFn != nil
+}
+
 func (j *Job) recover() {
 	if r := recover(); r != nil {
 		j.LastError = fmt.Errorf("recovered: %v\n  stack trace: %s", r, string(debug.Stack()))

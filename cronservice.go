@@ -28,6 +28,7 @@ type Job struct {
 	LastError       error
 	LastErrorTime   time.Time
 	LastResult      interface{}
+	cs              *CRONService
 }
 
 //CRONService provides robfig/cron functionality as a vivard service
@@ -68,6 +69,7 @@ func (cs *CRONService) AddNamedFunc(spec string, name string, cmd func(ctx conte
 		Name:    name,
 		command: cmd,
 		Spec:    spec,
+		cs:      cs,
 	}
 	cs.jobsLock.Lock()
 	defer cs.jobsLock.Unlock()
@@ -120,6 +122,16 @@ func (j *Job) Cancel() {
 
 func (j *Job) IsRunning() bool {
 	return j.cancelFn != nil
+}
+
+func (j *Job) ScheduledAt() *time.Time {
+	if j.entry != 0 {
+		entry := j.cs.cron.Entry(j.entry)
+		if entry.Valid() {
+			return &entry.Next
+		}
+	}
+	return nil
 }
 
 func (j *Job) recover() {

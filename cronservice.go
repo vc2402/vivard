@@ -39,7 +39,7 @@ type CRONService struct {
 	ctx      context.Context
 }
 
-func New(ctx context.Context) *CRONService {
+func NewCronService(ctx context.Context) *CRONService {
 	return &CRONService{ctx: ctx}
 }
 

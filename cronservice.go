@@ -36,6 +36,11 @@ type CRONService struct {
 	cron     *cron.Cron
 	jobs     map[JobID]*Job
 	jobsLock sync.RWMutex
+	ctx      context.Context
+}
+
+func New(ctx context.Context) *CRONService {
+	return &CRONService{ctx: ctx}
 }
 
 func (cs *CRONService) Prepare(eng *Engine, _ dep.Provider) (err error) {

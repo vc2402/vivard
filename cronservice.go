@@ -43,6 +43,10 @@ func NewCronService(ctx context.Context) *CRONService {
 	return &CRONService{ctx: ctx}
 }
 
+func (cs *CRONService) SetJobContext(ctx context.Context) {
+	cs.ctx = ctx
+}
+
 func (cs *CRONService) Prepare(eng *Engine, _ dep.Provider) (err error) {
 	if cs.cron == nil {
 		cs.cron = cron.New()

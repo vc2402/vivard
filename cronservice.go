@@ -108,8 +108,11 @@ func (cs *CRONService) ListJobs() []*Job {
 
 func (j *Job) Run() {
 	defer j.recover()
-	var ctx context.Context
-	ctx, j.cancelFn = context.WithCancel(context.Background())
+	ctx := j.cs.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, j.cancelFn = context.WithCancel(ctx)
 	j.LastRunAt = time.Now()
 	var err error
 	j.LastResult, err = j.command(ctx)

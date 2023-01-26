@@ -13,6 +13,7 @@ func (h *helper) generateForm(formName string) error {
 		parse(htmlFormCardTemplate).
 		parse(htmlFormInputTemplate).
 		parse(htmlFormTextInputTemplate).
+		parse(htmlFormTextAreaTemplate).
 		parse(htmlFormDateInputTemplate).
 		parse(htmlFormColorInputTemplate).
 		parse(htmlFormMapInputTemplate).
@@ -21,6 +22,7 @@ func (h *helper) generateForm(formName string) error {
 		parse(htmlFormArrayAsChipsTemplate).
 		parse(htmlFormLookupInputTemplate).
 		parse(htmlFormBoolInputTemplate).
+		parse(htmlFormDisabledTemplate).
 		parse(vueFormTSTemplate).
 		parse(vueFormListTSTemplate).
 		parse(vueFormCardTSTemplate).
@@ -95,9 +97,10 @@ var htmlFormTemplate = `
 {{define "FORM"}}
   <div class="d-flex flex-row flex-wrap justify-space-around align-center">
     <slot name="pre-fields"></slot>
-    {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID . false}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{end}}<div class="mx-5" {{if IsID . true}}v-if="isNew" {{end}}>
+    {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID .}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{if NotAuto .}}<div class="mx-2" v-if="isNew">{{template "FORM_INPUT_FIELD" .}}</div>{{end}}
+      {{else}}<div class="mx-2">
       {{template "FORM_INPUT_FIELD" .}}
-    </div>{{end}}
+    </div>{{end}}{{end}}
     {{end}}
     <v-btn v-if="!value" flat icon color="primary" @click="addValue">
       <v-icon>add</v-icon> {{Title .}}
@@ -162,39 +165,57 @@ const htmlFormInputTemplate = `{{define "FORM_INPUT_FIELD"}}{{if ne (CustomCompo
   {{else if eq (FormComponentType .) "color"}}{{template "COLOR_INPUT" .}}
   {{else if eq (FormComponentType .) "map"}}{{template "MAP_INPUT" .}}
   {{else if eq (FormComponentType .) "array"}}{{template "ARRAY_INPUT" .}}
+  {{else if eq (FormComponentType .) "text-area"}}{{template "TEXT_AREA_INPUT" .}}
   {{else}}{{template "LOOKUP_INPUT" .}}{{end}}{{end}}`
 
 const htmlFormTextInputTemplate = `{{define "TEXT_INPUT"}}<v-text-field v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}" {{InputAttrs .}}
     @change="changed('{{FieldName .}}')"
-    :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
+    :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if IsIcon .}}
+    :append-icon="value.{{FieldName .}}"{{end}}
   >{{if FieldWithAppend .}}<template v-slot:append-outer>
      {{range AppendToField .}}{{.}}{{end}}
    </template>{{end}}{{if WithPrependIcon .}}<template v-slot:prepend>
      {{PrependIcon .}}</template>{{end}}{{if WithAppendIcon .}}<template v-slot:append>
      {{AppendIcon .}}</template>{{end}}</v-text-field>{{end}}`
+
+const htmlFormTextAreaTemplate = `{{define "TEXT_AREA_INPUT"}}<v-textarea v-if="value"
+    v-model="value.{{FieldName .}}"
+    label="{{Label .}}" {{InputAttrs .}}
+	auto-grow
+	outlined
+	rows="{{TextAreaRows .}}"
+    @change="changed('{{FieldName .}}')"
+    :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if IsIcon .}}
+    :append-icon="value.{{FieldName .}}"{{end}}
+  >{{if FieldWithAppend .}}<template v-slot:append-outer>
+     {{range AppendToField .}}{{.}}{{end}}
+   </template>{{end}}{{if WithPrependIcon .}}<template v-slot:prepend>
+     {{PrependIcon .}}</template>{{end}}{{if WithAppendIcon .}}<template v-slot:append>
+     {{AppendIcon .}}</template>{{end}}</v-textarea>{{end}}`
+
 const htmlFormDateInputTemplate = `{{define "DATE_INPUT"}}<{{CustomComponent "date"}}  v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}"
     @change="changed('{{FieldName .}}')"
-    :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
+    :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"
     {{ConponentAddAttrs .}}
   ></{{CustomComponent "date"}}>{{end}}`
 const htmlFormColorInputTemplate = `{{define "COLOR_INPUT"}}<{{CustomComponent "color"}}  v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}"
     @change="changed('{{FieldName .}}')"
-    :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
+    :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"
   ></{{CustomComponent "color"}}>{{end}}`
 const htmlFormMapInputTemplate = `{{define "MAP_INPUT"}}<{{CustomComponent "map"}}  v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}"
     @change="changed('{{FieldName .}}')"
-    :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"
+    :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"
     {{ConponentAddAttrs .}}
   ></{{CustomComponent "map"}}>{{end}}`
-const htmlFormArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}} :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"/>{{else if ArrayAsList .}}{{template "ARRAY_AS_LIST" .}}{{else if ArrayAsChips .}}{{template "ARRAY_AS_CHIPS" .}}{{end}}{{end}}`
+const htmlFormArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}} :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if HideAddForLookup .}} :hideAdd="true"{{end}}/>{{else if ArrayAsList .}}{{template "ARRAY_AS_LIST" .}}{{else if ArrayAsChips .}}{{template "ARRAY_AS_CHIPS" .}}{{end}}{{end}}`
 
 const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}} 
 <{{LookupComponent . true}}  
@@ -203,21 +224,28 @@ const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}}
   label="{{Label .}}" 
   @change="changed('{{FieldName .}}')" 
   {{LookupAttrs .}} 
-  :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"{{if ByRefField .}}
-  :returnId="true"
+  :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if ByRefField .}}
+  :returnId="true"{{end}}{{if HideAddForLookup .}}
   :hideAdd="true"{{end}}>{{if FieldWithAppend .}}
     <template v-slot:append>{{range AppendToField .}}
       {{.}}{{end}}
     </template>{{end}}
 </{{LookupComponent . true}}>{{end}}`
 
-const htmlFormBoolInputTemplate = `{{define "BOOL_INPUT"}}<v-checkbox  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" :disabled="{{if Readonly .}}true{{else}}disabled{{end}}"/>{{end}}`
+const htmlFormBoolInputTemplate = `{{define "BOOL_INPUT"}}<v-checkbox  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"/>{{end}}`
 
-const htmlFormArrayAsListTemplate = `{{define "ARRAY_AS_LIST"}}<div class="d-flex flex-column">
-  <div class="d-flex flex-row justify-space-around"><h3>{{Label .}}</h3>{{if not (Readonly .)}}<v-btn if="!disabled" text icon color="primary" @click="add{{FieldName .}}"><v-icon>add</v-icon> {{Label .}}</v-btn>{{end}}</div>
+const htmlFormArrayAsListTemplate = `{{define "ARRAY_AS_LIST"}}<div class="d-flex flex-column mt-2">
+  <div class="d-flex flex-row justify-space-around"><h3>{{Label .}}</h3>{{if not (Readonly .)}}<v-btn if="!disabled" text color="primary" @click="add{{FieldName .}}"><v-icon>add</v-icon> {{Label .}}</v-btn>{{end}}</div>
   <div v-if="value && value.{{FieldName .}}">
     <div class="d-flex flex-column" v-for="(it, idx) in value.{{FieldName .}}"  :key="idx">
-      <{{LookupComponent . true}} v-model="value.{{FieldName .}}[idx]" :disabled="{{if Readonly .}}true{{else}}disabled{{end}}" @change="changed('{{FieldName .}}')"/>
+      <div class="d-flex flex-row align-center mt-3">
+        <div class="flex-grow-1 flex-shrink-0">
+          <{{LookupComponent . true}} v-model="value.{{FieldName .}}[idx]" :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}" @change="changed('{{FieldName .}}')"/>
+        </div>
+        <div class="flex-grow-0 flex-shrink-1 ml-2">
+          <v-icon if="!disabled" color="error" @click="remove{{FieldName .}}(idx)" title="delete">mdi-close-circle</v-icon>
+        </div>
+      </div>
       <v-divider v-if="idx < value.{{FieldName .}}.length"></v-divider>
     </div>
   </div>
@@ -236,7 +264,7 @@ const htmlFormArrayAsChipsTemplate = `{{define "ARRAY_AS_CHIPS"}}<div class="d-f
     ref="new{{FieldName .}}Input"
     label="Add" 
     @keydown.enter="value.{{FieldName .}}?value.{{FieldName .}}.push($refs.new{{FieldName .}}Input.internalValue):value.{{FieldName .}}=[$refs.new{{FieldName .}}Input.internalValue]; $refs.new{{FieldName .}}Input.internalValue = ''"
-    :disabled="disabled"
+    :disabled="{{template "DISABLED_IN_FORM" .}}"
   >
     <template v-slot:append-outer>
       <v-icon
@@ -248,6 +276,8 @@ const htmlFormArrayAsChipsTemplate = `{{define "ARRAY_AS_CHIPS"}}<div class="d-f
   </v-text-field>
 </div>
 {{end}}`
+
+const htmlFormDisabledTemplate = `{{define "DISABLED_IN_FORM"}}disabled{{end}}`
 
 const vueFormTSTemplate = `
 {{define "FORM.TS"}}

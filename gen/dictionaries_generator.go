@@ -10,8 +10,11 @@ const (
 	// AnnQual - may be used for dictionary fields to show that it is depends on another dictionary
 	// Field ma be ref to another dict or array to it; may be Nullable or no Null
 	AnnQual = "qualifier"
-	//AnnQualBy - annotation for field of type ref to dictionary, should contain id of field that is used as qualifier for qualified dictionairy
+	// AnnQualBy - annotation for field of type ref to dictionary, should contain id of field that is used as qualifier for qualified dictionairy
 	AnnQualBy = "qualified-by"
+	// AnnIndex forces to build index by field
+	AnnIndex = "index"
+	aiUnique = "unique"
 )
 
 const (
@@ -21,28 +24,31 @@ const (
 	//FDQualified - bool for Etnity - true if the dictionary has qualifier field
 	FDQualified = "qualified"
 
-	//FDQualifier - bool for Field or *Field for Entity
+	// FDQualifier - bool for Field or *Field for Entity
 	//  for Field set if it is qualifier for this dict Entity
 	//  for Entity refs to qualifier Field
 	FDQualifier = "qualifier"
 
-	//FDQualifierType - *Entity for Entity, refs to dictionary type that qualifier field refs to
+	// FDQualifierType - *Entity for Entity, refs to dictionary type that qualifier field refs to
 	FDQualifierType = "qualifier-type"
 
-	//FDQualifiedBy - *Field for Field, refs the field in the same Entity that is qualifier for this dict field
+	// FDQualifiedBy - *Field for Field, refs the field in the same Entity that is qualifier for this dict field
 	FDQualifiedBy = "qual-by"
 
-	//FDQualifierFor - *Field for Field, refs to field requires this as qualifier
+	// FDQualifierFor - *Field for Field, refs to field requires this as qualifier
 	FDQualifierFor = "qualifier-for"
 
-	//FDIdxFieldName - string; field name in Engine for cache
+	// FDCacheFieldName - string; field name in Engine for cache
 	FDCacheFieldName = "cache-field"
 
-	//FDIdxFieldName - string; field name in Engine for index
+	// FDIdxFieldName - string; field name in Engine for index
 	FDIdxFieldName = "idx-field"
 
-	//FDQualIdxName - string; qualifier index field name in Engine (if any)
-	FDQualIdxName = "qual-idx-name"
+	// FDQualIdxName - string; qualifier index field name in Engine (if any)
+	//FDQualIdxName = "qual-idx-name"
+
+	// FDIndexes - array of indexDescriptor
+	FDIndexes = "indexes"
 )
 const (
 	DictCacheTempl          = "%sCache"
@@ -56,6 +62,13 @@ type DictionariesGenerator struct {
 	proj *Project
 	desc *Package
 	b    *Builder
+}
+
+type indexDescriptor struct {
+	field        *Field
+	engFieldName string
+	keyType      jen.Code
+	unique       bool
 }
 
 //SetDescriptor from DescriptorAware
@@ -119,6 +132,13 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 					return true, nil
 				}
 			}
+		case AnnIndex:
+			unique := ann.GetBool(aiUnique, false)
+			_, err := ncg.addIndexDescriptor(fld.Parent(), fld, unique)
+			if err != nil {
+				return false, err
+			}
+			return true, nil
 		}
 	}
 	return false, nil
@@ -130,13 +150,22 @@ func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
 			if t.HasModifier(TypeModifierDictionary) {
 				name := t.Name
 				fname := fmt.Sprintf(DictCacheTempl, name)
-				idxname := fmt.Sprintf(DictIndexCacheTempl, name)
+				//idxname := fmt.Sprintf(DictIndexCacheTempl, name)
 				t.Features.Set(FeatureDictKind, FDCacheFieldName, fname)
-				t.Features.Set(FeatureDictKind, FDIdxFieldName, idxname)
+				idxName, err := ncg.addIndexDescriptor(t, t.GetIdField(), true)
+				if err != nil {
+					return err
+				}
+				t.Features.Set(FeatureDictKind, FDIdxFieldName, idxName)
+
 				if t.FB(FeatureDictKind, FDQualified) {
 					qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
-					idxname = fmt.Sprintf(DictQualIndexCacheTempl, name, qf.Name)
-					t.Features.Set(FeatureDictKind, FDQualIdxName, idxname)
+					_, err := ncg.addIndexDescriptor(t, qf, false)
+					if err != nil {
+						return err
+					}
+					//idxname = fmt.Sprintf(DictQualIndexCacheTempl, name, qf.Name)
+					//t.Features.Set(FeatureDictKind, FDQualIdxName, idxname)
 				}
 			}
 			// let's check qualified-by annotations
@@ -156,6 +185,7 @@ func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
 						return fmt.Errorf("at %v: qualified-by should reference to type '%s' but refs to '%s'", f.Pos, dqt, qb.Type.Type)
 					}
 				}
+
 			}
 		}
 	}
@@ -169,13 +199,13 @@ func (ncg *DictionariesGenerator) Generate(b *Builder) (err error) {
 		if t.IsDictionary() {
 			f := t.GetIdField()
 			ncg.addDictionaryCache(t, f.Type)
-			ncg.generateDictGetter(t, f.Type)
+			//ncg.generateDictGetter(t, f.Type)
 			ncg.generateAllDictGetter(t, f.Type)
 			ncg.generateDictCacheLoader(t, f)
 			if !t.FB(FeaturesCommonKind, FCReadonly) {
-				ncg.generateDictSetter(t, f)
-				ncg.generateDictNew(t, f)
-				ncg.generateDictDelete(t, f)
+				//ncg.generateDictSetter(t, f)
+				//ncg.generateDictNew(t, f)
+				//ncg.generateDictDelete(t, f)
 			}
 		} else if t.HasModifier(TypeModifierConfig) {
 			ncg.addConfigAttr(t.Name)
@@ -190,206 +220,217 @@ func (ncg *DictionariesGenerator) Generate(b *Builder) (err error) {
 }
 
 func (ncg *DictionariesGenerator) addDictionaryCache(t *Entity, idType *TypeRef) error {
-	idt, err := ncg.b.addType(&jen.Statement{}, idType)
-	if err != nil {
-		return err
-	}
+	//idt, err := ncg.b.addType(&jen.Statement{}, idType)
+	//if err != nil {
+	//	return err
+	//}
 	name := t.Name
 	fname := t.FS(FeatureDictKind, FDCacheFieldName)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	ncg.desc.Engine.Fields.Add(jen.Id(idxname).Map(idt).Int().Line())
+	//idxname := t.FS(FeatureDictKind, FDIdxFieldName)
 	ncg.desc.Engine.Fields.Add(jen.Id(fname).Index().Op("*").Id(name).Line())
-	if t.FB(FeatureDictKind, FDQualified) {
-		qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
-		idxname = t.FS(FeatureDictKind, FDQualIdxName)
-		var keyType *jen.Statement
-
-		qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
-		idfld := qt.GetIdField()
-		switch idfld.Type.Type {
-		case TipInt:
-			keyType = jen.Int()
-		case TipString:
-			keyType = jen.String()
-		default:
-			return fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", qf.Pos)
+	//ncg.desc.Engine.Fields.Add(jen.Id(idxname).Map(idt).Int().Line())
+	if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+		indexes := idxs.(map[string]indexDescriptor)
+		for _, descriptor := range indexes {
+			elementType := jen.Int()
+			if !descriptor.unique {
+				elementType = jen.Index().Int()
+			}
+			ncg.desc.Engine.Fields.Add(jen.Id(descriptor.engFieldName).Map(descriptor.keyType).Add(elementType).Line())
 		}
-		ncg.desc.Engine.Fields.Add(jen.Id(idxname).Map(keyType).Index().Int().Line())
 	}
+
+	//if t.FB(FeatureDictKind, FDQualified) {
+	//	qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
+	//	idxname = t.FS(FeatureDictKind, FDQualIdxName)
+	//	var keyType *jen.Statement
+	//
+	//	qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
+	//	idfld := qt.GetIdField()
+	//	switch idfld.Type.Type {
+	//	case TipInt:
+	//		keyType = jen.Int()
+	//	case TipString:
+	//		keyType = jen.String()
+	//	default:
+	//		return fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", qf.Pos)
+	//	}
+	//	ncg.desc.Engine.Fields.Add(jen.Id(idxname).Map(keyType).Index().Int().Line())
+	//}
 	ncg.desc.Engine.Fields.Add(jen.Id(fname+DictCacheMutexSuffix).Qual("sync", "RWMutex").Line())
 	// b.descriptor.Engine.Initializator.Id(EngineVar).Dot(fname).Op("=").Map(idt).Op("*").Id(name).Values().Line()
 	return nil
 }
 
-func (ncg *DictionariesGenerator) generateDictGetter(t *Entity, idType *TypeRef) error {
-	name := t.Name
-	fname := ncg.desc.GetMethodName(MethodGet, name)
-	params, err := ncg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idType)
-	if err != nil {
-		return err
-	}
-	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
-		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")).Line().
-			Add(ncg.generateLockUnlockStmt(name, true)).
-			If(
-				jen.List(jen.Id("idx"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("id")),
-				jen.Id("ok"),
-			).
-			Block(
-				jen.Return(
-					jen.List(jen.Id(EngineVar).Dot(fldname).Index(jen.Id("idx")), jen.Nil()),
-				),
-			).
-			Else().Block(
-			jen.Return(
-				jen.Nil(),
-				jen.Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", name)), jen.Id("id")),
-			),
-		),
-	).Line()
+//func (ncg *DictionariesGenerator) generateDictGetter(t *Entity, idType *TypeRef) error {
+//	name := t.Name
+//	fname := ncg.desc.GetMethodName(MethodGet, name)
+//	params, err := ncg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idType)
+//	if err != nil {
+//		return err
+//	}
+//	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
+//	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
+//	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
+//	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
+//		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")).Line().
+//			Add(ncg.generateLockUnlockStmt(name, true)).
+//			If(
+//				jen.List(jen.Id("idx"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("id")),
+//				jen.Id("ok"),
+//			).
+//			Block(
+//				jen.Return(
+//					jen.List(jen.Id(EngineVar).Dot(fldname).Index(jen.Id("idx")), jen.Nil()),
+//				),
+//			).
+//			Else().Block(
+//			jen.Return(
+//				jen.Nil(),
+//				jen.Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", name)), jen.Id("id")),
+//			),
+//		),
+//	).Line()
+//
+//	ncg.b.Functions.Add(f)
+//	return nil
+//}
 
-	ncg.b.Functions.Add(f)
-	return nil
-}
+//func (ncg *DictionariesGenerator) generateDictSetter(t *Entity, idField *Field) error {
+//	name := t.Name
+//	fname := ncg.desc.GetMethodName(MethodSet, name)
+//	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
+//	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
+//	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
+//	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
+//		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Id("err").Error())).Block(
+//		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")).Line().
+//			Add(ncg.generateLockUnlockStmt(name, false)).
+//			If(
+//				jen.List(jen.Id("idx"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)),
+//				jen.Id("ok"),
+//			).
+//			BlockFunc(func(g *jen.Group) {
+//				//TODO rebuild qualified index if required
+//				g.Id(EngineVar).Dot(fldname).Index(jen.Id("idx")).Op("=").Id("o")
+//				g.Return(jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))))
+//			}).
+//			Else().Block(
+//			jen.Return(
+//				jen.Nil(),
+//				jen.Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", name)), jen.Id("o").Dot(idField.Name)),
+//			),
+//		),
+//	).Line()
+//
+//	ncg.b.Functions.Add(f)
+//	return nil
+//}
 
-func (ncg *DictionariesGenerator) generateDictSetter(t *Entity, idField *Field) error {
-	name := t.Name
-	fname := ncg.desc.GetMethodName(MethodSet, name)
-	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
-		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Id("err").Error())).Block(
-		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")).Line().
-			Add(ncg.generateLockUnlockStmt(name, false)).
-			If(
-				jen.List(jen.Id("idx"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)),
-				jen.Id("ok"),
-			).
-			BlockFunc(func(g *jen.Group) {
-				//TODO rebuild qualified index if required
-				g.Id(EngineVar).Dot(fldname).Index(jen.Id("idx")).Op("=").Id("o")
-				g.Return(jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))))
-			}).
-			Else().Block(
-			jen.Return(
-				jen.Nil(),
-				jen.Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", name)), jen.Id("o").Dot(idField.Name)),
-			),
-		),
-	).Line()
+//func (ncg *DictionariesGenerator) generateDictDelete(t *Entity, idField *Field) error {
+//	name := t.Name
+//	fname := ncg.desc.GetMethodName(MethodDelete, name)
+//	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
+//	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
+//	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
+//	params, err := ncg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idField.Type)
+//	if err != nil {
+//		return err
+//	}
+//	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.Error()).Block(
+//		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")),
+//		jen.Add(ncg.generateLockUnlockStmt(name, true)),
+//		jen.If(jen.List(jen.Id( /*"idx"*/ "_"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("id")), jen.Id("ok")).Block(
+//			jen.Id("err").Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, name)).Params(jen.List(jen.Id("ctx"), jen.Id("id"))),
+//			jen.Add(returnIfErrValue()),
+//			//TODO remove from cache
+//			//jen.Delete(jen.Id(EngineVar).Dot(idxname), jen.Id("id")),
+//			//jen.Id(EngineVar).Dot(fldname).Op("=").Id(EngineVar).Dot(fldname).Index(jen.Id("idx")),
+//			jen.Id(EngineVar).Dot(fldname).Op("=").Nil(),
+//			jen.Id(EngineVar).Dot(idxname).Op("=").Nil(),
+//			jen.Return(jen.Nil()),
+//		),
+//		jen.Return(
+//			// TODO: return error?
+//			jen.Nil(),
+//		),
+//	).Line()
+//
+//	ncg.b.Functions.Add(f)
+//	return nil
+//}
 
-	ncg.b.Functions.Add(f)
-	return nil
-}
-
-func (ncg *DictionariesGenerator) generateDictDelete(t *Entity, idField *Field) error {
-	name := t.Name
-	fname := ncg.desc.GetMethodName(MethodDelete, name)
-	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
-	params, err := ncg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idField.Type)
-	if err != nil {
-		return err
-	}
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(params).Parens(jen.Error()).Block(
-		jen.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx")),
-		jen.Add(ncg.generateLockUnlockStmt(name, true)),
-		jen.If(jen.List(jen.Id( /*"idx"*/ "_"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("id")), jen.Id("ok")).Block(
-			jen.Id("err").Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, name)).Params(jen.List(jen.Id("ctx"), jen.Id("id"))),
-			jen.Add(returnIfErrValue()),
-			//TODO remove from cache
-			//jen.Delete(jen.Id(EngineVar).Dot(idxname), jen.Id("id")),
-			//jen.Id(EngineVar).Dot(fldname).Op("=").Id(EngineVar).Dot(fldname).Index(jen.Id("idx")),
-			jen.Id(EngineVar).Dot(fldname).Op("=").Nil(),
-			jen.Id(EngineVar).Dot(idxname).Op("=").Nil(),
-			jen.Return(jen.Nil()),
-		),
-		jen.Return(
-			// TODO: return error?
-			jen.Nil(),
-		),
-	).Line()
-
-	ncg.b.Functions.Add(f)
-	return nil
-}
-
-func (ncg *DictionariesGenerator) generateDictNew(t *Entity, idField *Field) error {
-	name := t.Name
-	fname := ncg.desc.GetMethodName(MethodNew, name)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
-		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Id("err").Error())).BlockFunc(func(c *jen.Group) {
-
-		c.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx"))
-		c.Add(ncg.generateLockUnlockStmt(name, false))
-
-		if idField.HasModifier(AttrModifierIDAuto) {
-			c.If(
-				ncg.b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, true),
-			).Block(
-				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("dict: not empty id for New")),
-				jen.Return(),
-			)
-			c.List(jen.Id("id"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGenerateID, name)).Params(jen.Id("ctx"))
-			c.Add(returnIfErr())
-			c.Id("o").Dot(idField.Name).Op("=").Id("id")
-		} else {
-			c.If(
-				ncg.b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
-			).Block(
-				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("id should not be empty for New")),
-				jen.Return(),
-			)
-			c.If(
-				jen.List(jen.Id("_"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)),
-				jen.Id("ok"),
-			).Block(
-				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("duplicate id found")),
-				jen.Return(),
-			)
-		}
-		c.List(jen.Id("ret"), jen.Id("err")).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodCreate, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))).Line()
-		c.Add(returnIfErr())
-		c.Id(EngineVar).Dot(fldname).Op("=").Append(jen.Id(EngineVar).Dot(fldname), jen.Id("ret"))
-		c.Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)).Op("=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1)
-		qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
-		if qualIdxName != "" {
-			qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
-			derefOp := ""
-			if !qf.Type.NonNullable {
-				derefOp = "*"
-			}
-			c.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("o").Dot(qf.Name)).Op("=").Append(
-				jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("o").Dot(qf.Name)),
-				jen.Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1),
-			)
-		}
-		c.Return()
-	},
-	).Line()
-
-	ncg.b.Functions.Add(f)
-	return nil
-}
+//func (ncg *DictionariesGenerator) generateDictNew(t *Entity, idField *Field) error {
+//	name := t.Name
+//	fname := ncg.desc.GetMethodName(MethodNew, name)
+//	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
+//	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
+//	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
+//	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
+//		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Id("err").Error())).BlockFunc(func(c *jen.Group) {
+//
+//		c.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx"))
+//		c.Add(ncg.generateLockUnlockStmt(name, false))
+//
+//		if idField.HasModifier(AttrModifierIDAuto) {
+//			c.If(
+//				ncg.b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, true),
+//			).Block(
+//				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("dict: not empty id for New")),
+//				jen.Return(),
+//			)
+//			c.List(jen.Id("id"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGenerateID, name)).Params(jen.Id("ctx"))
+//			c.Add(returnIfErr())
+//			c.Id("o").Dot(idField.Name).Op("=").Id("id")
+//		} else {
+//			c.If(
+//				ncg.b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
+//			).Block(
+//				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("id should not be empty for New")),
+//				jen.Return(),
+//			)
+//			c.If(
+//				jen.List(jen.Id("_"), jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)),
+//				jen.Id("ok"),
+//			).Block(
+//				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("duplicate id found")),
+//				jen.Return(),
+//			)
+//		}
+//		c.List(jen.Id("ret"), jen.Id("err")).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodCreate, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))).Line()
+//		c.Add(returnIfErr())
+//		c.Id(EngineVar).Dot(fldname).Op("=").Append(jen.Id(EngineVar).Dot(fldname), jen.Id("ret"))
+//		c.Id(EngineVar).Dot(idxname).Index(jen.Id("o").Dot(idField.Name)).Op("=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1)
+//		qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
+//		if qualIdxName != "" {
+//			qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
+//			derefOp := ""
+//			if !qf.Type.NonNullable {
+//				derefOp = "*"
+//			}
+//			c.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("o").Dot(qf.Name)).Op("=").Append(
+//				jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("o").Dot(qf.Name)),
+//				jen.Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1),
+//			)
+//		}
+//		c.Return()
+//	},
+//	).Line()
+//
+//	ncg.b.Functions.Add(f)
+//	return nil
+//}
 
 func (ncg *DictionariesGenerator) generateAllDictGetter(t *Entity, idType *TypeRef) error {
 	name := t.Name
 	fname := ncg.desc.GetMethodName(MethodGetAll, name)
 	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
+	//qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
 	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
 	var qualIDFld *Field
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).ParamsFunc(func(g *jen.Group) {
 		g.Id("ctx").Qual("context", "Context")
-		if qualIdxName != "" {
+		if t.FB(FeatureDictKind, FDQualified) {
 			qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
 			qualIDFld = qt.GetIdField()
 			switch qualIDFld.Type.Type {
@@ -402,7 +443,9 @@ func (ncg *DictionariesGenerator) generateAllDictGetter(t *Entity, idType *TypeR
 	}).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
 		g.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx"))
 		g.Add(ncg.generateLockUnlockStmt(name, true))
-		if qualIdxName != "" {
+		if qf, ok := t.Features.GetField(FeatureDictKind, FDQualifier); ok {
+			dscs, _ := t.Features.Get(FeatureDictKind, FDIndexes)
+			qualIdxName := dscs.(map[string]indexDescriptor)[qf.Name].engFieldName
 			g.If(jen.Len(jen.Id("qual")).Op(">").Lit(0)).Block(
 				jen.Id("ret").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Lit(0), jen.Len(jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Id("qual").Index(jen.Lit(0))))),
 				jen.For(jen.List(jen.Id("_"), jen.Id("q")).Op(":=").Range().Id("qual")).Block(
@@ -427,9 +470,9 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 	name := t.Name
 	fname := fmt.Sprintf(DictCacheLoaderTempl, name)
 	fldname := t.FS(FeatureDictKind, FDCacheFieldName)
-	qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
-	idxname := t.FS(FeatureDictKind, FDIdxFieldName)
-	idt, _ := ncg.b.addType(&jen.Statement{}, idField.Type)
+	//qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
+	//idxname := t.FS(FeatureDictKind, FDIdxFieldName)
+	//idt, _ := ncg.b.addType(&jen.Statement{}, idField.Type)
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Error().Block(
 		jen.If(jen.Id(EngineVar).Dot(fldname).Op("==").Nil()).Block(
 			ncg.generateLockUnlockStmt(name, false).
@@ -465,35 +508,79 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 					}
 				}
 				g.Id(EngineVar).Dot(fldname).Op("=").Id("items")
-				g.Id(EngineVar).Dot(idxname).Op("=").Map(idt).Int().Values()
-				if qualIdxName != "" {
-					var keyType *jen.Statement
-					qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
-					idfld := qt.GetIdField()
-					switch idfld.Type.Type {
-					case TipInt:
-						keyType = jen.Int()
-					case TipString:
-						keyType = jen.String()
-					default:
-						ncg.desc.AddError(fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", qt.Pos))
-						return
-					}
-					g.Id(EngineVar).Dot(qualIdxName).Op("=").Map(keyType).Index().Int().Values()
-				}
-				g.For(jen.List(jen.Id("idx"), jen.Id("val")).Op(":=").Range().Id("items")).BlockFunc(func(g *jen.Group) {
-					g.Id(EngineVar).Dot(idxname).Index(jen.Id("val").Dot(idField.Name)).Op("=").Id("idx")
-					if qualIdxName != "" {
-						qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
-						derefOp := ""
-						if !qf.Type.NonNullable {
-							derefOp = "*"
+				//g.Id(EngineVar).Dot(idxname).Op("=").Map(idt).Int().Values()
+				if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+					indexes := idxs.(map[string]indexDescriptor)
+					for _, descriptor := range indexes {
+						elementType := jen.Int()
+						if !descriptor.unique {
+							elementType = jen.Index().Int()
 						}
-						g.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("val").Dot(qf.Name)).Op("=").Append(
-							jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Id("val").Dot(qf.Name)),
-							jen.Id("idx"),
-						)
+						g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
 					}
+				}
+				//if qualIdxName != "" {
+				//	var keyType *jen.Statement
+				//	qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
+				//	idfld := qt.GetIdField()
+				//	switch idfld.Type.Type {
+				//	case TipInt:
+				//		keyType = jen.Int()
+				//	case TipString:
+				//		keyType = jen.String()
+				//	default:
+				//		ncg.desc.AddError(fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", qt.Pos))
+				//		return
+				//	}
+				//	g.Id(EngineVar).Dot(qualIdxName).Op("=").Map(keyType).Index().Int().Values()
+				//}
+				g.For(jen.List(jen.Id("idx"), jen.Id("val")).Op(":=").Range().Id("items")).BlockFunc(func(g *jen.Group) {
+
+					g.Add(ncg.indexesStatement(t, "val", "idx"))
+					//if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+					//	indexes := idxs.(map[string]indexDescriptor)
+					//	for _, descriptor := range indexes {
+					//		derefOp := ""
+					//		if !descriptor.field.Type.NonNullable {
+					//			derefOp = "*"
+					//		}
+					//		qfStmt := jen.Id("val").Dot(descriptor.field.Name)
+					//		qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
+					//		var idxStmt jen.Code
+					//		if descriptor.unique {
+					//			idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Id("idx")
+					//		} else {
+					//			idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Append(
+					//				jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref),
+					//				jen.Id("idx"),
+					//			)
+					//		}
+					//		if descriptor.field.Type.NonNullable {
+					//			g.Add(idxStmt)
+					//		} else {
+					//			g.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
+					//		}
+					//	}
+					//}
+
+					//if qualIdxName != "" {
+					//	qf, _ := t.Features.GetField(FeatureDictKind, FDQualifier)
+					//	derefOp := ""
+					//	if !qf.Type.NonNullable {
+					//		derefOp = "*"
+					//	}
+					//	qfStmt := jen.Id("val").Dot(qf.Name)
+					//	qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
+					//	idxStmt := jen.Id(EngineVar).Dot(qualIdxName).Index(qfStmtDeref).Op("=").Append(
+					//		jen.Id(EngineVar).Dot(qualIdxName).Index(qfStmtDeref),
+					//		jen.Id("idx"),
+					//	)
+					//	if qf.Type.NonNullable {
+					//		g.Add(idxStmt)
+					//	} else {
+					//		g.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
+					//	}
+					//}
 				})
 			}),
 		),
@@ -710,4 +797,168 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 		)
 	}
 	return nil
+}
+
+func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+	if module == CodeFragmentModuleGeneral {
+		if cf, ok := ctx.(*CodeFragmentContext); ok {
+			if cf.Entity != nil && cf.Entity.HasModifier(TypeModifierDictionary) {
+				if (action == MethodGet || action == MethodSet || action == MethodNew || action == MethodDelete) &&
+					point == CFGPointMainAction {
+					fldname := cf.Entity.FS(FeatureDictKind, FDCacheFieldName)
+					idxname := cf.Entity.FS(FeatureDictKind, FDIdxFieldName)
+					loadername := fmt.Sprintf(DictCacheLoaderTempl, cf.TypeName)
+					cf.Add(jen.Id(EngineVar).Dot(loadername).Params(cf.GetParam(ParamContext)))
+					idField := cf.Entity.GetIdField()
+					var id jen.Code
+					idx := jen.Id("idx")
+					readLock := false
+					if action == MethodGet {
+						id = cf.GetParam(ParamID)
+						readLock = true
+					} else if action == MethodSet {
+						id = cf.GetParam(ParamObject).Dot(idField.Name)
+					} else if action == MethodNew {
+						id = cf.GetParam(ParamObject).Dot(idField.Name)
+						idx = jen.Id("_")
+					} else if action == MethodDelete {
+						id = cf.GetParam(ParamID)
+						idx = jen.Id("_")
+					}
+					cf.Add(ncg.generateLockUnlockStmt(cf.TypeName, readLock))
+
+					stmt := jen.If(
+						jen.List(idx, jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(id),
+						jen.Id("ok"),
+					).BlockFunc(func(g *jen.Group) {
+						cf.Push(g)
+						if action == MethodGet {
+							g.Id(cf.GetObjVarName()).Op("=").Id(EngineVar).Dot(fldname).Index(idx)
+						} else if action == MethodSet {
+							g.Id(EngineVar).Dot(fldname).Index(idx).Op("=").Add(cf.GetParam(ParamObject))
+							g.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject)))
+						} else if action == MethodNew {
+							g.Add(cf.GetErr().Op("=").Qual("errors", "New").Params(jen.Lit("duplicate id found")))
+							g.Add(jen.Return())
+						} else if action == MethodDelete {
+							cf.Add(cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamID)))
+							cf.AddCheckError()
+							//TODO remove from cache
+							//jen.Delete(jen.Id(EngineVar).Dot(idxname), jen.Id("id")),
+							//jen.Id(EngineVar).Dot(fldname).Op("=").Id(EngineVar).Dot(fldname).Index(jen.Id("idx")),
+							g.Id(EngineVar).Dot(fldname).Op("=").Nil()
+							g.Id(EngineVar).Dot(idxname).Op("=").Nil()
+						}
+						cf.Pop()
+					})
+					if action != MethodNew {
+						stmt.Else().Block(
+							cf.GetErr().Op("=").Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", cf.TypeName)), id),
+						)
+					}
+					cf.Add(stmt)
+					if action == MethodNew {
+						cf.Add(jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodCreate, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject))))
+						cf.Add(returnIfErr())
+						cf.Add(jen.Id(EngineVar).Dot(fldname).Op("=").Append(jen.Id(EngineVar).Dot(fldname), cf.GetObjVar()))
+						cf.Add(jen.Id("idx").Op(":=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1))
+						cf.Add(ncg.indexesStatement(cf.Entity, cf.GetObjVarName(), "idx"))
+
+						//cf.Add(jen.Id(EngineVar).Dot(idxname).Index(cf.GetObjVar().Dot(idField.Name)).Op("=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1))
+						//if qf, ok := cf.Entity.Features.GetField(FeatureDictKind, FDQualifier); ok {
+						//	dscs, _ := cf.Entity.Features.Get(FeatureDictKind, FDIndexes)
+						//	qualIdxName := dscs.(map[string]indexDescriptor)[qf.Name].engFieldName
+						//	qf, _ := cf.Entity.Features.GetField(FeatureDictKind, FDQualifier)
+						//	derefOp := ""
+						//	if !qf.Type.NonNullable {
+						//		derefOp = "*"
+						//	}
+						//	qualIndexUpdate := jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Add(cf.GetObjVar()).Dot(qf.Name)).Op("=").Append(
+						//		jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Add(cf.GetObjVar()).Dot(qf.Name)),
+						//		jen.Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1),
+						//	)
+						//	if qf.Type.NonNullable {
+						//		cf.Add(qualIndexUpdate)
+						//	} else {
+						//		cf.Add(jen.If(jen.Id("o").Dot(qf.Name).Op("!=").Nil()).Block(qualIndexUpdate))
+						//	}
+						//
+						//}
+					}
+					return true
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (ncg *DictionariesGenerator) addIndexDescriptor(t *Entity, f *Field, unique bool) (string, error) {
+	var descriptors map[string]indexDescriptor
+	if ds, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+		descriptors, _ = ds.(map[string]indexDescriptor)
+	} else {
+		descriptors = map[string]indexDescriptor{}
+		t.Features.Set(FeatureDictKind, FDIndexes, descriptors)
+	}
+	name := fmt.Sprintf(DictQualIndexCacheTempl, t.Name, f.Name)
+	if f.IsIdField() {
+		name = fmt.Sprintf(DictIndexCacheTempl, t.Name)
+	}
+	tip := f.Type.Type
+	if f.FB(FeatureDictKind, FDQualifier) {
+		qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
+		idfld := qt.GetIdField()
+		tip = idfld.Type.Type
+	}
+	var keyType *jen.Statement
+	switch tip {
+	case TipInt:
+		keyType = jen.Int()
+	case TipString:
+		keyType = jen.String()
+	default:
+		if f.FB(FeatureDictKind, FDQualifier) {
+			return "", fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", f.Pos)
+		}
+		return "", fmt.Errorf("at %s: only int and string fields may be used for indexes", f.Pos)
+	}
+	descriptors[f.Name] = indexDescriptor{
+		field:        f,
+		engFieldName: name,
+		unique:       unique,
+		keyType:      keyType,
+	}
+	return name, nil
+}
+
+func (ncg *DictionariesGenerator) indexesStatement(t *Entity, value string, index string) jen.Code {
+	ret := &jen.Statement{}
+	if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+		indexes := idxs.(map[string]indexDescriptor)
+		for _, descriptor := range indexes {
+			derefOp := ""
+			if !descriptor.field.Type.NonNullable {
+				derefOp = "*"
+			}
+			qfStmt := jen.Id(value).Dot(descriptor.field.Name)
+			qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
+			var idxStmt jen.Code
+			if descriptor.unique {
+				idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Id(index)
+			} else {
+				idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Append(
+					jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref),
+					jen.Id(index),
+				)
+			}
+			if descriptor.field.Type.NonNullable {
+				ret.Add(idxStmt)
+			} else {
+				ret.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
+			}
+			ret.Line()
+		}
+	}
+	return ret
 }

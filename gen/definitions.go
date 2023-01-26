@@ -49,6 +49,18 @@ type DescriptorAware interface {
 	SetDescriptor(proj *Project)
 }
 
+//CodeFragmentProvider provides fragment of code
+type CodeFragmentProvider interface {
+	//ProvideCodeFragment should return code fragment for given point
+	// module is high-level generation abstraction (e.g., go skeleton or db)
+	// action is more low-level (like setter) and depends on module
+	// point is place inside action (e.g. function-enter)
+	// ctx contains context like params, variables names etc.
+	// for go it should be *CodeFragmentContext instance and code should be added via this object;
+	//  return value of nil in this case shows that nothing was added;
+	ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{}
+}
+
 //CodeHelperFunc Feature type for helping generate code (params depends on feature)
 type CodeHelperFunc func(args ...interface{}) jen.Code
 
@@ -69,6 +81,8 @@ type HookArgsDescriptor struct {
 	Obj interface{}
 	//Params - additional params with their names
 	Params []HookArgParam
+	//ErrVar - assign error return value to variable
+	ErrVar interface{}
 }
 
 //HookFeatureFunc func can be returned as feature that can create code for hook
@@ -90,7 +104,7 @@ const (
 	MethodDelete
 	//MethodGenerateID returnes id for new entity
 	MethodGenerateID
-	//MethodGetAll is setter
+	//MethodGetAll may be used for types with small amount of instances (dictionaries, etc)
 	MethodGetAll
 	//MethodInit inits new struct (if necessary fills id with auto value)
 	MethodInit
@@ -123,6 +137,10 @@ const (
 	MethodChanged
 
 	methodMax
+	EngineNotAMethod
+	MethodEnginePrepare
+	MethodEngineStart
+	MethodEngineRegisterService
 )
 
 // MethodsNamesTemplates contains templates for standart methods names
@@ -151,10 +169,9 @@ var MethodsNamesTemplates = [methodMax]string{
 const (
 	TipString = "string"
 	TipInt    = "int"
-	//tipIDRef  = "int"
-	TipFloat = "float"
-	TipBool  = "bool"
-	TipDate  = "date"
+	TipFloat  = "float"
+	TipBool   = "bool"
+	TipDate   = "date"
 
 	EngineVar = "eng"
 
@@ -208,21 +225,25 @@ const (
 	AFTEqual = "eq"
 	//AFTNotEqual - value for type find tag - not equal to
 	AFTNotEqual = "ne"
-	//AFTGreaterThan - value for type find tag - greater than
+	// AFTGreaterThan - value for type find tag - greater than
 	AFTGreaterThan = "gt"
-	//AFTGreaterThanOrEqual - value for type find tag - greater than or equal to
+	// AFTGreaterThanOrEqual - value for type find tag - greater than or equal to
 	AFTGreaterThanOrEqual = "gte"
-	//AFTLessThan - value for type find tag - less than
+	// AFTLessThan - value for type find tag - less than
 	AFTLessThan = "lt"
-	//AFTLessThanOrEqual - value for type find tag - less than or equal to
+	// AFTLessThanOrEqual - value for type find tag - less than or equal to
 	AFTLessThanOrEqual = "lte"
-	//AFTStartsWith - like or regexp for start
+	// AFTStartsWith - like or regexp for start
 	AFTStartsWith = "starts-with"
-	//AFTContains - like or regexp for start
+	// AFTContains - like or regexp for start
 	AFTContains = "contains"
-	//AFTIgnore - for deleted; if true - include deleted items
+	// AFTStartsWithIgnoreCase - like or regexp for start
+	AFTStartsWithIgnoreCase = "starts-with-ignore-case"
+	// AFTContainsIgnoreCase - like or regexp for start
+	AFTContainsIgnoreCase = "contains-ignore-case"
+	// AFTIgnore - for deleted; if true - include deleted items
 	AFTIgnore = "ignore"
-	//AFTIsNull - null nullable fields (value should be bool)
+	// AFTIsNull - null nullable fields (value should be bool)
 	AFTIsNull = "is-null"
 
 	// AnnotationCall - annotation for method
@@ -245,6 +266,9 @@ const (
 	AnnCfgGroup = "group"
 	//AnnCfgMutable shows that this config field can be changed (generates save func for it)
 	AnnCfgMutable = "mutable"
+
+	//AnnotationDefault set default value for entity's field
+	AnnotationDefault = "default"
 )
 
 type FeatureKind string
@@ -302,6 +326,8 @@ const (
 	FCGetterCode = "getter-code"
 	//FCIsNullCode returns code for IsAttrNull
 	FCIsNullCode = "is-attr-null"
+	//FCSetNullCode returns code for SetAttrNull
+	FCSetNullCode = "set-attr-null"
 	//FCAttrValueCode - code for access dereferenced attr value (returns code for e.g. *obj.attr); param (if any): obj
 	FCAttrValueCode = "get-attr-code"
 	//FCAttrSetCode - code to set dereferenced attr value  (returns code for e.g. *obj.attr = val); params (if any): obj, val
@@ -337,9 +363,12 @@ const (
 	//hooks for type
 	// creates for *Type; params: ctx Context.context, eng *Engine, old(new)Value *Type
 
-	//TypeHookCreate creates hook to call before new object creation; default name: "OnCreate"; can be set for singleton
+	//TypeHookCreate creates hook to call before new object creation; default name: "OnCreate"; can be set only for singleton
 	TypeHookCreate = "create"
 	//TypeHookChange creates hook to call before object change; default name: "OnChange";
+	// params: ctx Context.context, eng *Engine, oldValue *Type, newValue *Type
+	//  oldValue may ne nil for Create operation; newValue may be nil for Delete operation
+	//  should return error, if return not nil changes will not be saved
 	TypeHookChange = "change"
 	//TypeHookStart creates hook to call on singleton after all the objects created; default name: "OnStart";
 	TypeHookStart = "start"
@@ -347,6 +376,9 @@ const (
 	TypeHookMethod = "method"
 	//TypeHookTime allows to call method of singleton at specific time or periodically
 	TypeHookTime = "time"
+	//TypeHookDelete sets Entity's hook should be called before deleting an instance; default name OnDelete.
+	//  Function should return error; if not nil object will not be deleted
+	TypeHookDelete = "delete"
 
 	//hooks for fields
 
@@ -374,6 +406,7 @@ var hookFuncsTemmplates = map[string]string{
 	TypeHookStart:     "OnStart",
 	AttrHookSet:       "On%s%sSet",
 	AttrHookCalculate: "%sResolve%s",
+	TypeHookDelete:    "OnDelete",
 }
 
 const (

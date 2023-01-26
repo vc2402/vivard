@@ -23,10 +23,11 @@ const (
 	// jsAnnotationIDType   = "id_type"
 	AnnotationSkip = "skip"
 	// jsAnnotationFilePath = "filepath"
-	AnnotationTitle = "title"
-	AnnotationIcon  = "icon"
-	AnnotationColor = "color"
-	AnnotationForce = "force"
+	AnnotationTitle        = "title"
+	AnnotationIcon         = "icon"
+	AnnotationColor        = "color"
+	AnnotationForce        = "force"
+	AnnotationForceForFind = "findForce"
 )
 
 const (
@@ -403,7 +404,9 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						if n, ok := f.Annotations.GetStringAnnotation(Annotation, AnnotationName); ok {
 							if f.Type.Complex {
 								if f.Type.Array != nil {
-									if i == gen.GQLOperationGet {
+									if i == gen.GQLOperationGet ||
+										(i == gen.GQLOperationFind &&
+											f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForceForFind, false)) {
 										n, err = cg.getQueryForEmbeddedType(n, f, e)
 										if err != nil {
 											cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
@@ -819,6 +822,15 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 		"InputFieldType": func(f *gen.Field) string {
 			return f.FS(Features, FInputType)
 		},
+		"SetNullFields": func(e *gen.Entity) []string {
+			var ret []string
+			for _, field := range e.GetFields(true, false) {
+				if setNullField := field.FS(gen.GQLFeatures, gen.GQLFSetNullInputField); setNullField != "" {
+					ret = append(ret, setNullField)
+				}
+			}
+			return ret
+		},
 	}
 }
 
@@ -877,7 +889,7 @@ export function {{InstanceGenerator .}}(): {{TypeName .}} {
 `
 const inputTypeTemplate = `
 {{if RequiresInput .}}
-export type {{InputTypeName .}} = { {{range GetFields .}} {{if RequiresInput . }}{{InputFieldName .}}{{if not .IsIdField}}?{{end}}: {{InputFieldType .}},{{end}}{{end}} };
+export type {{InputTypeName .}} = { {{range GetFields .}} {{if RequiresInput . }}{{InputFieldName .}}{{if not .IsIdField}}?{{end}}: {{InputFieldType .}},{{end}}{{end}} {{range SetNullFields .}} {{.}}?: boolean, {{end}}};
 export function New{{InputTypeName .}}Instance(): {{InputTypeName .}} {
   return {
     {{range GetFields .}}{{if .IsIdField}}{{FieldName .}}: {{Init .}},{{end}}{{end}}

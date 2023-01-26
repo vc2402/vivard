@@ -1,6 +1,6 @@
 module github.com/vc2402/vivard/mongo
 
-go 1.14
+go 1.18
 
 require (
 	github.com/sirupsen/logrus v1.8.1

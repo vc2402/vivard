@@ -43,7 +43,7 @@ const vueDictHTMLTemplate = `{{define "HTML"}}
         single-line
         hide-details
       ></v-text-field>
-      {{if DictWithQualifier .}}<{{LookupForQualifier .}} class="mx-5" v-model="qualifier" :returnObject="false" :multiple="true" :hideAdd="true" label="{{DictQualifierTitle}}"/>
+      {{if DictWithQualifier .}}<{{LookupForQualifier .}} class="mx-2" v-model="qualifier" :returnObject="false" :multiple="true" :hideAdd="true" label="{{DictQualifierTitle}}"/>
       {{end}}<v-btn v-if="!hideReload" color="success" icon text>
         <v-icon color="success" @click="load()">mdi-reload</v-icon>
       </v-btn>
@@ -67,15 +67,15 @@ const vueDictHTMLTemplate = `{{define "HTML"}}
         >
         <template v-slot:item="{item}">
           <tr>
-            {{range GetFields .}}<td class="table-cell">
-              {{if NeedIconForTable .}}<v-icon>{{TableIconName .}}</v-icon>{{else if eq (GUITableType .) "custom"}}<{{GUITableComponent .}} :item="item" :header="{value: '{{TableAttrName .}}'}" :value="item.{{TableAttrName .}}" />{{else}}{{"{{"}}item.{{TableAttrName .}}{{"}}"}}{{end}}
-            </td>{{end}}
+            {{range GetFields .}}{{if ShowInTable .}}<td class="table-cell">
+              {{if NeedIconForTable .}}<v-icon>{{"{{"}}item.{{TableIconName .}}{{"}}"}}</v-icon>{{else if eq (GUITableType .) "custom"}}<{{GUITableComponent .}} :item="item" :header="{value: '{{TableAttrName .}}'}" :value="item.{{TableAttrName .}}" />{{else if ne (TableAttrName .) ""}}{{"{{"}}{{if IsNullable .}}item.{{FieldName .}} && {{end}}item.{{TableAttrName .}}{{"}}"}}{{end}}
+            </td>{{end}}{{end}}
             <td>
               <div class="d-flex flex-row">
-              <v-btn v-if="!readonly" color="success" icon text @click="edit(item)">
-                <v-icon>mdi-pencil</v-icon>
+              <v-btn color="success" icon text @click="edit(item)">
+                <v-icon>{{"{{"}}readonly || !canEdit ? "mdi-eye" : "mdi-pencil"{{"}}"}}</v-icon>
               </v-btn>
-              <v-btn v-if="!readonly" color="warn" icon text @click="del(item)">
+              <v-btn v-if="!readonly && canDelete" color="warn" icon text @click="del(item)">
                 <v-icon>mdi-delete</v-icon>
               </v-btn>
               </div>
@@ -84,7 +84,7 @@ const vueDictHTMLTemplate = `{{define "HTML"}}
         </template>
       </v-data-table>
     </div>
-    <{{DialogComponent .}} ref="dialog"/>
+    <{{DialogComponent .}} :readonly="readonly || !canEdit" ref="dialog"/>
   </div>
 </template>
 {{end}}`
@@ -108,11 +108,13 @@ export default class {{DictEditComponent . false}} extends Vue {
   @Prop({default:false}) readonly!: boolean;
   @Prop({default:true}) showAddButton!: boolean;
   @Prop({default:false}) hideReload!: boolean;
+  @Prop({default:true}) canEdit!: boolean;
+  @Prop({default:true}) canDelete!: boolean;
   private problem = "";
   private search: string = "";
   private items: {{TypeName}}[] = [];
-  private headers = [{{range (GetFields .)}}
-  {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}", color: "{{GUITableColor .}}"{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}} }, {{end}}
+  private headers = [{{range (GetFields .)}}{{if ShowInTable .}}
+  {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}", color: "{{GUITableColor .}}"{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}} }, {{end}}{{end}}
   {text:"", value: ""}];
   
   private loading = false;{{if DictWithQualifier .}}
@@ -135,7 +137,7 @@ export default class {{DictEditComponent . false}} extends Vue {
   }
   async edit(item: any) {
     try {
-      let res = await (this.$refs.dialog as {{DialogComponent .}}).show(item);
+      let res = await (this.$refs.dialog as {{DialogComponent .}}).show(item.{{IDField}});
       if(res) {
         this.load();
       }
@@ -144,8 +146,14 @@ export default class {{DictEditComponent . false}} extends Vue {
     }
   }
   async del(item: any) {
-    // if(this.delFn)
-    //   this.delFn(this.getApollo(), item.id);
+    try {
+      let res = await (this.$refs.dialog as {{DialogComponent .}}).showForDelete(item.{{IDField}});
+      if(res) {
+        this.load();
+      }
+    } catch(exc) {
+      this.problem = exc.toString();
+    }
   }
   async add() {
     try {

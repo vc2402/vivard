@@ -95,6 +95,8 @@ const (
 	vcaLabel = "label"
 	//vcaRoles - roles that has access to this element (tab currently)
 	vcaRoles = "roles"
+	// vcaResource - check access for resource
+	vcaResource = "resource"
 	//vcaOrder - order for field (int) if not specified - 1000
 	vcaOrder = "order"
 	//vcaRow - row int (if not set - 1; if not set for all of the field - will be formed with wrap)
@@ -110,11 +112,16 @@ const (
 	//vcaPrefix - text suffix for v-text-field
 	vcaPrefix = "prefix"
 	//vcaPrependIcon - icon to put before component: name [color [<other v-icon attrs, like small...]]
-	vcaPrependIcon = "prepend-icon"
+	vcaPrependIcon = "prependIcon"
 	//vcaAppendIcon - icon to put after component: name [color [<other v-icon attrs, like small...]]
-	vcaAppendIcon = "append-icon"
-
-	vcaDefault = "default"
+	vcaAppendIcon = "appendIcon"
+	//vcaReadonly - hide plus button in lookup
+	vcaReadonly = "readonly"
+	// may be used instead of text-field may be bool or int (number of lines)
+	vcaTextArea = "textArea"
+	vcaDefault  = "default"
+	// vcaNoWrap may be used for flex forms (by default flex-wrap class used)
+	vcaNoWrap = "noWrap"
 )
 
 const (
@@ -180,6 +187,13 @@ const (
 	fVKUseInDialogIgnore = "ignore"
 	fVKUseInDialogForm   = "form"
 	fVKUseInDialogLookup = "lookup"
+)
+
+const (
+	literalOKButton     = "okButton"
+	literalDeleteButton = "deleteButton"
+	literalCloseButton  = "closeButton"
+	literalDeleteVerb   = "deleteVerb"
 )
 
 // var vcCustomComponents = map[string]string{
@@ -445,21 +459,20 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			return err
 		}
 	} else {
-		th, err := cg.newHelper("VUE", e, outDir)
+		//th, err := cg.newHelper("VUE", e, outDir)
+		th, err := cg.newFormHelper("LOOKUP", e, vueLookupAnnotation, "", outDir)
 		if err != nil {
 			return err
 		}
-		// p := path.Join(outDir, e.Name+"DialogComponent.vue")
-		// e.Annotations.AddTag(vueAnnotation, vueAnnotationFilePath, p)
-		if e.FB(featureVueKind, fVKDialogRequired) {
-			err := th.createDialog()
-			if err != nil {
-				return err
-			}
-		}
+
+		//if e.FB(featureVueKind, fVKDialogRequired) {
+		//	err := th.createDialog()
+		//	if err != nil {
+		//		return err
+		//	}
+		//}
+
 		if th.idField != nil {
-			// p = path.Join(outDir, e.Name+"LookupComponent.vue")
-			// e.Annotations.AddTag(vueAnnotation, vueAnnotationFilePath, p)
 			p := e.FS(featureVueKind, fVKLookupComponentPath)
 			p = path.Join(outDir, p)
 			f, err := os.Create(p)
@@ -478,7 +491,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			if th.err != nil {
 				return fmt.Errorf("Error while parsing template: %v\n", th.err)
 			}
-			err = th.templ.Execute(f, e)
+			err = th.templ.Execute(f, th)
 			if err != nil {
 				return fmt.Errorf("while executing template for LookupComponent for %s: %v", e.Name, err)
 			}
@@ -488,6 +501,10 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 		p := e.FS(featureVueKind, fVKTypeDescriptorPath)
 
 		if p != "" {
+			th, err := cg.newFormHelper("TABLE", e, vueTableAnnotation, "", outDir)
+			if err != nil {
+				return err
+			}
 			p = path.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
@@ -498,7 +515,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			if th.err != nil {
 				return fmt.Errorf("Error while parsing template: %v", th.err)
 			}
-			err = th.templ.Execute(f, e)
+			err = th.templ.Execute(f, th)
 			if err != nil {
 				return fmt.Errorf("while executing template for TypeDescriptor for %s: %v", e.Name, err)
 			}
@@ -507,6 +524,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 		p = e.FS(featureVueKind, fVKViewComponentPath)
 
 		if p != "" {
+			th, err = cg.newFormHelper("VIEW", e, vueViewAnnotation, "", outDir)
 			p = path.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
@@ -527,9 +545,20 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			if th.err != nil {
 				return fmt.Errorf("Error while parsing view template: %v", th.err)
 			}
-			err = th.templ.Execute(f, e)
+			err = th.templ.Execute(f, th)
 			if err != nil {
 				return fmt.Errorf("while executing template for ViewComponent for %s: %v", e.Name, err)
+			}
+		}
+
+		if e.FB(featureVueKind, fVKDialogRequired) {
+			th, err = cg.newFormHelper("DIALOG", e, vueDialogAnnotation, "", outDir)
+			if err != nil {
+				return err
+			}
+			err := th.createDialog()
+			if err != nil {
+				return err
 			}
 		}
 
@@ -766,65 +795,66 @@ type vcComponentDescriptor struct {
 }
 
 //Dialog
-var htmlDialogTemplate = `
-{{define "HTML"}}
-<template>
-  <v-dialog
-    v-model="showDialog"
-    persistent
-    scrollable
-    :fullscreen="$vuetify.breakpoint.sm"
-    :width="$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
-  >
-    <v-card >
-      <v-card-title
-        class="headline lighten-2"
-        primary-title
-      >
-        <v-layout row justify-space-between>
-          <v-flex>
-            {{"{{title}}"}}
-          </v-flex>
-          
-          <v-spacer></v-spacer>
-          <v-btn
-            text
-            icon
-            color="primary"
-            @click="close()"
-          >
-            <v-icon>mdi-close</v-icon>
-          </v-btn>
-        </v-layout>
-      </v-card-title>
-
-      <v-card-text>
-        <v-progress-linear v-if="loading" intermediate></v-progress-linear>
-        <div v-if="problem">{{"{{problem}}"}}</div>
-        <div class="d-flex flex-row flex-wrap justify-space-around align-center" v-if="value">
-          {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID . false}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{end}}{{if not (IsID . true)}}<div class="mx-5"{{if IsID . false}} v-if="isNew"{{end}}>{{template "DIALOG_INPUT_FIELD" .}}</div>{{end}}{{end}}{{end}}
-        </div>
-      </v-card-text>
-      <v-divider></v-divider>
-      <v-card-actions>
-        <v-btn
-          color="primary"
-          @click="close()"
-        >
-          Close
-        </v-btn>
-        <v-btn
-          color="primary"
-          @click="close(true)"
-        >
-          {{"{{okText}}"}}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
-</template>
-{{end}}
-`
+//var htmlDialogTemplate = `
+//{{define "HTML"}}
+//<template>
+//  <v-dialog
+//    v-model="showDialog"
+//    persistent
+//    scrollable
+//    :fullscreen="$vuetify.breakpoint.sm"
+//    :width="$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
+//  >
+//    <v-card >
+//      <v-card-title
+//        class="headline lighten-2"
+//        primary-title
+//      >
+//        <v-layout row justify-space-between>
+//          <v-flex>
+//            {{"{{title}}"}}
+//          </v-flex>
+//
+//          <v-spacer></v-spacer>
+//          <v-btn
+//            text
+//            icon
+//            color="primary"
+//            @click="close()"
+//          >
+//            <v-icon>mdi-close</v-icon>
+//          </v-btn>
+//        </v-layout>
+//      </v-card-title>
+//
+//      <v-card-text>
+//        <v-progress-linear v-if="loading" intermediate></v-progress-linear>
+//        <div v-if="problem">{{"{{problem}}"}}</div>
+//        <div class="d-flex flex-row flex-wrap justify-space-around align-center" v-if="value">
+//          {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID .}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{end}}{{if IsAuto .}}<div v-else class="mx-2">{{template "DIALOG_INPUT_FIELD" .}}</div>{{end}}
+//          {{else}}<div class="mx-2">{{template "DIALOG_INPUT_FIELD" .}}</div>{{end}}{{end}}
+//        </div>
+//      </v-card-text>
+//      <v-divider></v-divider>
+//      <v-card-actions>
+//        <v-btn
+//          color="primary"
+//          @click="close()"
+//        >
+//          Close
+//        </v-btn>
+//        <v-btn
+//          color="primary"
+//          @click="close(true)"
+//        >
+//          {{"{{okText}}"}}
+//        </v-btn>
+//      </v-card-actions>
+//    </v-card>
+//  </v-dialog>
+//</template>
+//{{end}}
+//`
 
 // const htmlInputTemplate = `{{define "DIALOG_INPUT_FIELD"}}{{if eq .Type.Type "string"}}{{template "TEXT_INPUT" .}}
 //   {{else if eq .Type.Type "int"}}{{template "TEXT_INPUT" .}}
@@ -858,100 +888,102 @@ var htmlDialogTemplate = `
 
 const typeDescriptorTSTemplate = `
 export const {{TypeName .}}Descriptor = {
-  id: "{{IDField .}}",
+  id: "{{IDField}}",
   headers: [{{range (GetFields .)}} {{if ShowInTable .}}
-  {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}"{{if ne (GUITableColor .) ""}}, color: "{{GUITableColor .}}"{{end}}{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}}{{if ne (GUITableTooltip .) ""}}, tooltip: "{{GUITableTooltip .}}"{{end}}, editable: {{EditableInTable .}}}, {{end}}{{end}}]
+    {text: "{{Label .}}", value: "{{TableAttrName .}}", {{if NeedIconForTable .}}icon: "{{TableIconName .}}", {{end}}type: "{{GUITableType .}}"{{if ne (GUITableColor .) ""}}, color: "{{GUITableColor .}}"{{end}}{{if ne (GUITableComponent .) ""}}, component: "{{GUITableComponent .}}"{{end}}{{if ne (GUITableTooltip .) ""}}, tooltip: "{{GUITableTooltip .}}"{{end}}, editable: {{EditableInTable .}}{{if ne (FieldRoles .) ""}}, roles: [{{FieldRoles .}}]{{end}}},{{end}}{{end}}
+  ]
 };
 `
-const vueDialogTSTemplate = `
-{{define "TS"}}
-<script lang="ts">
-import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
-import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{SaveQuery .}}, {{CreateQuery .}} } from '{{TypesFilePath .}}';
-{{range RequiredComponents}}
-import {{.Comp}} from '{{.Imp}}'{{end}}
-{{range AdditionalComponents}}
-import {{.Comp}} from '{{.Imp}}';{{end}}
 
-@Component({
-  name: "{{DialogComponent .}}", 
-  components:{
-    {{range RequiredComponents}}
-      {{.Comp}},{{end}}
-    {{range AdditionalComponents}}
-      {{.Comp}},{{end}}
-  }
-})
-export default class {{DialogComponent .}} extends Vue {
-  private value: {{TypeName .}} | null = null;
-  private isNew = false;
-  private title: string = "{{Title .}}";
-  private okText: string = "OK";
-  private showDialog: boolean = false;
-  private resolve: (res: {{TypeName .}}|null)=>void = () => {};
-  private reject: (err: any)=>void = () => {};
-  private loading = false;
-  private problem = "";
-  doNotGQL = {{NotExported .}}
-  
-  show(v: {{TypeName .}}|{{IDType .}}|null): Promise<{{TypeName .}}|null> {
-    this.showDialog = true;
-    if(!v) {
-      this.value = New{{TypeName .}}Instance();
-      this.isNew = true;
-    } else if(typeof v === "object") {
-      this.value = v;
-      this.isNew = false;
-    } else {
-      this.loadAndShow(v);
-      this.isNew = false;
-    }
-    return new Promise((resolve, reject) => {
-      this.resolve = resolve;
-      this.reject = reject;    
-    });
-  }
-  async loadAndShow(id: {{IDType .}}) {
-    this.loading = true;
-    try {
-      this.value = await {{GetQuery .}}({{ApolloClient}}, id);
-    } catch(exc) {
-      this.problem = exc.toString();
-    }
-    this.loading = false;
-  }
-  async saveAndClose() {
-    //TODO: check that all necessary fields are filled
-    try {
-      let res: {{TypeName .}}
-      if(this.doNotGQL) {
-        this.resolve(this.value)
-      } else {
-        if(this.isNew) {
-          res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
-        } else {
-          res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
-        }
-        this.resolve(res);
-      }
-      this.showDialog = false;
-    } catch(exc) {
-      this.reject(exc);
-    }
-  }
-  async close(save: boolean) {
-    if(!save) {
-      this.resolve(null);
-      this.showDialog = false;
-    } else {
-      this.saveAndClose();
-    }
-  }
-}
-</script>
-{{end}}
-`
+//const vueDialogTSTemplate = `
+//{{define "TS"}}
+//<script lang="ts">
+//import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
+//import VueApollo from 'vue-apollo';
+//import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{SaveQuery .}}, {{CreateQuery .}} } from '{{TypesFilePath .}}';
+//{{range RequiredComponents}}
+//import {{.Comp}} from '{{.Imp}}'{{end}}
+//{{range AdditionalComponents}}
+//import {{.Comp}} from '{{.Imp}}';{{end}}
+//
+//@Component({
+//  name: "{{DialogComponent .}}",
+//  components:{
+//    {{range RequiredComponents}}
+//      {{.Comp}},{{end}}
+//    {{range AdditionalComponents}}
+//      {{.Comp}},{{end}}
+//  }
+//})
+//export default class {{DialogComponent .}} extends Vue {
+//  private value: {{TypeName .}} | null = null;
+//  private isNew = false;
+//  private title: string = "{{Title .}}";
+//  private okText: string = "OK";
+//  private showDialog: boolean = false;
+//  private resolve: (res: {{TypeName .}}|null)=>void = () => {};
+//  private reject: (err: any)=>void = () => {};
+//  private loading = false;
+//  private problem = "";
+//  doNotGQL = {{NotExported .}}
+//
+//  show(v: {{TypeName .}}|{{IDType .}}|null): Promise<{{TypeName .}}|null> {
+//    this.showDialog = true;
+//    if(!v) {
+//      this.value = New{{TypeName .}}Instance();
+//      this.isNew = true;
+//    } else if(typeof v === "object") {
+//      this.value = v;
+//      this.isNew = false;
+//    } else {
+//      this.loadAndShow(v);
+//      this.isNew = false;
+//    }
+//    return new Promise((resolve, reject) => {
+//      this.resolve = resolve;
+//      this.reject = reject;
+//    });
+//  }
+//  async loadAndShow(id: {{IDType .}}) {
+//    this.loading = true;
+//    try {
+//      this.value = await {{GetQuery .}}({{ApolloClient}}, id);
+//    } catch(exc) {
+//      this.problem = exc.toString();
+//    }
+//    this.loading = false;
+//  }
+//  async saveAndClose() {
+//    //TODO: check that all necessary fields are filled
+//    try {
+//      let res: {{TypeName .}}
+//      if(this.doNotGQL) {
+//        this.resolve(this.value)
+//      } else {
+//        if(this.isNew) {
+//          res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
+//        } else {
+//          res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
+//        }
+//        this.resolve(res);
+//      }
+//      this.showDialog = false;
+//    } catch(exc) {
+//      this.reject(exc);
+//    }
+//  }
+//  async close(save: boolean) {
+//    if(!save) {
+//      this.resolve(null);
+//      this.showDialog = false;
+//    } else {
+//      this.saveAndClose();
+//    }
+//  }
+//}
+//</script>
+//{{end}}
+//`
 
 //CardView
 var htmlCardViewTemplate = `
@@ -972,15 +1004,15 @@ var htmlCardViewTemplate = `
 {{end}}
 `
 
-const htmlFieldViewTemplate = `{{define "VIEW_FIELD"}}{{if ShowInView .}}<div v-if="value.{{AttrName .}} != undefined || showEmpty" class="d-flex flex-column"><div class="field-value">{{if eq .Type.Type "string"}}{{template "TEXT_VIEW" .}}
-  {{else if eq .Type.Type "int"}}{{template "TEXT_VIEW" .}}
-  {{else if eq .Type.Type "float"}}{{template "TEXT_VIEW" .}}
-  {{else if eq .Type.Type "date"}}{{template "DATE_VIEW" .}}
-  {{else if eq .Type.Type "bool"}}{{template "BOOL_VIEW" .}}
+const htmlFieldViewTemplate = `{{define "VIEW_FIELD"}}{{if ShowInView .}}<div v-if="value.{{AttrName .}} != undefined || showEmpty" class="d-flex flex-column"><div class="field-value">{{if eq (TypeForView .) "string"}}{{template "TEXT_VIEW" .}}
+  {{else if eq (TypeForView .) "int"}}{{template "TEXT_VIEW" .}}
+  {{else if eq (TypeForView .) "float"}}{{template "TEXT_VIEW" .}}
+  {{else if eq (TypeForView .) "date"}}{{template "DATE_VIEW" .}}
+  {{else if eq (TypeForView .) "bool"}}{{template "BOOL_VIEW" .}}
   {{else}}{{template "COMPLEX_VIEW" .}}{{end}}</div>
   <div class="field-title">{{Label .}}</div></div>{{end}}{{end}}`
 
-const htmlFieldViewTextTemplate = `{{define "TEXT_VIEW"}}{{"{{"}}value.{{FieldName .}}{{"}}"}}{{end}}`
+const htmlFieldViewTextTemplate = `{{define "TEXT_VIEW"}}{{if IsIcon .}}<v-icon>{{end}}{{"{{"}}value.{{FieldName .}}{{"}}"}}{{if IsIcon .}}</v-icon>{{end}}{{end}}`
 const htmlFieldViewIntTemplate = `{{define "INT_VIEW"}}{{"{{"}}value.{{FieldName .}}{{Filter "int" true}}{{"}}"}}{{end}}`
 const htmlFieldViewFloatTemplate = `{{define "FLOAT_VIEW"}}{{"{{"}}value.{{FieldName .}}{{Filter "float" true}}{{"}}"}}{{end}}`
 const htmlFieldViewDateTemplate = `{{define "DATE_VIEW"}}{{"{{"}}value.{{FieldName .}}{{Filter "date" true}}{{"}}"}}{{end}}`
@@ -998,13 +1030,13 @@ import { {{TypeName .}}{{if ne (IDType .) "" }}, {{GetQuery .}}{{end}} } from '{
 {{FiltersImports}}
 
 @Component({
-  name: "{{.Name}}CardViewComponent",
+  name: "{{TypeName}}CardViewComponent",
   filters: { 
     {{Filter "date"}},
     {{Filter "number"}}
   }
 })
-export default class {{.Name}}CardViewComponent extends Vue {
+export default class {{TypeName}}CardViewComponent extends Vue {
   @Prop() item: {{TypeName .}} {{if ne (IDType .) "" }} | {{IDType .}} {{end}}| undefined;
   @Prop({default:false}) showEmpty!: boolean;
   private value: {{TypeName .}} {{if ne (IDType .) "" }} | {{IDType .}} {{end}}| null = null;
@@ -1065,27 +1097,27 @@ var htmlDictionaryLookupTemplate = `
       :items="items"
       :readonly="readonly"
       :label="label"
-      :item-text="'{{ItemText .}}'"
+      :item-text="'{{ItemText}}'"
       :item-value="'{{ItemValue}}'"
       :return-object="returnObject"
       :loading="loading"
       :error-messages="problem"
       hide-no-data
-      {{if CanBeMultiple .}}:multiple="multiple"
+      {{if CanBeMultiple}}:multiple="multiple"
       :chips="multiple"
       :disabled="disabled"
       small-chips{{end}}
       @update:search-input="onChange($event)"
     >
-    <template v-slot:append-outer v-if="hideAdd == undefined">
-        {{if LookupWithAdd .}}<v-icon
+    <template v-slot:append-outer v-if="hideAdd == undefined && !disabled">
+        {{if LookupWithAdd}}<v-icon
           color="success"
           @click="onAdd()"
         >mdi-plus-box</v-icon>{{end}}
         <slot name="append"></slot>
     </template>
     </v-autocomplete>
-    {{if LookupWithAdd .}}<{{DialogComponent .}}  v-if="hideAdd == undefined" ref="dialog"/>{{end}}
+    {{if LookupWithAdd}}<{{DialogComponent .}}  v-if="hideAdd == undefined" ref="dialog"/>{{end}}
   </div>
 </template>
 {{end}}
@@ -1096,43 +1128,43 @@ const vueDictionaryLookupTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, {{ListQuery .}} } from '{{TypesFilePath .}}';
-{{if LookupWithAdd .}}import {{DialogComponent .}} from './{{DialogComponent .}}.vue';{{end}}
+import { {{TypeName .}}, {{ListQuery}} } from '{{TypesFilePath .}}';
+{{if LookupWithAdd}}import {{DialogComponent .}} from './{{DialogComponent .}}.vue';{{end}}
 
 @Component({
-  name: "{{.Name}}LookupComponent",
+  name: "{{TypeName}}LookupComponent",
   components: {
-    {{if LookupWithAdd .}}{{DialogComponent .}}{{end}}
+    {{if LookupWithAdd}}{{DialogComponent .}}{{end}}
   }
 })
-export default class {{.Name}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}};
+export default class {{TypeName}}LookupComponent extends Vue {
+  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}};
   @Prop() hint!: string;
   @Prop() label!: string;
   @Prop() readonly!: boolean;
-  @Prop({default:false}) returnId!: boolean;{{if CanBeMultiple .}}
+  @Prop({default:false}) returnId!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
   @Prop({default:true}) returnObject!: boolean
   @Prop({default:undefined}) hideAdd: boolean|undefined
   @Prop({default:false}) disabled!: boolean;{{if DictWithQualifier .}}
   @Prop() qualifier: any;{{end}}
 
-  private selected: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null = null;
+  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";
   
   @Watch('value') onValueChange() {
     if(this.returnId) {
-      this.selected = this.items.find(it=>it.{{IDField .}} == this.value as {{IDType .}}) || null;
+      this.selected = this.items.find(it=>it.{{IDField}} == this.value as {{IDType .}}) || null;
     } else {
       this.selected = this.value as {{TypeName .}};
     }
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null {
     //delete (this.selected as any).__typename;
     this.emitChanged();
-    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField .}} : this.selected;
+    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField}} : this.selected;
   }
   @Emit('change') emitChanged() {
     
@@ -1155,7 +1187,7 @@ export default class {{.Name}}LookupComponent extends Vue {
     this.loading = true;
     this.items = [];
     try {
-      let res = await {{ListQuery .}}({{ApolloClient}},{{ListQueryAttrs .}});
+      let res = await {{ListQuery}}({{ApolloClient}},{{ListQueryAttrs}});
       if(res) {
         this.items = res;
       }
@@ -1165,7 +1197,7 @@ export default class {{.Name}}LookupComponent extends Vue {
     this.loading = false;
   }
   
-   {{if LookupWithAdd .}}async onAdd() {
+   {{if LookupWithAdd}}async onAdd() {
     try {
       let res = await (this.$refs.dialog as {{DialogComponent .}}).show(null);
       if(res) {
@@ -1189,25 +1221,25 @@ const vueEntityLookupTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, {{LookupQuery .}}, {{GetQuery .}} } from '{{TypesFilePath .}}';
+import { {{TypeName .}}, {{LookupQuery}}, {{GetQuery .}} } from '{{TypesFilePath .}}';
 import {{DialogComponent .}} from './{{DialogComponent .}}.vue';
 
 @Component({
-  name: "{{.Name}}LookupComponent",
+  name: "{{TypeName}}LookupComponent",
   components: {
     {{DialogComponent .}}
   }
 })
-export default class {{.Name}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|{{IDType .}};
+export default class {{TypeName}}LookupComponent extends Vue {
+  @Prop() value!: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|{{IDType .}};
   @Prop() hint!: string;
   @Prop() label!: string;
   @Prop() readonly!: boolean;
   @Prop({default:true}) returnObject!: boolean
   @Prop({default:undefined}) hideAdd: string|undefined
-  @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple .}}
+  @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
-  private selected: {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|null = null;
+  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   @Prop({default:false}) returnId!: boolean;
   private items: {{TypeName .}}[] = [];
   private loading = false;
@@ -1219,7 +1251,7 @@ export default class {{.Name}}LookupComponent extends Vue {
   @Watch('value') onValueChange() {
     if(this.returnId && this.value) {
         this.fillSelectedFromId(this.value as {{IDType .}});
-    } else { {{if CanBeMultiple .}}
+    } else { {{if CanBeMultiple}}
       if(Array.isArray(this.value)) {
         this.selected = this.value as {{TypeName .}}[];
         //if(this.selected) {
@@ -1233,9 +1265,9 @@ export default class {{.Name}}LookupComponent extends Vue {
       }
     }
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}{{if CanBeMultiple .}}|{{TypeName .}}[]{{end}}|{{IDType .}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|{{IDType .}}|null {
     //delete (this.selected as any).__typename;
-    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField .}} : this.selected;
+    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField}} : this.selected;
   }
   @Watch('selected') onSelectedChanged() {
     this.selectedChanged();
@@ -1249,7 +1281,7 @@ export default class {{.Name}}LookupComponent extends Vue {
     this.items = [];
     try {
       this.lastSearch = this.searchString;
-      let res = await {{LookupQuery .}}({{ApolloClient}}, this.lastSearch);
+      let res = await {{LookupQuery}}({{ApolloClient}}, this.lastSearch);
       if(res) {
         this.items = res;
       }
@@ -1281,7 +1313,7 @@ export default class {{.Name}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    //if(this.selected && this.selected.{{ItemText .}} && this.selected.{{ItemText .}}.toString() == event)
+    //if(this.selected && this.selected.{{ItemText}} && this.selected.{{ItemText}}.toString() == event)
     if(this.searchString == event)
       return
     if(this.timer)

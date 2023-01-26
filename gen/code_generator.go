@@ -30,37 +30,35 @@ const (
 
 	FCGSingletonAttrName = "engineAttr"
 
-	//FCGType - jen.Code feature for *Entity and *Field;
+	// FCGType - jen.Code feature for *Entity and *Field;
 	FCGType = "type"
-	//FCGAttrType - jen.Code feature for *Field - type of attr in struct (may be pointer);
+	// FCGAttrType - jen.Code feature for *Field - type of attr in struct (may be pointer);
 	FCGAttrType = "attr-type"
-	//FCGName - string; name of field or struct
+	// FCGName - string; name of field or struct
 	FCGName = "name"
-	//FCGPointer - bool; true if attr is pointer in the struct
+	// FCGPointer - bool; true if attr is pointer in the struct
 	FCGPointer = "is-pointer"
-	//FCGBaseTypeAccessorName - name of function to access base type
+	// FCGBaseTypeAccessorName - name of function to access base type
 	FCGBaseTypeAccessorName = "base-type-accessor"
-	//FCGBaseTypeAccessorInterface - name of function to access base type
+	// FCGBaseTypeAccessorInterface - name of function to access base type
 	FCGBaseTypeAccessorInterface = "base-type-interface"
-	//FCGBaseTypeNameType - name of type for Type identifier
+	// FCGBaseTypeNameType - name of type for Type identifier
 	FCGBaseTypeNameType = "base-type-type-name"
-	//FCGDerivedTypeNameConst - name of constant for derived type
+	// FCGDerivedTypeNameConst - name of constant for derived type
 	FCGDerivedTypeNameConst = "derived-type-name"
-	//FCGCalculated - field should not be stored; instead will be resolved on demand
+	// FCGCalculated - field should not be stored; instead will be resolved on demand
 	FCGCalculated = "calculated"
-	//FCGScriptingRequired - feature for package - it is neccessary to create reference to scripting engine from package engine
+	// FCGScriptingRequired - feature for package - it is neccessary to create reference to scripting engine from package engine
 	FCGScriptingRequired = "scripting-required"
-	//FCGScriptingCreated - feature for package - it is neccessary to create reference to scripting engine from package engine
+	// FCGScriptingCreated - feature for package - it is neccessary to create reference to scripting engine from package engine
 	FCGScriptingCreated = "scripting-created"
-	//FCGCronRequired - feature for package - it is neccessary to create reference to cron service init engine init func (cronService var)
-	FCGCronRequired = "cron-required"
-	//FCGExtEngineVar - for Field - name of engine var in engine for external types
+	// FCGExtEngineVar - for Field - name of engine var in engine for external types
 	FCGExtEngineVar = "ext-engine-var"
-	//FCGDeletable - the entity is deletable
+	// FCGDeletable - the entity is deletable
 	FCGDeletable = "deletable"
-	//FCGDeletedFieldName - for entity; name of the deleted field (empty if not needed)
+	// FCGDeletedFieldName - for entity; name of the deleted field (empty if not needed)
 	FCGDeletedFieldName = "del-fld"
-	//FCGDeletedField - for field; set to true for DeletedOn field
+	// FCGDeletedField - for field; set to true for DeletedOn field
 	FCGDeletedField = "del-fld"
 )
 
@@ -300,6 +298,10 @@ func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj inter
 			if f, ok := obj.(*Field); ok {
 				return cg.getIsAttrNullFuncFeature(f), FeatureProvided
 			}
+		case FCSetNullCode:
+			if f, ok := obj.(*Field); ok {
+				return cg.getAttrSetNullFuncFeature(f), FeatureProvided
+			}
 		case FCAttrIsPointer:
 			if f, ok := obj.(*Field); ok {
 				return cg.getAttrIsPointerFeature(f), FeatureProvided
@@ -329,7 +331,7 @@ func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj inter
 					found = true
 				}
 			}
-		} else if name == TypeHookChange || name == TypeHookCreate || name == TypeHookStart {
+		} else if name == TypeHookChange || name == TypeHookCreate || name == TypeHookStart || name == TypeHookDelete {
 			if t, ok := obj.(*Entity); ok {
 				if hook, hok := t.HaveHook(name); hok {
 					value = hook.Value
@@ -364,6 +366,9 @@ func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj inter
 func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 	fields := jen.Statement{}
 	typeName := ent.Name
+	if ent.HasModifier(TypeModifierSingleton) {
+		fields.Add(jen.Id(EngineVar).Op("*").Id("Engine"))
+	}
 	if ent.BaseTypeName != "" {
 		bc := ent.GetBaseType()
 		f := jen.Op("*").Id(bc.FS(FeatGoKind, FCGName))
@@ -395,11 +400,19 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 		mtm, itsManyToMany := d.Features.GetEntity(FeaturesCommonKind, FCManyToManyType)
 		if compl, ok := d.Features.GetBool(FeaturesCommonKind, FCComplexAccessor); ok && compl {
 			var paramType jen.Code
+			codeForType := func(t string) jen.Code {
+				parts := strings.SplitN(t, ".", 2)
+				if len(parts) == 1 {
+					return jen.Id(t)
+				} else {
+					return jen.Qual(ent.Pckg.GetFullPackage(parts[0]), parts[1])
+				}
+			}
 			if itsOneToMany {
-				paramType = jen.Index().Op("*").Id(d.Type.Array.Type)
+				paramType = jen.Index().Op("*").Add(codeForType(d.Type.Array.Type))
 			} else {
 				if itsManyToMany {
-					paramType = jen.Index().Op("*").Id(d.Type.Array.Type)
+					paramType = jen.Index().Op("*").Add(codeForType(d.Type.Array.Type))
 				} else {
 					paramType, _ = cg.b.addType(&jen.Statement{}, d.Type, true) //jen.Op("*").Id(d.Type.Type)
 				}
@@ -432,8 +445,27 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 							}
 						} else if itsManyToMany {
 							if mtm.IsDictionary() {
-								if code := cg.desc.CallFeatureFunc(mtm, FeaturesCommonKind, FCListDictByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
-									g.Add(code)
+								if mtm.Pckg.Name == ent.Pckg.Name {
+									if code := cg.desc.CallFeatureFunc(mtm, FeaturesCommonKind, FCListDictByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
+										g.Add(code)
+										return
+									}
+								} else {
+									foreignEngine := ent.Pckg.GetExtEngineRef(mtm.Pckg.Name)
+									getterName := mtm.Pckg.GetMethodName(MethodGet, mtm.Name)
+									g.Id("ret").Op(":=").Make(paramType, jen.Len(jen.Id("obj").Dot(fieldName)))
+									g.Var().Id("err").Error()
+									g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("obj").Dot(fieldName)).Block(
+										jen.List(jen.Id("ret").Index(jen.Id("i")), jen.Id("err")).Op("=").
+											Id(EngineVar).Dot(foreignEngine).Dot(getterName).Params(
+											jen.Id("ctx"),
+											jen.Id("v"),
+										),
+										jen.If(jen.Id("err").Op("!=").Nil()).Block(
+											jen.Return(jen.Nil(), jen.Id("err")),
+										),
+									)
+									g.Return(jen.Id("ret"), jen.Nil())
 									return
 								}
 							}
@@ -608,6 +640,7 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 	idstmt := &jen.Statement{}
 	initstmt := &jen.Statement{}
 	initParams := []jen.Code{jen.Id("ctx").Qual("context", "Context")}
+	_, isFind := ent.Features.Get(FeaturesAPIKind, FAPIFindFor)
 
 	if ent.HasModifier(TypeModifierAbstract) {
 		tt := ent.FS(FeatGoKind, FCGBaseTypeNameType)
@@ -649,7 +682,7 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 		if d.FB(FeatGoKind, FCGCalculated) {
 			continue
 		}
-		if d.Name == ExtendableTypeDescriptorFieldName {
+		if d.Name == ExtendableTypeDescriptorFieldName && !isFind {
 			if ent.HasModifier(TypeModifierAbstract) {
 				fields[jen.Id(ExtendableTypeDescriptorFieldName)] = jen.String().Parens(jen.Id("tip"))
 			} else {
@@ -712,7 +745,9 @@ func (cg *CodeGenerator) generateSingleton(ent *Entity) (err error) {
 		}
 		ent.Features.Set(FeatGoKind, FCGSingletonAttrName, name)
 		cg.desc.Engine.Fields.Add(jen.Id(name).Op("*").Id(ent.Name)).Line()
-		cg.desc.Engine.Initializator.Add(jen.Id(EngineVar).Dot(name).Op("=").Op("&").Id(ent.Name).Values().Line())
+		cg.desc.Engine.SingletonInits[name] = jen.Id(EngineVar).Dot(name).Op("=").Op("&").Id(ent.Name).Values(
+			jen.Dict{jen.Id(EngineVar): jen.Id(EngineVar)},
+		).Line()
 		if _, hok := ent.HaveHook(TypeHookCreate); hok {
 			cg.desc.Engine.Initialized.Add(cg.desc.CallFeatureHookFunc(ent, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
 				Str: cg.desc.GetHookName(TypeHookCreate, nil),

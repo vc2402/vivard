@@ -114,14 +114,33 @@ func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj inte
 						}
 					}
 
-					return jen.
-						/*List(jen.Id("_"), jen.Id("err")).Op(":=").*/
-						For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Add(obj)).Block(
-						jen.Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(t.FS(mongoFeatures, mfCollectionConst))).Dot("InsertOne").Params(
+					stmt := &jen.Statement{}
+					idField := t.GetIdField()
+					if idField.HasModifier(AttrModifierIDAuto) {
+						stmt = jen.Id("maxId").Op(":=").Lit(0).Line()
+					}
+					stmt.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Add(obj)).BlockFunc(func(g *jen.Group) {
+						if idField.HasModifier(AttrModifierIDAuto) {
+							g.If(jen.Id("maxId").Op("<=").Id("o").Dot(idField.Name)).Block(
+								jen.Id("maxId").Op("=").Id("o").Dot(idField.Name),
+							)
+						}
+						g.Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(t.FS(mongoFeatures, mfCollectionConst))).Dot("InsertOne").Params(
 							jen.Id("ctx"),
 							jen.Id("o"),
-						),
-					)
+						)
+
+					}).Line()
+					if idField.HasModifier(AttrModifierIDAuto) {
+						if f := cg.desc.GetFeature(t, SequenceFeatures, SFSetValue); f != nil {
+							fun, ok := f.(func(args ...interface{}) jen.Code)
+							if ok {
+								//stmt.Id("maxId").Op("++")
+								stmt.Add(fun("maxId"))
+							}
+						}
+					}
+					return stmt
 				}, FeatureProvided
 			}
 		}
@@ -203,7 +222,7 @@ func (cg *MongoGenerator) Prepare(desc *Package) error {
 					t.Features.Set(mongoFeatures, mfDelete, dm)
 				}
 			}
-			collConstName := fmt.Sprintf("col%s%s", strings.ToUpper(t.Name)[:1], t.Name[1:])
+			collConstName := fmt.Sprintf("Col%s%s", strings.ToUpper(t.Name)[:1], t.Name[1:])
 			t.Features.Set(mongoFeatures, mfCollectionConst, collConstName)
 			for _, f := range t.Fields {
 				if f.HasModifier(AttrModifierAuxiliary) {
@@ -676,7 +695,16 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 
 				g.IfFunc(func(g *jen.Group) {
 					if f.Type.Array == nil {
-						g.Id("query").Dot(f.Name).Op("!=").Nil()
+						//TODO add option to compare with empty string
+						if f.Type.Type == TipString {
+							if f.Type.NonNullable {
+								g.Id("query").Dot(f.Name).Op("!=").Lit("")
+							} else {
+								g.Id("query").Dot(f.Name).Op("!=").Nil().Op("&&").Op("*").Id("query").Dot(f.Name).Op("!=").Lit("")
+							}
+						} else {
+							g.Id("query").Dot(f.Name).Op("!=").Nil()
+						}
 					} else {
 						g.Len(jen.Id("query").Dot(f.Name)).Op("!=").Lit(0)
 					}
@@ -732,9 +760,19 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 								jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
 							})
+						case AFTStartsWithIgnoreCase:
+							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+								jen.Lit("$regex"):   jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
+								jen.Lit("$options"): jen.Lit("i"),
+							})
 						case AFTContains:
 							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 								jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
+							})
+						case AFTContainsIgnoreCase:
+							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+								jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
+								jen.Lit("$options"): jen.Lit("i"),
 							})
 						case AFTIsNull:
 							g.Id("nullOp").Op(":=").Lit("$ne")
@@ -924,9 +962,9 @@ func (cg *MongoGenerator) collectionName(e *Entity) string {
 		}
 		cn = pref + ToSnakeCase(name)
 
-		if ann, ok := e.Annotations[mongoAnnotation]; ok {
-			if t, ok := ann.GetStringTag(mongoAnnotationTagName); ok {
-				cn = t
+		if ann, ok := t.Annotations[mongoAnnotation]; ok {
+			if n, ok := ann.GetStringTag(mongoAnnotationTagName); ok {
+				cn = n
 			}
 		}
 		if cg.usedCollections[cn] && t.BaseTypeName == "" && !t.HasModifier(TypeModifierExtendable) {

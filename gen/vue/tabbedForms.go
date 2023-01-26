@@ -19,9 +19,11 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 	h.parse(baseTempl).
 		parse(formTempl).
 		parse(newHtmlFormListTemplate).
+		parse(newHtmlFormDisbledTemplate).
 		// parse(htmlFormCardTemplate).
 		parse(htmlFormInputTemplate).
 		parse(htmlFormTextInputTemplate).
+		parse(htmlFormTextAreaTemplate).
 		parse(htmlFormDateInputTemplate).
 		parse(htmlFormColorInputTemplate).
 		parse(htmlFormMapInputTemplate).
@@ -97,26 +99,29 @@ var htmlTablessFormTemplate = `
 var htmlTabbedFormTemplate = `
 {{define "FORM"}}
   <v-tabs>
-    {{range Tabs}}<v-tab {{if NeedSecurity}}v-if="hasAccess('{{TabID .}}')"{{end}}>{{TabLable .}}</v-tab>
+    {{range Tabs}}<v-tab {{if NeedRolesSecurity}}v-if="hasAccess('{{TabID .}}')"{{else if NeedResourceSecurity}}{{if ne (ResourceForTab (TabID .)) ""}}v-if="{{TabID .}}Accessible"{{end}}{{end}}>{{TabLable .}}</v-tab>
     {{end}}
-    {{range Tabs}}<v-tab-item {{if NeedSecurity}}v-if="hasAccess('{{TabID .}}')"{{end}}>{{template "FORM_CONTENT" .}}</v-tab-item>
+    {{range Tabs}}<v-tab-item {{if NeedRolesSecurity}}v-if="hasAccess('{{TabID .}}')"{{else if NeedResourceSecurity}}{{if ne (ResourceForTab (TabID .)) ""}}v-if="{{TabID .}}Accessible"{{end}}{{end}}>{{template "FORM_CONTENT" .}}</v-tab-item>
     {{end}}
   </v-tabs>
 {{end}}
 `
 
+const newHtmlFormDisbledTemplate = `{{define "DISABLED_IN_FORM"}}disabled===true || isFieldDisabled('{{FieldName .}}'){{end}}`
+
 var htmlGridFormTemplate = `
 {{define "FORM_CONTENT"}}
-  <div class="d-flex flex-column">
+  <div class="d-flex flex-column" {{FormStyles}}>
     <slot name="pre-fields"></slot>
     {{range Rows .}}
       <v-row justify="space-between" align="center">
         {{range .}}
         <v-col {{GridColAttrs .}}>
-          {{if IsID . false}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>{{end}}
-          <div class="mx-5" {{if IsID . true}}v-if="isNew" {{else}} {{FieldAttrs .}} {{end}}>
+          {{if IsID .}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>
+          {{if NotAuto .}}<div class="mx-2" v-if="isNew"> {{template "FORM_INPUT_FIELD" .}}</div>{{end}}
+          {{else}}<div class="mx-2" {{FieldAttrs .}} >
             {{template "FORM_INPUT_FIELD" .}}
-          </div>
+          </div>{{end}}
         </v-col>
         {{end}}
       </v-row>
@@ -130,11 +135,12 @@ var htmlGridFormTemplate = `
 `
 var htmlFlexFormTemplate = `
 {{define "FORM_CONTENT"}}
-  <div class="d-flex flex-row flex-wrap justify-space-between align-baseline">
+  <div class="d-flex flex-row {{FlexWrap}} {{FlexJustify}} align-center" {{FormStyles}}>
     <slot name="pre-fields"></slot>
-    {{range (GetFields .)}}{{if IsID . false}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>{{end}}<div class="mx-5" {{if IsID . true}}v-if="isNew" {{else}} {{FieldAttrs .}} {{end}}>
+    {{range (GetFields .)}}{{if IsID .}}<div v-if="!isNew" {{FlexFieldStyles .}}>{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>{{if NotAuto .}}<div v-else class="mx-2" {{FieldAttrs .}} {{FlexFieldStyles .}}>{{template "FORM_INPUT_FIELD" .}}</div>{{end}}
+    {{else}}<div class="mx-2" {{FieldAttrs .}} {{FlexFieldStyles .}}>
       {{template "FORM_INPUT_FIELD" .}}
-    </div>
+    </div>{{end}}
     {{end}}
     <v-btn v-if="!value && !disabled" text icon color="primary" @click="addValue">
       <v-icon>add</v-icon> {{Title}}
@@ -168,9 +174,10 @@ import {{.Comp}} from '{{.Imp}}';{{end}}
 export default class {{Name}}FormComponent extends Vue {
   @Prop() value!: {{TypeName}} | undefined;
   @Prop({default:false}) isNew!: boolean;
-  @Prop({default:false}) disabled!: boolean;
+  @Prop({default:false}) disabled!: boolean|{[key:string]:boolean};
 {{if NeedSecurity}}{{SecurityInject}}{{end}}
-  
+  {{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}{{TabID .}}Accessible = false;{{end}}
+    {{end}}
   @Emit("input")
   emitValue() {
     return this.value;
@@ -193,11 +200,16 @@ export default class {{Name}}FormComponent extends Vue {
     if(!this.value)
       this.addValue()
     if(!this.value!.{{FieldName .}})
-      this.value!.{{FieldName .}} = [];
-    this.value!.{{FieldName .}}.push({{InstanceGeneratorForField .}})
+      this.$set(this.value!, "{{FieldName .}}",  []);
+    this.value!.{{FieldName .}}!.push({{InstanceGeneratorForField .}})
+  }
+
+  remove{{FieldName .}}(idx: number) {
+    if(this.value && this.value.{{FieldName .}} && this.value.{{FieldName .}}[idx])
+      this.value.{{FieldName .}}.splice(idx, 1);
   }{{end}}{{end}}
 
-  {{if NeedSecurity}}hasAccess(tab: string): boolean {
+  {{if NeedRolesSecurity}}hasAccess(tab: string): boolean {
     let roles: string[] = [];
     switch(tab) {
       {{range Tabs}}{{if ne (RolesForTab (TabID .)) ""}}case '{{TabID .}}': roles = [{{RolesForTab (TabID .)}}]; break;{{end}}{{end}}
@@ -209,6 +221,21 @@ export default class {{Name}}FormComponent extends Vue {
     }
     return false;
   }{{end}}
+  {{if NeedResourceSecurity}}async requestAccessRights() {
+    let resources: string[] = [{{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}
+      "{{ResourceForTab (TabID .)}}", {{end}}
+    {{end}}];
+	const result = await this.loginManager.getResources(resources);
+
+    {{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}this.{{TabID .}}Accessible = result.resource("{{ResourceForTab (TabID .)}}") && result.resource("{{ResourceForTab (TabID .)}}")!.checkAccessRight("r") || false;{{end}}
+    {{end}}
+  }
+  mounted() {
+    this.requestAccessRights();
+  }{{end}}
+  isFieldDisabled(field: string): boolean {
+    return typeof this.disabled == "object" && this.disabled[field];
+  }
 }
 </script>
 {{end}}

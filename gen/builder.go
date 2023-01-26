@@ -14,7 +14,7 @@ type Builder struct {
 	Generator *jen.Statement
 }
 
-//AddConst adds statement to const section (const word will be added autimatically);
+//AddConst adds statement to const section (const word will be added automatically);
 // it may be few named const sections, each will be organized as const() block
 func (bldr *Builder) AddConst(section string, stmt *jen.Statement) {
 	bldr.consts[section] = append(bldr.consts[section], stmt)

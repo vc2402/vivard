@@ -5,7 +5,15 @@ import (
 	"strings"
 
 	"github.com/dave/jennifer/jen"
-	"github.com/vc2402/vivard"
+)
+
+//points for CodeFragmentProvider
+const (
+	CFGEngineEnter         = "engine-enter"
+	CFGEngineExit          = "engine-exit"
+	CFGEngineMembers       = "engine-members"
+	CFGEngineFileGlobals   = "engine-globals"
+	CFGEngineFileFunctions = "engine-functions"
 )
 
 //Package - descriptor for generating package
@@ -53,16 +61,13 @@ func (desc *Package) postParsed() error {
 						Type:        &TypeRef{NonNullable: true, Type: tn},
 					}
 					e.Fields = append(e.Fields, etdf)
+					e.FieldsIndex[ExtendableTypeDescriptorFieldName] = etdf
 					etdf.Features.Set(FeaturesAPIKind, FCIgnore, true)
 					etdf.Features.Set(FeaturesCommonKind, FCReadonly, true)
 				}
 			}
 			desc.types[typename] = &DefinedType{name: typename, external: false, pckg: desc.Name, entry: e, packagePath: desc.fullPackage}
 		}
-	}
-	err := desc.processMetas()
-	if err != nil {
-		return err
 	}
 	return nil
 }
@@ -126,12 +131,18 @@ func (desc *Package) prepare() error {
 			}
 		}
 	}
+	err := desc.processMetas()
+	if err != nil {
+		return err
+	}
+
 	desc.Engine = &EngineDescriptor{
-		Fields:        jen.Id(EngineVivard).Op("*").Qual(vivardPackage, "Engine").Line(),
-		Initializator: &jen.Statement{},
-		Initialized:   &jen.Statement{},
-		Start:         &jen.Statement{},
-		Functions:     &jen.Statement{},
+		Fields:         jen.Id(EngineVivard).Op("*").Qual(vivardPackage, "Engine").Line(),
+		Initializator:  &jen.Statement{},
+		Initialized:    &jen.Statement{},
+		Start:          &jen.Statement{},
+		Functions:      &jen.Statement{},
+		SingletonInits: map[string]*jen.Statement{},
 	}
 	for _, gen := range desc.Project.generators {
 		err := gen.Prepare(desc)
@@ -411,6 +422,13 @@ func (desc *Package) generateEngine() error {
 			jen.Id(EngineVar).Dot(varname).Op("=").Id("v").Dot("Engine").Params(jen.Lit(pckg)).Assert(jen.Op("*").Qual(pn, "Engine")).Line(),
 		)
 	}
+	cf := CodeFragmentContext{
+		Package:    desc,
+		MethodKind: EngineNotAMethod,
+	}
+	if desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineMembers, &cf, false) != nil {
+		desc.Engine.Fields.Add(cf.body).Line()
+	}
 	desc.Engine.file = jen.NewFile(desc.Name)
 	desc.Engine.file.HeaderComment(fmt.Sprintf("Code generated for package %s by vivgen. DO NOT EDIT.", desc.Name))
 	desc.Engine.file.Add(
@@ -420,6 +438,40 @@ func (desc *Package) generateEngine() error {
 				jen.Lit(desc.Name),
 			),
 		).Line(),
+	)
+	cf = CodeFragmentContext{
+		Package:    desc,
+		MethodKind: EngineNotAMethod,
+	}
+	if desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineFileGlobals, &cf, false) != nil {
+		desc.Engine.file.Add(cf.body).Line()
+	}
+	cf = CodeFragmentContext{
+		Package:           desc,
+		MethodName:        "Start",
+		MethodKind:        MethodEngineRegisterService,
+		EngineAvailable:   true,
+		ErrorRet:          []jen.Code{jen.Id("err")},
+		BeforeReturnError: func() {},
+		ErrVar:            "err",
+		Params:            map[string]string{ParamVivardEngine: "v"},
+	}
+	if desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false) != nil {
+		desc.Engine.file.Add(
+			jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("ProvideServices").Params(
+				jen.Id("v").Op("*").Qual(vivardPackage, "Engine")).Block(cf.body).Line(),
+		)
+	}
+	cf = CodeFragmentContext{
+		Package:           desc,
+		MethodName:        "Prepare",
+		MethodKind:        MethodEnginePrepare,
+		EngineAvailable:   true,
+		ErrorRet:          []jen.Code{jen.Id("err")},
+		BeforeReturnError: func() {},
+		ErrVar:            "err",
+	}
+	desc.Engine.file.Add(
 		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Prepare").
 			Params(
 				jen.Id("v").Op("*").Qual(vivardPackage, "Engine"),
@@ -427,26 +479,61 @@ func (desc *Package) generateEngine() error {
 			).Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
 			g.Var().Id("err").Id("error")
 			g.Id("eng").Dot(EngineVivard).Op("=").Id("v")
-			if desc.Features.Bool(FeatGoKind, FCGCronRequired) {
-				g.Id(cronEngineVar).Op(":=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceCRON)).
-					Assert(jen.Op("*").Qual(vivardPackage, "CRONService")).Dot("Cron").Params()
-			}
+			cf.Push(g)
+			desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false)
 			g.Add(desc.Engine.Initializator)
+			for _, statement := range desc.Engine.SingletonInits {
+				g.Add(statement)
+			}
 			g.Add(desc.Engine.Initialized)
 			g.Add(extInit)
+			if desc.Engine.prepAdd != nil {
+				g.Add(desc.Engine.prepAdd)
+			}
+			desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineExit, &cf, false)
 			g.Return(
 				jen.Id("err"),
 			)
+			cf.Pop()
 		}).Line(),
-		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Start").Params().Parens(jen.Error()).Block(
-			jen.Var().Id("err").Id("error"),
-			desc.Engine.Start,
-			jen.Return(
+	)
+	cf = CodeFragmentContext{
+		Package:           desc,
+		MethodName:        "Start",
+		MethodKind:        MethodEngineStart,
+		EngineAvailable:   true,
+		ErrorRet:          []jen.Code{jen.Id("err")},
+		BeforeReturnError: func() {},
+		ErrVar:            "err",
+	}
+	desc.Engine.file.Add(
+		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Start").Params().Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
+			g.Var().Id("err").Id("error")
+			cf.Push(g)
+			desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false)
+			g.Add(desc.Engine.Start)
+			if desc.Engine.startAdd != nil {
+				g.Add(desc.Engine.startAdd)
+			}
+			cf.Push(g)
+			desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineExit, &cf, false)
+			g.Return(
 				jen.Id("err"),
-			),
-		).Line(),
+			)
+			cf.Pop()
+		}).Line(),
+	)
+	desc.Engine.file.Add(
 		desc.Engine.Functions,
 	)
+
+	cf = CodeFragmentContext{
+		Package:    desc,
+		MethodKind: EngineNotAMethod,
+	}
+	if desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineFileFunctions, &cf, false) != nil {
+		desc.Engine.file.Add(cf.body).Line()
+	}
 	return nil
 }
 
@@ -595,4 +682,20 @@ func (desc *Package) GetRealTypeName(tip string) string {
 		return parts[1]
 	}
 	return tip
+}
+
+func (desc *Package) AddToEnginePrepare(stmt *jen.Statement) {
+	if desc.Engine.prepAdd == nil {
+		desc.Engine.prepAdd = stmt
+	} else {
+		desc.Engine.prepAdd.Add(stmt)
+	}
+}
+
+func (desc *Package) AddToEngineStart(stmt *jen.Statement) {
+	if desc.Engine.startAdd == nil {
+		desc.Engine.startAdd = stmt
+	} else {
+		desc.Engine.startAdd.Add(stmt)
+	}
 }

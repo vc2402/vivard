@@ -72,7 +72,9 @@ func main() {
 			With(&gen.SequnceIDGenerator{}).
 			With(&js.GQLCLientGenerator{}).
 			With(&vue.VueCLientGenerator{}).
-			With(&gen.CroneGenerator{})
+			With(&gen.CroneGenerator{}).
+			With(&gen.ResourceGenerator{}).
+			With(&gen.ServiceGenerator{})
 
 		// desc.OutputDir = viper.GetString("out")
 		err = desc.Generate()

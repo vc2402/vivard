@@ -10,9 +10,10 @@ const (
 )
 
 const (
-	sequenceFeatures FeatureKind = "seq-id"
+	SequenceFeatures FeatureKind = "seq-id"
 
-	sfInited = "inited"
+	sfInited   = "inited"
+	SFSetValue = "set-value"
 )
 
 type SequnceIDGenerator struct {
@@ -33,10 +34,10 @@ func (cg *SequnceIDGenerator) Prepare(desc *Package) error {
 func (cg *SequnceIDGenerator) Generate(bldr *Builder) (err error) {
 	cg.desc = bldr.Descriptor
 	cg.b = bldr
-	if !cg.desc.Features.Bool(sequenceFeatures, sfInited) {
+	if !cg.desc.Features.Bool(SequenceFeatures, sfInited) {
 		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(engineSequenceProvider).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceSequenceProvider)).
 			Assert(jen.Qual(vivardPackage, "SequenceProvider"))).Line()
-		cg.desc.Features.Set(sequenceFeatures, sfInited, true)
+		cg.desc.Features.Set(SequenceFeatures, sfInited, true)
 	}
 	for _, t := range bldr.File.Entries {
 		idfld := t.GetIdField()
@@ -65,4 +66,34 @@ func (cg *SequnceIDGenerator) generateIDGeneratorFunc(e *Entity) error {
 	).Line()
 	cg.b.Functions.Add(f)
 	return nil
+}
+
+//ProvideFeature from FeatureProvider interface
+func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+	switch kind {
+	case SequenceFeatures:
+		switch name {
+		case SFSetValue:
+			if t, ok := obj.(*Entity); ok {
+				idField := t.GetIdField()
+				if idField.HasModifier(AttrModifierIDAuto) {
+					return func(args ...interface{}) jen.Code {
+						val := jen.Id("value")
+						if len(args) > 0 {
+							n, ok := args[0].(string)
+							if ok {
+								val = jen.Id(n)
+							}
+						}
+
+						return jen.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(t.Name)).Line().
+							If(jen.Id("err").Op("==").Nil()).Block(
+							jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id("seq").Dot("SetCurrent").Params(jen.Id("ctx"), val),
+						)
+					}, FeatureProvided
+				}
+			}
+		}
+	}
+	return nil, FeatureNotProvided
 }

@@ -73,6 +73,16 @@ func (cg *CodeGenerator) getIsAttrNullFuncFeature(f *Field) CodeHelperFunc {
 	}
 }
 
+func (cg *CodeGenerator) getAttrSetNullFuncFeature(f *Field) CodeHelperFunc {
+	return func(args ...interface{}) jen.Code {
+		a := &FeatureArguments{desc: cg.desc}
+		a.init("obj").parse(args)
+		n := strings.ToUpper(f.Name[:1]) + f.Name[1:]
+		fname := fmt.Sprintf(cgMethodsTemplates[CGSetNullMethod], n)
+		return a.get("obj").Dot(fname).Params()
+	}
+}
+
 func (cg *CodeGenerator) getAttrIsEmptyFuncFeature(f *Field) CodeHelperFunc {
 	return func(args ...interface{}) jen.Code {
 		a := &FeatureArguments{desc: cg.desc}
@@ -126,7 +136,11 @@ func (cg *CodeGenerator) getSingletonGetFuncFeature(e *Entity) CodeHelperFunc {
 }
 
 func (cg *CodeGenerator) getEngineVarFuncFeature(f *Field) CodeHelperFunc {
-	parts := strings.Split(f.Type.Type, ".")
+	typeName := f.Type.Type
+	if f.Type.Array != nil {
+		typeName = f.Type.Array.Type
+	}
+	parts := strings.Split(typeName, ".")
 	if len(parts) > 1 {
 		if f.FS(FeatGoKind, FCGExtEngineVar) == "" {
 			engvar := cg.desc.GetExtEngineRef(parts[0])
@@ -154,7 +168,14 @@ func (cg *CodeGenerator) getGoHookFuncFeature(name string) HookFeatureFunc {
 				skipEng = true
 			}
 		}
-		return stmtFromInterfaceDef(args.Obj, "obj").Dot(fname).ParamsFunc(func(g *jen.Group) {
+		var stmt *jen.Statement
+		if args.ErrVar != nil {
+			stmt, _ = stmtFromInterface(args.ErrVar)
+			stmt.Add(jen.Op("="))
+		} else {
+			stmt = &jen.Statement{}
+		}
+		stmt.Add(stmtFromInterfaceDef(args.Obj, "obj").Dot(fname).ParamsFunc(func(g *jen.Group) {
 			g.Add(stmtFromInterfaceDef(args.Ctx, "ctx"))
 			if !skipEng {
 				g.Add(stmtFromInterfaceDef(args.Eng, "eng"))
@@ -162,14 +183,22 @@ func (cg *CodeGenerator) getGoHookFuncFeature(name string) HookFeatureFunc {
 			for _, a := range args.Params {
 				g.Add(stmtFromInterfaceDef(a.Param, nil))
 			}
-		})
+		}))
+		return stmt
 	}
 }
 
 func (cg *CodeGenerator) getJSHookFuncFeature(name string) HookFeatureFunc {
 	return func(args HookArgsDescriptor) jen.Code {
 		cg.desc.Features.Set(FeatGoKind, FCGScriptingRequired, true)
-		return jen.Id(EngineVar).Dot(scriptingEngineField).Dot("ProcessSingleRet").Params(
+		var stmt *jen.Statement
+		if args.ErrVar != nil {
+			stmt, _ = stmtFromInterface(args.ErrVar)
+			stmt = jen.List(jen.Id("_"), stmt).Add(jen.Op("="))
+		} else {
+			stmt = &jen.Statement{}
+		}
+		stmt.Add(jen.Id(EngineVar).Dot(scriptingEngineField).Dot("ProcessSingleRet").Params(
 			stmtFromInterfaceDef(args.Ctx, "ctx"),
 			jen.Lit(name),
 			jen.Map(jen.String()).Interface().ValuesFunc(func(g *jen.Group) {
@@ -181,7 +210,8 @@ func (cg *CodeGenerator) getJSHookFuncFeature(name string) HookFeatureFunc {
 				}
 				g.Add(jen.Dict{jen.Line().Lit("params"): jen.Map(jen.String()).Interface().Values(m)})
 			}),
-		)
+		))
+		return stmt
 	}
 }
 

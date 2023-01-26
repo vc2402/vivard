@@ -15,7 +15,11 @@ import (
 
 func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName string, annSpec string, outDir string) (*helper, error) {
 	skipTabs := false
-
+	skipRows := false
+	if annName == vueTableAnnotation {
+		skipTabs = true
+		skipRows = true
+	}
 	idf := e.GetIdField()
 	typesPath, err := cg.getTypesPath(e)
 	if err != nil {
@@ -56,7 +60,10 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 	if !skipTabs {
 		ctx.tabs, dt = getTabs(e)
 		for _, t := range ctx.tabs {
-			if t.roles != "" {
+			if t.resource != "" {
+				ctx.needResourceSecurity = true
+				break
+			} else if t.roles != "" {
 				ctx.needSecurity = true
 				break
 			}
@@ -66,7 +73,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 	maxRow := -1
 	hasStringWidth := false
 	hasIntWidth := false
-	for _, f := range e.GetFields(true, true) {
+	for idx, f := range e.GetFields(true, true) {
 		as := annotationSet{}
 		if f.FB(gen.FeaturesAPIKind, gen.FCIgnore) {
 			continue
@@ -97,7 +104,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			fld:      f,
 			ann:      as,
 			mask:     as.getStringDef(vcaMask, ""),
-			ord:      as.getIntDef(vcaOrder, 1000),
+			ord:      as.getIntDef(vcaOrder, 1000*idx),
 			title:    as.getStringDef(vcaLabel, f.Name),
 			width:    as.getStringDef(vcaWidth, ""),
 			w:        as.getIntDef(vcaWidth, 0),
@@ -110,7 +117,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		if fd.w != 0 {
 			hasIntWidth = true
 		}
-		if r, ok := as.getInt(vcaRow); ok {
+		if r, ok := as.getInt(vcaRow); ok && !skipRows {
 			ctx.withRows = true
 			fd.row = r
 			if maxRow < r {
@@ -170,6 +177,11 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			}
 			return [][]fieldDescriptor{}
 		},
+		"HideAddForLookup": func(f fieldDescriptor) bool {
+			return f.fld.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vcaReadonly, false) ||
+				f.fld.HasModifier(gen.AttrModifierEmbeddedRef) ||
+				f.fld.FB(gen.GQLFeatures, gen.GQLFIDOnly)
+		},
 		"GetFields": func(h *helper) []fieldDescriptor {
 			return h.ctx.fields
 		},
@@ -205,14 +217,28 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		},
 		"AttrName": func(f fieldDescriptor) string { return cg.getJSAttrNameForDisplay(f.fld, false, false) },
 		"TableAttrName": func(f fieldDescriptor) string {
+			if vfn := f.fld.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueATValue, ""); vfn != "" {
+				return cg.getJSAttrForSubfield(f.fld, vfn)
+			}
 			return cg.getJSAttrNameForDisplay(f.fld, true, false)
 		},
 		"TableIconName": func(f fieldDescriptor) string { return cg.getJSAttrNameForDisplay(f.fld, true, true) },
 		"NeedIconForTable": func(f fieldDescriptor) bool {
-			return f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false)
+			return f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) ||
+				f.fld.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false)
+		},
+		"IsIcon": func(f fieldDescriptor) bool {
+			return f.fld.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false)
 		},
 		"Name": func() string {
 			return e.Name
+		},
+		"ShowInTable": func(f fieldDescriptor) bool {
+			if _, ok := f.fld.Features.GetField(gen.FeatureHistKind, gen.FHHistoryOf); ok || f.fld.HasModifier(gen.AttrModifierAuxiliary) {
+				return false
+			}
+			return !f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vueAnnotationIgnore, false) &&
+				f.fld.Name != gen.ExtendableTypeDescriptorFieldName
 		},
 		"TypeName": func(arg ...interface{}) string {
 			return e.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
@@ -220,6 +246,51 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"FieldType": func(f fieldDescriptor) string {
 			return f.fld.FS(js.Features, js.FType)
 			// return f.fld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationType, "")
+		},
+		"ShowInView": func(f fieldDescriptor) bool {
+			return cg.getJSAttrNameForDisplay(f.fld, false, false) != ""
+		},
+		"FiltersImports": func() string {
+			return `import { DateTimeFilter} from '@/filters/dateTimeFilter';
+import {RoundNumber} from '@/filters/numberFilter';
+`
+		},
+		"Filter": func(name string, withPipe ...bool) string {
+			var ret string
+			switch name {
+			case "date":
+				ret = "DateTimeFilter"
+			case "number", "int", "float":
+				ret = "RoundNumber"
+			default:
+				cg.desc.AddWarning(fmt.Sprintf("vue: undefined Filter requested: %s", name))
+				return ""
+			}
+			prefix := ""
+			if len(withPipe) > 0 && withPipe[0] {
+				prefix = "|"
+			}
+			return fmt.Sprintf("%s%s", prefix, ret)
+		},
+		"LookupWithAdd": func() bool {
+			return !e.FB(gen.FeaturesCommonKind, gen.FCReadonly) &&
+				!e.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vcaReadonly, false)
+		},
+		"ListQueryAttrs": func() string {
+			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
+				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
+				idfld := qt.GetIdField()
+				return fmt.Sprintf("this.qualifier && [this.qualifier.%s]", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+			}
+			return ""
+		},
+		"GUITableTooltip": func(f fieldDescriptor) string {
+			ret := ""
+			ttfn := f.ann.getStringDef(vueATTooltip, "")
+			if ttfn != "" {
+				ret = cg.getJSAttrForSubfield(f.fld, ttfn)
+			}
+			return ret
 		},
 		"GetQuery": func(arg ...interface{}) string {
 			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationGet])
@@ -229,6 +300,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		},
 		"CreateQuery": func(arg ...interface{}) string {
 			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationCreate])
+		},
+		"DeleteQuery": func(arg ...interface{}) string {
+			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationDelete])
 		},
 		"ListQuery": func() string {
 			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationList])
@@ -271,7 +345,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		"TypesFilePath": func(arg ...interface{}) string {
 			return typesPath
 		},
-		"Title": func(arg ...interface{}) string { return ctx.title },
+		"Title": func(arg ...interface{}) string {
+			return fmt.Sprintf("`%s`", ctx.title)
+		},
 		"IDType": func(arg ...interface{}) string {
 			t, _ := e.Features.GetString(js.Features, js.FIDType)
 			return t
@@ -301,7 +377,16 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if col, ok := f.fld.Annotations.GetBoolAnnotation(js.Annotation, js.AnnotationColor); ok && col {
 				return "color"
 			}
+			if f.ann.getBoolDef(vcaTextArea, false) {
+				return "text-area"
+			}
+			if _, ok := f.ann.getInt(vcaTextArea); ok {
+				return "text-area"
+			}
 			return f.fld.Type.Type
+		},
+		"TextAreaRows": func(f fieldDescriptor) int {
+			return f.ann.getIntDef(vcaTextArea, 2)
 		},
 		"FormComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKFormComponent)
@@ -362,7 +447,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			return false
 		},
 		"LookupComponent": func(f fieldDescriptor, addToRequired bool) string {
-			if cus := f.fld.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueATCustom, ""); cus != "" {
+			if cus := f.fld.Annotations.GetStringAnnotationDef(vueLookupAnnotation, vueATCustom, ""); cus != "" {
 				return cus
 			}
 
@@ -395,10 +480,10 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
 						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
 					}
-					if lc != "" && lcp != "" {
-						if addToRequired {
-							th.addComponent(lc, lcp, t.Entity())
-						}
+				}
+				if lc != "" && lcp != "" {
+					if addToRequired {
+						th.addComponent(lc, lcp, t.Entity())
 					}
 				}
 			}
@@ -428,8 +513,50 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			}
 			return nil
 		},
+		"ItemText": func() string {
+			return getTitleFieldName(e)
+		},
+		"ItemValue": func() string { return idf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "") },
 		"FieldWithAppend": func(f fieldDescriptor) bool {
 			return f.fld.FS(gen.FeatureHistKind, gen.FHHistoryEntityName) != ""
+		},
+		"WithPrependIcon": func(f fieldDescriptor) bool {
+			return f.fld.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaPrependIcon, "") != ""
+		},
+		"WithAppendIcon": func(f fieldDescriptor) bool {
+			return f.fld.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaAppendIcon, "") != ""
+		},
+		"PrependIcon": func(f fieldDescriptor) string {
+			if pi := f.fld.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaPrependIcon, ""); pi != "" {
+				fields := strings.Fields(pi)
+				attrs := ""
+				if len(fields) > 1 {
+					if fields[1] != "unset" {
+						attrs = fmt.Sprintf("color=\"%s\" ", fields[1])
+					}
+					for i := 2; i < len(fields); i++ {
+						attrs += fields[i] + " "
+					}
+				}
+				return fmt.Sprintf("<v-icon %s>%s</v-icon>", attrs, fields[0])
+			}
+			return ""
+		},
+		"AppendIcon": func(f fieldDescriptor) string {
+			if pi := f.fld.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaAppendIcon, ""); pi != "" {
+				fields := strings.Fields(pi)
+				attrs := ""
+				if len(fields) > 1 {
+					if fields[1] != "unset" {
+						attrs = fmt.Sprintf("color=\"%s\" ", fields[1])
+					}
+					for i := 2; i < len(fields); i++ {
+						attrs += fields[i] + " "
+					}
+				}
+				return fmt.Sprintf("<v-icon %s>%s</v-icon>", attrs, fields[0])
+			}
+			return ""
 		},
 		"Readonly": func(f ...fieldDescriptor) bool {
 			if len(f) > 0 {
@@ -460,11 +587,11 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			return th.components
 		},
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
-		"IsID": func(f fieldDescriptor, auto bool) bool {
-			if auto {
-				return f.fld.HasModifier(gen.AttrModifierIDAuto)
-			}
+		"IsID": func(f fieldDescriptor) bool {
 			return f.fld.IsIdField()
+		},
+		"NotAuto": func(f fieldDescriptor) bool {
+			return f.fld.IsIdField() && !f.fld.HasModifier(gen.AttrModifierIDAuto)
 		},
 		"CustomComponent": func(param interface{}) string {
 			switch v := param.(type) {
@@ -506,7 +633,8 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if cust := f.fld.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueATCustom, ""); cust != "" {
 				return "custom"
 			}
-			if f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) {
+			if f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) ||
+				f.fld.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false) {
 				return "icon"
 			}
 			if !f.fld.Type.Complex {
@@ -541,7 +669,9 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			}
 			return "false"
 		},
-
+		"TypeForView": func(f fieldDescriptor) string {
+			return f.fld.Type.Type
+		},
 		"CanBeMultiple": func() bool {
 			// if refsManyToMany, ok := e.Features.GetBool(gen.FeaturesCommonKind, gen.FCRefsAsManyToMany); ok && refsManyToMany {
 			// 	return true
@@ -611,20 +741,38 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			if th.ctx.width != "" {
 				return th.ctx.width
 			}
-			return "$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
+			//TODO: check fields and form widths; if set - set to fit-content
+			if a, ok := e.Annotations[vueFormAnnotation]; ok {
+				if a.GetTag(vcaWidth) != nil {
+					return "fit-content"
+				}
+			}
+			wideWidth := "60vw"
+			if len(th.ctx.fields) < 4 {
+				wideWidth = "40vw"
+			} else if len(th.ctx.fields) < 6 {
+				wideWidth = "50vw"
+			}
+			return fmt.Sprintf("$vuetify.breakpoint.lgAndUp ? '%s' : '80vw'", wideWidth)
 		},
 		"NeedSecurity": func() bool {
+			return ctx.needSecurity || ctx.needResourceSecurity
+		},
+		"NeedRolesSecurity": func() bool {
 			return ctx.needSecurity
 		},
+		"NeedResourceSecurity": func() bool {
+			return ctx.needResourceSecurity
+		},
 		"SecurityImport": func() string {
-			if ctx.needSecurity {
+			if ctx.needSecurity || ctx.needResourceSecurity {
 				//TODO: get from options
 				return "import { LoginManager } from '@/plugins/loginManager';"
 			}
 			return ""
 		},
 		"SecurityInject": func() string {
-			if ctx.needSecurity {
+			if ctx.needSecurity || ctx.needResourceSecurity {
 				//TODO: get from options
 				return "  @Inject(\"loginManager\") loginManager!: LoginManager;"
 			}
@@ -634,7 +782,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			for _, t := range ctx.tabs {
 				if t.ID == tab {
 					if t.roles != "" {
-						roles := strings.Split(t.roles, " ")
+						roles := strings.Fields(t.roles)
 						ret := ""
 						for i, r := range roles {
 							if r != "" {
@@ -648,6 +796,84 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 					}
 					break
 				}
+			}
+			return ""
+		},
+		"ResourceForTab": func(tab string) string {
+			for _, t := range ctx.tabs {
+				if t.ID == tab {
+					return t.resource
+				}
+			}
+			return ""
+		},
+		"FieldRoles": func(f fieldDescriptor) string {
+			roles := f.ann.getStringDef(vcaRoles, "")
+			if roles == "" {
+				return ""
+			}
+			rs := strings.Fields(roles)
+			bldr := strings.Builder{}
+			for i, role := range rs {
+				if i > 0 {
+					bldr.WriteRune(',')
+					bldr.WriteRune(' ')
+				}
+				bldr.WriteRune('"')
+				bldr.WriteString(role)
+				bldr.WriteRune('"')
+			}
+			return bldr.String()
+		},
+		"FlexWrap": func() string {
+			if !ctx.ann.getBoolDef(vcaNoWrap, false) {
+				return "flex-wrap"
+			}
+			return ""
+		},
+		"FlexJustify": func() string {
+			if len(ctx.fields) == 2 {
+				return "justify-space-around"
+			}
+			return "justify-space-between"
+		},
+		"FormStyles": func() string {
+			var width string
+			if w, ok := ctx.ann.getString(vcaWidth); ok {
+				width = w
+			} else if w, ok := ctx.ann.getInt(vcaWidth); ok {
+				width = fmt.Sprintf("%dpx", w)
+			}
+			if width != "" {
+				return fmt.Sprintf(`style="width: %s"`, width)
+			}
+			return ""
+		},
+		"FlexFieldStyles": func(f fieldDescriptor) string {
+			var width string
+			if w, ok := f.ann.getString(vcaWidth); ok {
+				width = w
+			} else if w, ok := f.ann.getInt(vcaWidth); ok {
+				width = fmt.Sprintf("%dpx", w)
+			}
+			if width != "" {
+				return fmt.Sprintf(`style="width: %s"`, width)
+			}
+			return ""
+		},
+		"Literal": func(key string) string {
+			//TODO get from options
+			switch key {
+			case literalOKButton:
+				return "OK"
+			case literalDeleteButton:
+				return "Delete"
+			case literalCloseButton:
+				return "Close"
+			case literalDeleteVerb:
+				return "Delete"
+			default:
+				cg.desc.AddError(fmt.Errorf("undefined key for Literal: %s", key))
 			}
 			return ""
 		},

@@ -587,7 +587,7 @@ func (a Annotations) ByPrefix(prefix string, includeUnspec bool) map[string]*Ann
 	return ret
 }
 
-//GetStringAnnotation returns string annotation with given name if any; ok is false otherwise
+// GetStringAnnotation returns string annotation with given name if any; ok is false otherwise
 func (a Annotations) GetStringAnnotation(name string, key string) (val string, ok bool) {
 	if a == nil {
 		return
@@ -601,6 +601,18 @@ func (a Annotations) GetStringAnnotationDef(name string, key string, def string)
 	val, ok := a.GetStringAnnotation(name, key)
 	if !ok {
 		val = def
+	}
+	return
+}
+
+// GetNameAnnotation returns string tag annotation with given name if any or first tag key if it is bool and true
+//  e.g. in case $ann(someValue) it returns 'someValue' and for $ann(someValue name="somName") returns someName
+func (a Annotations) GetNameAnnotation(name string, key string) (val string, ok bool) {
+	if a == nil {
+		return
+	}
+	if an, ok := a[name]; ok {
+		return an.GetNameTag(key)
 	}
 	return
 }
@@ -709,6 +721,16 @@ func (a *Annotation) GetStringTag(key string) (ret string, ok bool) {
 	return
 }
 
+func (a *Annotation) GetNameTag(key string) (ret string, ok bool) {
+	if t := a.GetTag(key); t != nil {
+		return t.GetString()
+	}
+	if len(a.Values) > 0 && a.Values[0].Value == nil {
+		ret = a.Values[0].Key
+		ok = true
+	}
+	return
+}
 func (a *Annotation) GetBoolTag(key string) (ret bool, ok bool) {
 	if t := a.GetTag(key); t != nil {
 		return t.GetBool()

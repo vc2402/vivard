@@ -74,26 +74,30 @@ type DefinedType struct {
 }
 
 type Project struct {
-	packages         map[string]*Package
-	extPackages      map[string]string
-	extTypes         map[string]*DefinedType
-	metaProcs        []MetaProcessor
-	generators       []Generator
-	featureProviders []FeatureProvider
-	Options          *Opts
-	Files            []*File
-	Warnings         []string
-	Errors           []error
-	hooks            []GeneratorHookHolder
+	packages          map[string]*Package
+	extPackages       map[string]string
+	extTypes          map[string]*DefinedType
+	metaProcs         []MetaProcessor
+	generators        []Generator
+	featureProviders  []FeatureProvider
+	fragmentProviders []CodeFragmentProvider
+	Options           *Opts
+	Files             []*File
+	Warnings          []string
+	Errors            []error
+	hooks             []GeneratorHookHolder
 }
 
 type EngineDescriptor struct {
-	Fields        *jen.Statement
-	Initializator *jen.Statement
-	Initialized   *jen.Statement
-	Start         *jen.Statement
-	Functions     *jen.Statement
-	file          *jen.File
+	Fields         *jen.Statement
+	Initializator  *jen.Statement
+	SingletonInits map[string]*jen.Statement
+	Initialized    *jen.Statement
+	Start          *jen.Statement
+	Functions      *jen.Statement
+	file           *jen.File
+	startAdd       *jen.Statement
+	prepAdd        *jen.Statement
 }
 
 //New creates new Project object
@@ -176,6 +180,9 @@ func (p *Project) With(gen Generator) *Project {
 	if hh, ok := gen.(GeneratorHookHolder); ok {
 		p.WithHookHolder(hh)
 	}
+	if cfp, ok := gen.(CodeFragmentProvider); ok {
+		p.fragmentProviders = append(p.fragmentProviders, cfp)
+	}
 	return p
 }
 
@@ -201,7 +208,7 @@ func (p *Project) HasErrors() bool {
 	return len(p.Errors) > 0
 }
 
-//GetFeature looks for feature in obj (*Entity, *Field or *Method); returns nil if feature not found
+//GetFeature looks for feature in obj (*Package, *Entity, *Field or *Method); returns nil if feature not found
 func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) interface{} {
 	var f Features
 	switch v := obj.(type) {
@@ -210,6 +217,8 @@ func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) int
 	case *Field:
 		f = v.Features
 	case *Method:
+		f = v.Features
+	case *Package:
 		f = v.Features
 	default:
 		panic(fmt.Sprintf("GetFeature was called for unknown type: %T", obj))
@@ -238,10 +247,11 @@ func (p *Project) GetFeatureMust(obj interface{}, kind FeatureKind, name string)
 
 //CallFeatureFunc looks for feature with given params, tries to assert it to CodeHelperFunc and call; panics if feature not found
 func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string, args ...interface{}) jen.Code {
-	if f, ok := p.GetFeatureMust(obj, kind, name).(CodeHelperFunc); ok {
-		return f(args...)
+	f := p.GetFeatureMust(obj, kind, name)
+	if chf, ok := f.(CodeHelperFunc); ok {
+		return chf(args...)
 	}
-	panic(fmt.Sprintf("feature %s:%s is not a feature function", kind, name))
+	panic(fmt.Sprintf("feature %s:%s is not a feature function: %T", kind, name, f))
 }
 
 //CallFeatureHookFunc looks for feature with given params, tries to assert it to HookFeatureFunc and call
@@ -352,8 +362,28 @@ func (p *Project) Generate() (err error) {
 		}
 		pckg.generateEngine()
 	}
+	//for _, pckg := range p.packages {
+	//	err = pckg.processMetas()
+	//	if err != nil {
+	//		return
+	//	}
+	//}
 
 	return
+}
+
+func (p *Project) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}, theOnly bool) interface{} {
+	var atLeastOne interface{}
+	for _, cfp := range p.fragmentProviders {
+		ret := cfp.ProvideCodeFragment(module, action, point, ctx)
+		if theOnly && ret != nil {
+			return ret
+		}
+		if atLeastOne == nil {
+			atLeastOne = ret
+		}
+	}
+	return atLeastOne
 }
 
 func (p *Project) Print() {

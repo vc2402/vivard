@@ -2,7 +2,9 @@ package vue
 
 import (
 	"fmt"
+	"os"
 	"path"
+	"strings"
 	"text/template"
 
 	"github.com/vc2402/vivard/gen"
@@ -10,13 +12,14 @@ import (
 )
 
 type helper struct {
-	templ   *template.Template
-	e       *gen.Entity
-	cg      *VueCLientGenerator
-	outDir  string
-	idField *gen.Field
-	err     error
-	ctx     helperContext
+	templ      *template.Template
+	e          *gen.Entity
+	cg         *VueCLientGenerator
+	outDir     string
+	idField    *gen.Field
+	err        error
+	ctx        helperContext
+	components map[string]vcComponentDescriptor
 }
 
 type annotationSet []*gen.Annotation
@@ -24,24 +27,26 @@ type fields []fieldDescriptor
 type formTabs map[string]formTab
 
 type helperContext struct {
-	fields       fields
-	width        string
-	ann          annotationSet
-	kind         string
-	withRows     bool
-	withTabs     bool
-	useGrid      bool
-	title        string
-	tabs         formTabs
-	components   map[string]componentDescriptor
-	needSecurity bool
+	fields               fields
+	width                string
+	ann                  annotationSet
+	kind                 string
+	withRows             bool
+	withTabs             bool
+	useGrid              bool
+	title                string
+	tabs                 formTabs
+	components           map[string]componentDescriptor
+	needSecurity         bool
+	needResourceSecurity bool
 }
 
 type formTab struct {
-	ID    string
-	label string
-	order int
-	roles string
+	ID       string
+	label    string
+	order    int
+	roles    string
+	resource string
 }
 
 type fieldDescriptor struct {
@@ -73,7 +78,7 @@ func (cg *VueCLientGenerator) getTypesPath(e *gen.Entity) (string, error) {
 	if ext != "" {
 		tn = tn[:len(tn)-len(ext)]
 	}
-	return path.Join("../types", tn), nil
+	return path.Join("..", "..", "..", "types", tn), nil
 }
 func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir string) (*helper, error) {
 	idf := e.GetIdField()
@@ -81,8 +86,9 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 	if err != nil {
 		return nil, err
 	}
-	components := map[string]string{}
+	//components := map[string]string{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
+	th := &helper{templ: template.New(name), cg: cg, e: e, idField: idf, outDir: outDir, components: map[string]vcComponentDescriptor{}}
 	funcs := template.FuncMap{
 		"ShowInDialog": func(f *gen.Field) bool {
 			if ignore, ok := f.Annotations.GetBoolAnnotation(vueDialogAnnotation, vueAnnotationIgnore); ok && ignore {
@@ -119,7 +125,11 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 		},
 		"TableIconName": func(f *gen.Field) string { return cg.getJSAttrNameForDisplay(f, true, true) },
 		"NeedIconForTable": func(f *gen.Field) bool {
-			return f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false)
+			return f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) ||
+				f.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false)
+		},
+		"IsIcon": func(f *gen.Field) bool {
+			return f.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false)
 		},
 		"ShowInView": func(f *gen.Field) bool {
 			return cg.getJSAttrNameForDisplay(f, false, false) != ""
@@ -165,8 +175,9 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				cmp := qt.FS(featureVueKind, fVKLookupComponent)
-				if cmp != "" {
-					components[cmp] = cmp
+				p := qt.FS(featureVueKind, fVKLookupComponentPath)
+				if cmp != "" && p != "" {
+					th.addComponent(cmp, p, qt)
 					return cmp
 				}
 			}
@@ -178,7 +189,6 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 		"TypesFilePath": func(e *gen.Entity) string {
 			return typesPath
 		},
-		//TODO: get title from annotations
 		"Title": func(e *gen.Entity) string {
 			if t, ok := e.Annotations.GetStringAnnotation(vueDialogAnnotation, vcaLabel); ok {
 				return t
@@ -189,8 +199,12 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			t, _ := e.Features.GetString(js.Features, js.FIDType)
 			return t
 		},
-		"IDField": func(e *gen.Entity) (ret string) {
-			if idf := e.GetIdField(); idf != nil {
+		"IDField": func(ent ...*gen.Entity) (ret string) {
+			entity := e
+			if len(ent) > 0 {
+				entity = ent[0]
+			}
+			if idf := entity.GetIdField(); idf != nil {
 				ret = idf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 			}
 			return
@@ -208,28 +222,58 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			if f.Type.Array != nil {
 				return "array"
 			}
+			if col, ok := f.Annotations.GetBoolAnnotation(vueAnnotation, vueATColorAttr); ok && col {
+				return "color"
+			}
+			if col, ok := f.Annotations.GetBoolAnnotation(js.Annotation, js.AnnotationColor); ok && col {
+				return "color"
+			}
+			if ann, ok := f.Annotations[vueAnnotation]; ok {
+				if ann.GetTag(vcaTextArea) != nil {
+					return "text-area"
+				}
+			}
+			if ann, ok := f.Annotations[vueFormAnnotation]; ok {
+				if ann.GetTag(vcaTextArea) != nil {
+					return "text-area"
+				}
+			}
 			return f.Type.Type
+		},
+		"TextAreaRows": func(f *gen.Field) int {
+			if ann, ok := f.Annotations[vueFormAnnotation]; ok {
+				if rows := ann.GetInt(vcaTextArea, -1); rows != -1 {
+					return rows
+				}
+			}
+			if ann, ok := f.Annotations[vueAnnotation]; ok {
+				return ann.GetInt(vcaTextArea, 2)
+			}
+			return 2
 		},
 		"FormComponent": func(e *gen.Entity) string {
 			cmp := e.FS(featureVueKind, fVKFormComponent)
-			// path := e.FS(featureVueKind, fVKFormComponentPath)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKFormComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"ViewComponent": func(e *gen.Entity) string {
 			cmp := e.FS(featureVueKind, fVKViewComponent)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKViewComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"DialogComponent": func(e *gen.Entity) string {
 			cmp := e.FS(featureVueKind, fVKDialogComponent)
-			components[cmp] = cmp
+			p := e.FS(featureVueKind, fVKDialogComponentPath)
+			th.addComponent(cmp, p, e)
 			return cmp
 		},
 		"DictEditComponent": func(e *gen.Entity, addToRequired bool) string {
 			cmp := e.FS(featureVueKind, fVKDictEditComponent)
 			if addToRequired {
-				components[cmp] = cmp
+				p := e.FS(featureVueKind, fVKDictEditComponentPath)
+				th.addComponent(cmp, p, e)
 			}
 			return cmp
 		},
@@ -248,29 +292,49 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			return false
 		},
 		"LookupComponent": func(f *gen.Field, addToRequired bool) string {
+			if cus := f.Annotations.GetStringAnnotationDef(vueLookupAnnotation, vueATCustom, ""); cus != "" {
+				return cus
+			}
+
 			tip := f.Type
 			if _, ok := f.Parent().Annotations[gen.AnnotationFind]; ok {
 				fld, _ := f.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
 				tip = fld.Type
 			}
+			for tip.Array != nil {
+				tip = tip.Array
+			}
 			typename := tip.Type
-			if tip.Array != nil {
-				typename = tip.Array.Type
+			var lc, lcp string
+			if t, ok := e.Pckg.FindType(typename); ok {
+				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
+					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+					lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+				}
+				if lc == "" {
+					ud := f.FS(featureVueKind, fVKUseInDialog)
+
+					switch ud {
+					case fVKUseInDialogLookup:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					case fVKUseInDialogForm:
+						lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+					default:
+						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+					}
+				}
+				if lc != "" && lcp != "" {
+					if addToRequired {
+						th.addComponent(lc, lcp, t.Entity())
+					}
+				}
 			}
 
-			ud := f.FS(featureVueKind, fVKUseInDialog)
-			var lc string
-			switch ud {
-			//TODO: get name and path from features
-			case fVKUseInDialogLookup:
-				lc = typename + "LookupComponent"
-			case fVKUseInDialogForm:
-				lc = typename + "Form"
-			default:
-				lc = typename + "LookupComponent"
-			}
-			if addToRequired {
-				components[lc] = lc
+			if lc == "" || lcp == "" {
+				cg.desc.AddWarning(fmt.Sprintf("at %v: lookupComponent not found for field %s", f.Pos, f.Name))
 			}
 
 			return lc
@@ -278,9 +342,10 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 		"AppendToField": func(f *gen.Field) []string {
 			if he, ok := f.Features.GetEntity(gen.FeatureHistKind, gen.FHHistoryEntity); ok {
 				hc := he.FS(featureVueKind, fVKHistComponent)
+				hcp := he.FS(featureVueKind, fVKHistComponentPath)
 				if hf, ok := f.Features.GetField(gen.FeatureHistKind, gen.FHHistoryField); ok {
 					fn := hf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-					components[hc] = hc
+					th.addComponent(hc, hcp, he)
 					return []string{fmt.Sprintf("<%s v-if=\"value && value.%s\" :items=\"value.%s\"/>", hc, fn, fn)}
 				}
 			}
@@ -289,19 +354,57 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 		"FieldWithAppend": func(f *gen.Field) bool {
 			return f.FS(gen.FeatureHistKind, gen.FHHistoryEntityName) != ""
 		},
+		"WithPrependIcon": func(f *gen.Field) bool {
+			return f.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaPrependIcon, "") != ""
+		},
+		"WithAppendIcon": func(f *gen.Field) bool {
+			return f.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaAppendIcon, "") != ""
+		},
+		"PrependIcon": func(f *gen.Field) string {
+			if pi := f.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaPrependIcon, ""); pi != "" {
+				fields := strings.Fields(pi)
+				attrs := ""
+				if len(fields) > 1 {
+					if fields[1] != "unset" {
+						attrs = fmt.Sprintf("color=\"%s\" ", fields[1])
+					}
+					for i := 2; i < len(fields); i++ {
+						attrs += fields[i] + " "
+					}
+				}
+				return fmt.Sprintf("<v-icon %s>%s</v-icon>", attrs, fields[0])
+			}
+			return ""
+		},
+		"AppendIcon": func(f *gen.Field) string {
+			if pi := f.Annotations.GetStringAnnotationDefTrimmed(vueAnnotation, vcaAppendIcon, ""); pi != "" {
+				fields := strings.Fields(pi)
+				attrs := ""
+				if len(fields) > 1 {
+					if fields[1] != "unset" {
+						attrs = fmt.Sprintf("color=\"%s\" ", fields[1])
+					}
+					for i := 2; i < len(fields); i++ {
+						attrs += fields[i] + " "
+					}
+				}
+				return fmt.Sprintf("<v-icon %s>%s</v-icon>", attrs, fields[0])
+			}
+			return ""
+		},
 		"Readonly": func(f ...*gen.Field) bool {
 			if len(f) > 0 {
 				return f[0].FB(gen.FeaturesCommonKind, gen.FCReadonly)
 			}
 			return e.FB(gen.FeaturesCommonKind, gen.FCReadonly)
 		},
-		"RequiredComponents":   func() map[string]string { return components },
+		"RequiredComponents":   func() map[string]vcComponentDescriptor { return th.components },
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
-		"IsID": func(f *gen.Field, auto bool) bool {
-			if auto {
-				return f.HasModifier(gen.AttrModifierIDAuto)
-			}
+		"IsID": func(f *gen.Field) bool {
 			return f.IsIdField()
+		},
+		"NotAuto": func(f *gen.Field) bool {
+			return f.IsIdField() && !f.HasModifier(gen.AttrModifierIDAuto)
 		},
 		"CustomComponent": func(tip string) string {
 			if imp, ok := cg.options.Components[tip]; ok {
@@ -324,7 +427,11 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			return e.FS(featureVueKind, fVKFormComponent)
 		},
 		"SelfFormComponentPath": func() string {
-			return fmt.Sprintf("./%s.vue", e.FS(featureVueKind, fVKFormComponent))
+			p := e.FS(featureVueKind, fVKFormComponentPath)
+			if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+				p = "." + string(os.PathSeparator) + p
+			}
+			return p
 		},
 		"NotExported": func(t *gen.Entity) bool {
 			level, ok := t.Features.GetString(gen.FeaturesAPIKind, gen.FAPILevel)
@@ -343,7 +450,8 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			if cust := f.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueATCustom, ""); cust != "" {
 				return "custom"
 			}
-			if f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) {
+			if f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) ||
+				f.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false) {
 				return "icon"
 			}
 			if !f.Type.Complex {
@@ -395,7 +503,7 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			// 	return true
 			// }
 			// return false
-			return e.IsDictionary()
+			return e.IsDictionary() || e.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vlaMultiple, false)
 		},
 		"LookupAttrs": func(f *gen.Field) (ret string) {
 			if _, itsManyToMany := f.Features.GetEntity(gen.FeaturesCommonKind, gen.FCManyToManyType); itsManyToMany {
@@ -412,7 +520,13 @@ func (cg *VueCLientGenerator) newHelper(name string, e *gen.Entity, outDir strin
 			return
 		},
 		"LookupWithAdd": func(e *gen.Entity) bool {
-			return !e.FB(gen.FeaturesCommonKind, gen.FCReadonly)
+			return !e.FB(gen.FeaturesCommonKind, gen.FCReadonly) &&
+				!e.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vcaReadonly, false)
+		},
+		"HideAddForLookup": func(f *gen.Field) bool {
+			return f.Annotations.GetBoolAnnotationDef(vueLookupAnnotation, vcaReadonly, false) ||
+				f.HasModifier(gen.AttrModifierEmbeddedRef) ||
+				f.FB(gen.GQLFeatures, gen.GQLFIDOnly)
 		},
 		"GetFields": func(e *gen.Entity) []*gen.Field {
 			return e.GetFields(true, true)
@@ -449,17 +563,70 @@ import {RoundNumber} from '@/filters/numberFilter';
 			return e.FS(js.Features, js.FInstanceGenerator)
 		},
 		"InputAttrs": func(f *gen.Field) string {
-			return ""
+			ret := ""
+			if mask, ok := f.Annotations.GetStringAnnotation(vueAnnotation, vcaMask); ok {
+				ret = fmt.Sprintf("v-mask=\"'%s'\" ", mask)
+			}
+			if pref, ok := f.Annotations.GetStringAnnotation(vueAnnotation, vcaPrefix); ok {
+				ret += fmt.Sprintf("prefix=\"%s\" ", pref)
+			}
+			if suff, ok := f.Annotations.GetStringAnnotation(vueAnnotation, vcaSuffix); ok {
+				ret += fmt.Sprintf("suffix=\"%s\" ", suff)
+			}
+			return ret
+		},
+		"IsNullable": func(f *gen.Field) bool {
+			return !f.Type.NonNullable
+		},
+		"ByRefField": func(f *gen.Field) bool {
+			return f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly)
 		},
 		"DialogWidth": func() string {
 			return "$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
 		},
-		// "RequiresInputField": func(f *gen.Field) bool {
-		// 	return !f.Annotations.GetBoolAnnotationDef(vueFormAnnotation, vueAnnotationIgnore, false)
-		// },
+		"FieldRoles": func(f *gen.Field) string {
+			roles := f.Annotations.GetStringAnnotationDef(vueTableAnnotation, vcaRoles, "")
+			if roles == "" {
+				roles = f.Annotations.GetStringAnnotationDef(vueAnnotation, vcaRoles, "")
+			}
+			if roles == "" {
+				return ""
+			}
+			rs := strings.Fields(roles)
+			bldr := strings.Builder{}
+			for i, role := range rs {
+				if i > 0 {
+					bldr.WriteRune(',')
+					bldr.WriteRune(' ')
+				}
+				bldr.WriteRune('"')
+				bldr.WriteString(role)
+				bldr.WriteRune('"')
+			}
+			return bldr.String()
+		},
+		"FlexWrap": func() string {
+			if !e.Annotations.GetBoolAnnotationDef(vueAnnotation, vcaNoWrap, false) {
+				return "flex-wrap"
+			}
+			return ""
+		},
+		"FlexJustify": func() string {
+			return "justify-space-between"
+		},
+		//"FormStyles": func() string {
+		//	var width string
+		//
+		//	if w, ok := e.Annotations.GetStringAnnotation(vueAnnotation, vcaWidth); ok {
+		//		width = w
+		//	}
+		//	if width != "" {
+		//		return fmt.Sprintf(`style="width: %s"`, width)
+		//	}
+		//	return ""
+		//},
 	}
 
-	th := &helper{templ: template.New(name), cg: cg, e: e, idField: idf, outDir: outDir}
 	th.templ.Funcs(funcs)
 	return th, nil
 }
@@ -470,6 +637,28 @@ func (th *helper) parse(str string) *helper {
 	}
 	th.templ, th.err = th.templ.Parse(str)
 	return th
+}
+
+func (th *helper) addComponent(cmp string, p string, entity *gen.Entity) {
+	if cmp != "" && p != "" {
+		if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+			if entity.File.Package == th.e.File.Package {
+				if entity.File.Name == th.e.File.Name {
+					p = "." + string(os.PathSeparator) + p
+				} else {
+					p = path.Join("..", entity.File.Name, p)
+				}
+			} else {
+				p = path.Join("..", "..", entity.File.Package, entity.File.Name, p)
+			}
+		}
+		th.components[cmp] = vcComponentDescriptor{
+			Comp: cmp,
+			Imp:  p,
+		}
+	} else {
+		th.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, entity.Name))
+	}
 }
 
 func getTitleFieldName(e *gen.Entity) string {
@@ -508,6 +697,7 @@ func getTabs(e *gen.Entity) (ret formTabs, def string) {
 					tab.order = ta.GetInt(vcaOrder, i)
 					tab.label = ta.GetString(vcaLabel, tab.label)
 					tab.roles = ta.GetString(vcaRoles, "")
+					tab.resource = ta.GetString(vcaResource, "")
 					if d := ta.GetBool(vcaDefault, false); d {
 						def = tab.ID
 					}

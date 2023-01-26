@@ -68,16 +68,17 @@ var htmlGridDialogTemplate = `
       <v-card-text>
         <v-progress-linear v-if="loading" intermediate></v-progress-linear>
         <div v-if="problem">{{"{{problem}}"}}</div>
-        <{{SelfFormComponent}} v-model="value" />
+        <{{SelfFormComponent}} v-model="value" :isNew="isNew" :disabled="readonly || forDelete"/>
       </v-card-text>
       <v-divider></v-divider>
       <v-card-actions>
         <div class="d-flex flex-row justify-center flex-grow-1">
           <v-btn
-            color="primary"
+            :color="forDelete? 'error' : 'primary'"
             @click="close(true)"
+            :disabled="readonly"
           >
-            {{"{{okText}}"}}
+            {{"{{"}}forDelete? deleteText : okText{{"}}"}}
           </v-btn>
           </div><div class="d-flex flex-row justify-end">
           <v-btn
@@ -100,7 +101,7 @@ const vueGridDialogTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Readonly}}{{SaveQuery .}}, {{CreateQuery .}}{{end}} } from '{{TypesFilePath .}}';
+import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Readonly}}{{SaveQuery .}}, {{CreateQuery .}}, {{DeleteQuery .}}{{end}} } from '{{TypesFilePath .}}';
 import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
 
 @Component({
@@ -110,21 +111,26 @@ import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
   }
 })
 export default class {{.Name}}DialogComponent extends Vue {
+  @Prop({default:false}) readonly!: boolean;
+  @Prop({default:"{{Literal "okButton"}}"}) okText!: string;
+  @Prop({default:"{{Literal "deleteButton"}}"}) deleteText!: string;
   private value: {{TypeName .}} | null = null;
   private isNew = false;
-  private okText: string = "OK";
+  
   private showDialog: boolean = false;
   private resolve: (res: {{TypeName .}}|null)=>void = () => {};
   private reject: (err: any)=>void = () => {};
   private loading = false;
   private problem = "";
   doNotGQL = {{NotExported .}}
+  forDelete = false;
   
   title() {
-    return {{Title .}};
+    return this.forDelete? ("{{Literal "deleteVerb"}} " + {{Title .}} + "?") : {{Title .}};
   }
   show(v: {{TypeName .}}|{{IDType .}}|null|undefined, isNew?: boolean): Promise<{{TypeName .}}|null> {
     this.showDialog = true;
+    this.forDelete = false;
     this.problem = "";
     if(v === null || v === undefined) {
       this.value = New{{TypeName .}}Instance();
@@ -141,6 +147,11 @@ export default class {{.Name}}DialogComponent extends Vue {
       this.reject = reject;    
     });
   }
+  showForDelete(v: {{TypeName .}}|{{IDType .}}): Promise<{{TypeName .}}|null> {
+    const ret = this.show(v);
+    this.forDelete = true;
+    return ret;
+  }
   async loadAndShow(id: {{IDType .}}) {
     this.loading = true;
     this.problem = "";
@@ -154,18 +165,26 @@ export default class {{.Name}}DialogComponent extends Vue {
   async saveAndClose() {
     //TODO: check that all necessary fields are filled
     try {
-      let res: {{TypeName .}}
-      {{if Readonly}}this.resolve(res);{{else}}
-      if(this.doNotGQL) {
-        this.resolve(this.value)
-      } else {
-        if(this.isNew) {
-          res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
-        } else {
-          res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
+      let res: {{TypeName .}};
+      if(this.forDelete) {
+        if(this.value) {
+          const deleted = await {{DeleteQuery .}}({{ApolloClient}}, this.value.{{IDField}});
+          if(deleted)
+            res = this.value;
         }
-        this.resolve(res);
-      }{{end}}
+      } else {
+          {{if Readonly}}this.resolve(res);{{else}}
+          if(this.doNotGQL) {
+            this.resolve(this.value)
+          } else {
+            if(this.isNew) {
+              res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
+            } else {
+              res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
+            }
+            this.resolve(res);
+          }{{end}} 
+      }
       this.showDialog = false;
     } catch(exc) {
       this.reject(exc);

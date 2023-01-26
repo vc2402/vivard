@@ -1,6 +1,6 @@
 module github.com/vc2402/vivard/scripting
 
-go 1.14
+go 1.18
 
 require (
 	github.com/dlclark/regexp2 v1.2.1 // indirect

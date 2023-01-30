@@ -20,8 +20,8 @@ type ValidatorOptions struct {
 const (
 	FeaturesValidator = "validator"
 
-	fvValidateFunc       = "validate-func"
-	fvValidationRequired = "required"
+	FVValidateFunc       = "validate-func"
+	FVValidationRequired = "required"
 )
 
 const ValidatorFuncNameTemplate = "Validate%s"
@@ -42,6 +42,12 @@ func (cg *Validator) Prepare(desc *Package) error {
 	cg.desc = desc
 	for _, file := range desc.Files {
 		for _, t := range file.Entries {
+			if t.HasModifier(TypeModifierTransient) {
+				continue
+			}
+			if t.Annotations[AnnotationConfig] != nil {
+				continue
+			}
 			for _, f := range t.Fields {
 				var refType *DefinedType
 				var ok bool
@@ -52,9 +58,9 @@ func (cg *Validator) Prepare(desc *Package) error {
 					refType, ok = desc.FindType(f.Type.Type)
 				}
 				if ok && refType.Entity().HasModifier(TypeModifierDictionary) {
-					f.Features.Set(FeaturesValidator, fvValidationRequired, true)
-					t.Features.Set(FeaturesValidator, fvValidationRequired, true)
-					t.Features.Set(FeaturesValidator, fvValidateFunc, fmt.Sprintf(ValidatorFuncNameTemplate, t.Name))
+					f.Features.Set(FeaturesValidator, FVValidationRequired, true)
+					t.Features.Set(FeaturesValidator, FVValidationRequired, true)
+					t.Features.Set(FeaturesValidator, FVValidateFunc, fmt.Sprintf(ValidatorFuncNameTemplate, t.Name))
 				}
 			}
 		}
@@ -64,13 +70,11 @@ func (cg *Validator) Prepare(desc *Package) error {
 
 func (cg *Validator) Generate(b *Builder) (err error) {
 	cg.b = b
-	for _, file := range b.Files {
-		for _, e := range file.Entries {
-			if e.FB(FeaturesValidator, fvValidationRequired) {
-				err = cg.generateValidator(e)
-				if err != nil {
-					return err
-				}
+	for _, e := range b.File.Entries {
+		if e.FB(FeaturesValidator, FVValidationRequired) {
+			err = cg.generateValidator(e)
+			if err != nil {
+				return err
 			}
 		}
 	}
@@ -78,7 +82,7 @@ func (cg *Validator) Generate(b *Builder) (err error) {
 }
 
 func (cg *Validator) generateValidator(e *Entity) error {
-	fname := e.FS(FeaturesValidator, fvValidateFunc)
+	fname := e.FS(FeaturesValidator, FVValidateFunc)
 
 	fun := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
 		jen.Id("ctx").Qual("context", "Context"),
@@ -92,7 +96,7 @@ func (cg *Validator) generateValidator(e *Entity) error {
 			} else {
 				typeName = f.Type.Type
 			}
-			if f.FB(FeaturesValidator, fvValidationRequired) {
+			if f.FB(FeaturesValidator, FVValidationRequired) {
 				engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 				valueChecker := func(id jen.Code) *jen.Statement {
 					return jen.If(jen.List(jen.Id("v"), jen.Id("_")).Op(":=").Add(engVar).
@@ -121,11 +125,26 @@ func (cg *Validator) generateValidator(e *Entity) error {
 			}
 		}
 		g.Return(jen.Nil())
-	})
+	}).Line()
+
 	cg.b.Functions.Add(fun)
 	return nil
 }
 
 func (cg *Validator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+	if module == CodeFragmentModuleGeneral {
+		if cf, ok := ctx.(*CodeFragmentContext); ok {
+			if cf.Entity != nil && cf.Entity.FB(FeaturesValidator, FVValidationRequired) {
+				if (action == MethodSet || action == MethodNew) && point == CFGPointEnterAfterHooks {
+					fname := cf.Entity.FS(FeaturesValidator, FVValidateFunc)
+					cf.Add(
+						cf.GetErr().Op("=").Id(EngineVar).Dot(fname).Params(cf.GetParam(ParamContext), cf.GetParam(ParamObject)),
+					)
+					cf.AddCheckError()
+					return true
+				}
+			}
+		}
+	}
 	return nil
 }

@@ -844,8 +844,6 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action
 							cf.Add(cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamID)))
 							cf.AddCheckError()
 							//TODO remove from cache
-							//jen.Delete(jen.Id(EngineVar).Dot(idxname), jen.Id("id")),
-							//jen.Id(EngineVar).Dot(fldname).Op("=").Id(EngineVar).Dot(fldname).Index(jen.Id("idx")),
 							g.Id(EngineVar).Dot(fldname).Op("=").Nil()
 							g.Id(EngineVar).Dot(idxname).Op("=").Nil()
 						}
@@ -863,27 +861,6 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action
 						cf.Add(jen.Id(EngineVar).Dot(fldname).Op("=").Append(jen.Id(EngineVar).Dot(fldname), cf.GetObjVar()))
 						cf.Add(jen.Id("idx").Op(":=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1))
 						cf.Add(ncg.indexesStatement(cf.Entity, cf.GetObjVarName(), "idx"))
-
-						//cf.Add(jen.Id(EngineVar).Dot(idxname).Index(cf.GetObjVar().Dot(idField.Name)).Op("=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1))
-						//if qf, ok := cf.Entity.Features.GetField(FeatureDictKind, FDQualifier); ok {
-						//	dscs, _ := cf.Entity.Features.Get(FeatureDictKind, FDIndexes)
-						//	qualIdxName := dscs.(map[string]indexDescriptor)[qf.Name].engFieldName
-						//	qf, _ := cf.Entity.Features.GetField(FeatureDictKind, FDQualifier)
-						//	derefOp := ""
-						//	if !qf.Type.NonNullable {
-						//		derefOp = "*"
-						//	}
-						//	qualIndexUpdate := jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Add(cf.GetObjVar()).Dot(qf.Name)).Op("=").Append(
-						//		jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Op(derefOp).Add(cf.GetObjVar()).Dot(qf.Name)),
-						//		jen.Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1),
-						//	)
-						//	if qf.Type.NonNullable {
-						//		cf.Add(qualIndexUpdate)
-						//	} else {
-						//		cf.Add(jen.If(jen.Id("o").Dot(qf.Name).Op("!=").Nil()).Block(qualIndexUpdate))
-						//	}
-						//
-						//}
 					}
 					return true
 				}

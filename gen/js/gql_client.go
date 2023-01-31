@@ -1,6 +1,7 @@
 package js
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -45,10 +46,41 @@ const (
 const apolloClientInclude = "import { ApolloClient } from 'apollo-client';\n"
 const gqlInclude = "import gql from 'graphql-tag';\n"
 
+const CodeFragmentModule = "ts"
+const CodeFragmentActionFile = "file"
+const CodeFragmentActionImport = "import"
+
+type CodeFragmentContext struct {
+	FileName string
+	File     *gen.File
+	Output   *os.File
+	Error    error
+	Imports
+}
+
 //TODO ref field is int not an object
 
 type GQLCLientGenerator struct {
-	desc *gen.Package
+	desc            *gen.Package
+	vivardGenerated bool
+}
+
+type Imports map[string][]string
+
+func (imp Imports) addImport(fileName string, typeName string) {
+	for _, g := range imp[fileName] {
+		if g == typeName {
+			return
+		}
+	}
+	imp[fileName] = append(imp[fileName], typeName)
+}
+func (imp Imports) append(imps Imports) {
+	for file, types := range imps {
+		for _, t := range types {
+			imp.addImport(file, t)
+		}
+	}
 }
 
 func (cg *GQLCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
@@ -129,46 +161,47 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 
 func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	cg.desc = b.Descriptor
-	p := path.Join(cg.getOutputDir(), b.File.Name+".ts")
+	fileName := b.File.Name + ".ts"
+	p := path.Join(cg.getOutputDir(), fileName)
 	outFile, err := os.Create(p)
 	if err != nil {
 		return
 	}
 	defer outFile.Close()
+	outFile.WriteString(fmt.Sprintf("/*Code generated from file %s by vivgen. DO NOT EDIT.*/", b.File.FileName))
 	outFile.WriteString(apolloClientInclude)
 	outFile.WriteString(gqlInclude)
-	imports := map[string][]string{}
-	addImport := func(fileName string, typeName string) {
-		for _, g := range imports[fileName] {
-			if g == typeName {
-				return
-			}
-		}
-		imports[fileName] = append(imports[fileName], typeName)
+	imports := Imports{}
+	cfc := CodeFragmentContext{
+		FileName: fileName,
+		File:     b.File,
+		Output:   outFile,
+		Imports:  imports,
 	}
+	b.Project.ProvideCodeFragment(CodeFragmentModule, CodeFragmentActionImport, nil, cfc, false)
 	for _, t := range b.File.Entries {
 		for _, f := range t.GetFields(true, true) {
 			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, false); tt != nil && tt.File != b.File {
-				addImport(tt.File.Name, t)
+				imports.addImport(tt.File.Name, t)
 				if f.Type.NonNullable && f.Type.Type != "" {
 					ft, ok := cg.desc.FindType(f.Type.Type)
 					if ok {
-						addImport(tt.File.Name, ft.Entity().FS(Features, FInstanceGenerator))
+						imports.addImport(tt.File.Name, ft.Entity().FS(Features, FInstanceGenerator))
 					}
 				}
 			}
 			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, true); tt != nil && tt.File != b.File {
-				addImport(tt.File.Name, t)
+				imports.addImport(tt.File.Name, t)
 			}
 		}
 		for _, m := range t.Methods {
 			for _, p := range m.Params {
 				if t, tt := cg.getTypeForImport(t.Pckg, p.Type, true); tt != nil && tt.File != b.File {
-					addImport(tt.File.Name, t)
+					imports.addImport(tt.File.Name, t)
 				}
 			}
 			if t, tt := cg.getTypeForImport(t.Pckg, m.RetValue, false); tt != nil && tt.File != b.File {
-				addImport(tt.File.Name, t)
+				imports.addImport(tt.File.Name, t)
 			}
 		}
 	}
@@ -196,7 +229,11 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	if useNS {
 		outFile.WriteString("}")
 	}
-	return nil
+	b.Project.ProvideCodeFragment(CodeFragmentModule, CodeFragmentActionFile, nil, cfc, false)
+	if cfc.Error != nil {
+		return cfc.Error
+	}
+	return cg.GenerateVivard()
 }
 
 func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeRef, forInput bool) (string, *gen.Entity) {
@@ -414,7 +451,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 										}
 									} else if i == gen.GQLOperationFind &&
 										(f.HasModifier(gen.AttrModifierEmbeddedRef) || !f.Type.Array.Complex) {
-										// nothing to do - it jus n and should be
+										// nothing to do - it just n and should be
 									} else {
 										n = ""
 									}
@@ -756,6 +793,25 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 		err = fmt.Errorf("type %s not found for %s", t.Type, field)
 	}
 	return
+}
+
+//Add adds str to file and append \n
+func (cfc CodeFragmentContext) Add(str string) error {
+	if cfc.Output != nil {
+		_, err := cfc.Output.WriteString(str)
+		if err == nil {
+			_, err = cfc.Output.WriteString("\n")
+		}
+		if err != nil {
+			cfc.Error = err
+		}
+		return err
+	}
+	return errors.New("output is not initialized")
+}
+
+func (cfc CodeFragmentContext) AddImport(file string, tip string) {
+	cfc.Imports.addImport(file, tip)
 }
 
 func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {

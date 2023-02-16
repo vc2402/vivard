@@ -29,9 +29,9 @@ func (cg *TSValidatorGenerator) Prepare(desc *gen.Package) error {
 		for _, t := range file.Entries {
 			if t.FB(gen.FeaturesValidator, gen.FVValidationRequired) {
 				t.Features.Set(FeaturesValidator, FVGenerate, true)
-				className := fmt.Sprintf("%sValidator", t.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""))
-				t.Features.Set(FeaturesValidator, FVValidatorClass, className)
 			}
+			className := fmt.Sprintf("%sValidator", t.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""))
+			t.Features.Set(FeaturesValidator, FVValidatorClass, className)
 		}
 	}
 	return nil
@@ -107,7 +107,7 @@ func (cg *TSValidatorGenerator) generateValidator(e *gen.Entity, cfc CodeFragmen
 var validatorClassTemplate = `
 export class {{ClassName}} extends ValidatorBase {
   constructor() {
-    super({ { {{range GetFields .}}
+    super({ {{range GetFields .}}
       {{FieldName .}}:[],{{end}}
     });
   }

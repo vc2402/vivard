@@ -174,6 +174,7 @@ const htmlFormTextInputTemplate = `{{define "TEXT_INPUT"}}<v-text-field v-if="va
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if IsIcon .}}
     :append-icon="value.{{FieldName .}}"{{end}}
+    :error-messages="validator && validator.errors.{{FieldName .}} || []"
   >{{if FieldWithAppend .}}<template v-slot:append-outer>
      {{range AppendToField .}}{{.}}{{end}}
    </template>{{end}}{{if WithPrependIcon .}}<template v-slot:prepend>
@@ -189,6 +190,7 @@ const htmlFormTextAreaTemplate = `{{define "TEXT_AREA_INPUT"}}<v-textarea v-if="
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if IsIcon .}}
     :append-icon="value.{{FieldName .}}"{{end}}
+    :error-messages="validator && validator.errors.{{FieldName .}} || []"
   >{{if FieldWithAppend .}}<template v-slot:append-outer>
      {{range AppendToField .}}{{.}}{{end}}
    </template>{{end}}{{if WithPrependIcon .}}<template v-slot:prepend>
@@ -223,6 +225,7 @@ const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}}
   v-model="value.{{FieldName .}}" 
   label="{{Label .}}" 
   @change="changed('{{FieldName .}}')" 
+  :error-messages="validator && validator.errors.{{FieldName .}} || []"
   {{LookupAttrs .}} 
   :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if ByRefField .}}
   :returnId="true"{{end}}{{if HideAddForLookup .}}
@@ -303,7 +306,7 @@ export default class {{.Name}}DialogComponent extends Vue {
   @Prop() value!: {{TypeName .}} | undefined;
   @Prop({default:false}) isNew!: boolean;
   @Prop({default:false}) disabled!: boolean;
-  
+
   @Emit("input")
   emitValue() {
     return this.value;
@@ -412,7 +415,8 @@ export default class {{.Name}}DialogComponent extends Vue {
   @Prop({default:false}) withActions!: boolean;
   @Prop({default:false}) loading!: boolean;
   @Prop() problem!: string | undefined;
-  
+  @Prop() validator: any;
+
   @Emit("action")
   close(ok: boolean) {
     return ok

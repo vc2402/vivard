@@ -239,14 +239,14 @@ func (b *Builder) generateNew(t *Entity) error {
 					// jen.Id("o").Dot(idField.Name).Op("=").Id("id").Line(),
 				),
 			)
-		} else {
+		} /*else {
 			c.If(
 				b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
 			).Block(
 				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("id should not be empty for New")),
 				jen.Return(),
 			)
-		}
+		}*/
 		if t.BaseTypeName != "" || t.HasModifier(TypeModifierExtendable) {
 			tn := t.FS(FeatGoKind, FCGDerivedTypeNameConst)
 			c.If(jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("==").Lit("")).Block(
@@ -263,7 +263,6 @@ func (b *Builder) generateNew(t *Entity) error {
 					Str: b.Descriptor.GetHookName(TypeHookChange, nil),
 					Obj: jen.Id("ret"),
 					Params: []HookArgParam{
-						//{"oldValue", jen.Nil()},
 						{"newValue", jen.Id("o")},
 					},
 				}),

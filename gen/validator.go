@@ -90,12 +90,6 @@ func (cg *Validator) generateValidator(e *Entity) error {
 	).Error().BlockFunc(func(g *jen.Group) {
 		//TODO call base class validator if any
 		for _, f := range e.Fields {
-			var typeName string
-			if f.Type.Array != nil {
-				typeName = f.Type.Array.Type
-			} else {
-				typeName = f.Type.Type
-			}
 			if f.FB(FeaturesValidator, FVValidationRequired) {
 				engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 				valueChecker := func(id jen.Code) *jen.Statement {
@@ -111,7 +105,7 @@ func (cg *Validator) generateValidator(e *Entity) error {
 					).Block(
 						jen.Return(
 							jen.Qual("fmt", "Errorf").
-								Params(jen.Lit(fmt.Sprintf("invalid value for type %s: %%v", typeName)), id),
+								Params(jen.Lit(fmt.Sprintf("validate: %s: invalid value: %%v", f.Name)), id),
 						),
 					)
 				}
@@ -134,14 +128,28 @@ func (cg *Validator) generateValidator(e *Entity) error {
 func (cg *Validator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
 	if module == CodeFragmentModuleGeneral {
 		if cf, ok := ctx.(*CodeFragmentContext); ok {
-			if cf.Entity != nil && cf.Entity.FB(FeaturesValidator, FVValidationRequired) {
-				if (action == MethodSet || action == MethodNew) && point == CFGPointEnterAfterHooks {
-					fname := cf.Entity.FS(FeaturesValidator, FVValidateFunc)
+			if point == CFGPointEnterAfterHooks && cf.Entity != nil {
+				idField := cf.Entity.GetIdField()
+				if action == MethodNew &&
+					!idField.HasModifier(AttrModifierIDAuto) {
 					cf.Add(
-						cf.GetErr().Op("=").Id(EngineVar).Dot(fname).Params(cf.GetParam(ParamContext), cf.GetParam(ParamObject)),
+						jen.If(
+							cf.Builder.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
+						).Block(
+							jen.Add(cf.GetErr()).Op("=").Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("validate: %s: empty", idField.Name))),
+							jen.Return(),
+						),
 					)
-					cf.AddCheckError()
-					return true
+				}
+				if cf.Entity.FB(FeaturesValidator, FVValidationRequired) {
+					if action == MethodSet || action == MethodNew {
+						fname := cf.Entity.FS(FeaturesValidator, FVValidateFunc)
+						cf.Add(
+							cf.GetErr().Op("=").Id(EngineVar).Dot(fname).Params(cf.GetParam(ParamContext), cf.GetParam(ParamObject)),
+						)
+						cf.AddCheckError()
+						return true
+					}
 				}
 			}
 		}

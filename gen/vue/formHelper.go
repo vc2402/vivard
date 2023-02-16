@@ -877,6 +877,13 @@ import {RoundNumber} from '@/filters/numberFilter';
 			}
 			return ""
 		},
+		"WithValidator": func() bool {
+			return e.FB(js.FeaturesValidator, js.FVGenerate) ||
+				e.FB(gen.FeaturesValidator, gen.FVValidationRequired)
+		},
+		"ValidatorClass": func() string {
+			return e.FS(js.FeaturesValidator, js.FVValidatorClass)
+		},
 	}
 	th.templ.Funcs(funcs)
 	return th, nil

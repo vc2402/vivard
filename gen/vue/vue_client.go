@@ -1101,11 +1101,12 @@ var htmlDictionaryLookupTemplate = `
       :item-value="'{{ItemValue}}'"
       :return-object="returnObject"
       :loading="loading"
-      :error-messages="problem"
+      :error-messages="problem || errorMessages"
       hide-no-data
       {{if CanBeMultiple}}:multiple="multiple"
       :chips="multiple"
       :disabled="disabled"
+      :rules="rules"
       small-chips{{end}}
       @update:search-input="onChange($event)"
     >
@@ -1123,6 +1124,7 @@ var htmlDictionaryLookupTemplate = `
 {{end}}
 `
 
+//TODO emit changed after input
 const vueDictionaryLookupTSTemplate = `
 {{define "TS"}}
 <script lang="ts">
@@ -1148,6 +1150,8 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:undefined}) hideAdd: boolean|undefined
   @Prop({default:false}) disabled!: boolean;{{if DictWithQualifier .}}
   @Prop() qualifier: any;{{end}}
+  @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
+  @Prop({default:()=>[]}) errorMessages!: string|string[];
 
   private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
@@ -1239,8 +1243,10 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:undefined}) hideAdd: string|undefined
   @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
-  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   @Prop({default:false}) returnId!: boolean;
+  @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
+  @Prop({default:()=>[]}) errorMessages!: string|string[];
+  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";

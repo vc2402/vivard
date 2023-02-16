@@ -755,7 +755,9 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 								jen.Lit("$lt"): jen.Id("query").Dot(f.Name),
 							})
 						case AFTLessThanOrEqual:
-							g.Add(pref).Index(jen.Lit("$lte")).Op("=").Id("query").Dot(f.Name)
+							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+								jen.Lit("$lte"): jen.Id("query").Dot(f.Name),
+							})
 						case AFTStartsWith:
 							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 								jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),

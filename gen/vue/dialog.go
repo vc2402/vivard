@@ -68,7 +68,7 @@ var htmlGridDialogTemplate = `
       <v-card-text>
         <v-progress-linear v-if="loading" intermediate></v-progress-linear>
         <div v-if="problem">{{"{{problem}}"}}</div>
-        <{{SelfFormComponent}} v-model="value" :isNew="isNew" :disabled="readonly || forDelete"/>
+        <{{SelfFormComponent}} v-model="value" :isNew="isNew" :disabled="readonly || forDelete"{{if WithValidator}} :validator="validator"{{end}}/>
       </v-card-text>
       <v-divider></v-divider>
       <v-card-actions>
@@ -101,7 +101,7 @@ const vueGridDialogTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Readonly}}{{SaveQuery .}}, {{CreateQuery .}}, {{DeleteQuery .}}{{end}} } from '{{TypesFilePath .}}';
+import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Readonly}}{{SaveQuery .}}, {{CreateQuery .}}, {{DeleteQuery .}}{{end}}{{if WithValidator}}, {{ValidatorClass}}{{end}} } from '{{TypesFilePath .}}';
 import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
 
 @Component({
@@ -124,6 +124,7 @@ export default class {{.Name}}DialogComponent extends Vue {
   private problem = "";
   doNotGQL = {{NotExported .}}
   forDelete = false;
+  {{if WithValidator}}validator = new {{ValidatorClass}}();{{end}}
   
   title() {
     return this.forDelete? ("{{Literal "deleteVerb"}} " + {{Title .}} + "?") : {{Title .}};
@@ -187,6 +188,9 @@ export default class {{.Name}}DialogComponent extends Vue {
       }
       this.showDialog = false;
     } catch(exc) {
+      {{if WithValidator}}if(this.validator.setFromServerResponse(exc)) {
+        return
+      } {{end}}
       this.reject(exc);
     }
   }

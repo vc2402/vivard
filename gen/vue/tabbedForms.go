@@ -175,6 +175,7 @@ export default class {{Name}}FormComponent extends Vue {
   @Prop() value!: {{TypeName}} | undefined;
   @Prop({default:false}) isNew!: boolean;
   @Prop({default:false}) disabled!: boolean|{[key:string]:boolean};
+  @Prop() validator: any;
 {{if NeedSecurity}}{{SecurityInject}}{{end}}
   {{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}{{TabID .}}Accessible = false;{{end}}
     {{end}}

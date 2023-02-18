@@ -1152,6 +1152,8 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop() qualifier: any;{{end}}
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
   @Prop({default:()=>[]}) errorMessages!: string|string[];
+  @Prop() filter!: (value: {{TypeName .}}) => boolean;
+  @Prop() autoSelect!: ((value: {{TypeName .}}) => boolean)|string|number|boolean;
 
   private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
@@ -1194,6 +1196,22 @@ export default class {{TypeName}}LookupComponent extends Vue {
       let res = await {{ListQuery}}({{ApolloClient}},{{ListQueryAttrs}});
       if(res) {
         this.items = res;
+        if(this.filter) {
+          this.items = this.items.filter(this.filter);
+        }
+        if(this.autoSelect) {
+          if(typeof this.autoSelect == "function") {
+            this.selected = this.items.find(this.autoSelect) || null;
+          } else if(typeof this.autoSelect == "string") {
+            this.selected = this.items.find(item => item[this.autoSelect as keyof {{TypeName .}}]) || null;
+          } else if(typeof this.autoSelect == "number") {
+            if(this.items && this.items.length > this.autoSelect)
+              this.selected = this.items[this.autoSelect];
+          } else if(typeof this.autoSelect == "boolean") {
+            if(this.items && this.items.length)
+              this.selected = this.items[0];
+          } 
+        }
       }
     } catch(exc) {
       this.problem = exc.toString();

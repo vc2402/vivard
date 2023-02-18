@@ -12,13 +12,6 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-type Boolean bool
-
-func (b *Boolean) Capture(values []string) error {
-	*b = values[0] == "true"
-	return nil
-}
-
 type hardcoded struct {
 	Attrs []*hardcodedAttr `(@@)*`
 }

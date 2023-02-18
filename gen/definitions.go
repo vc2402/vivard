@@ -246,7 +246,16 @@ const (
 	// AFTIsNull - null nullable fields (value should be bool)
 	AFTIsNull = "is-null"
 
-	// AnnotationCall - annotation for method
+	// AnnotationLookup for lookup function generation
+	AnnotationLookup       = "lookup"
+	ALEqual                = "eq"
+	ALNotEqual             = "ne"
+	ALStartsWith           = "startsWith"
+	ALStartsWithIgnoreCase = "startsWithIgnoreCase"
+	ALContains             = "contains"
+	ALContainsIgnoreCase   = "containsIgnoreCase"
+
+	// AnnotationCall - annotation for hook method
 	AnnotationCall = "call"
 	//AnnCallName - name of function to call
 	AnnCallName = "name"
@@ -269,6 +278,13 @@ const (
 
 	//AnnotationDefault set default value for entity's field
 	AnnotationDefault = "default"
+
+	// AnnotationSort indicate to use this field for sorting (usually at db access moment)
+	AnnotationSort = "sort"
+	// AnnSortAscending sort in ascending order
+	AnnSortAscending = "asc"
+	// AnnSortDescending sort in descending order
+	AnnSortDescending = "desc"
 )
 
 type FeatureKind string

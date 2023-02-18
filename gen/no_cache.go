@@ -265,8 +265,9 @@ func (b *Builder) generateNew(t *Entity) error {
 					Params: []HookArgParam{
 						{"newValue", jen.Id("o")},
 					},
-				}),
-			)
+					ErrVar: "err",
+				}))
+			cf.AddCheckError()
 		}
 		cf.Enter(false)
 

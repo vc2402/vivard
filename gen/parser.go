@@ -23,6 +23,13 @@ type File struct {
 	Pckg     *Package
 }
 
+type Boolean bool
+
+func (b *Boolean) Capture(values []string) error {
+	*b = values[0] == "true"
+	return nil
+}
+
 type Meta struct {
 	Pos      lexer.Position
 	TypeName string   ` "meta" ( "(" @Ident ")" )?`
@@ -146,7 +153,7 @@ type AnnotationTag struct {
 }
 type AnnotationValue struct {
 	String    *string  ` ( @String `
-	Bool      *bool    `| ("true" | "false") `
+	Bool      *Boolean `| @("true" | "false") `
 	Number    *float64 `| @Number )`
 	Interface interface{}
 }
@@ -669,7 +676,8 @@ func (a Annotations) AddTag(name string, key string, val interface{}, spec ...st
 	case float64:
 		av.Number = &v
 	case bool:
-		av.Bool = &v
+		av.Bool = new(Boolean)
+		*av.Bool = Boolean(v)
 	default:
 		av.Interface = val
 	}
@@ -809,7 +817,8 @@ func (a *Annotation) SetTag(key string, val interface{}) {
 	case float64:
 		t.Value.Number = &v
 	case bool:
-		t.Value.Bool = &v
+		t.Value.Bool = new(Boolean)
+		*t.Value.Bool = Boolean(v)
 	default:
 		t.Value.Interface = val
 	}
@@ -824,7 +833,7 @@ func (at *AnnotationTag) GetString() (ret string, ok bool) {
 
 func (at *AnnotationTag) GetBool() (ret bool, ok bool) {
 	if at.Value != nil && at.Value.Bool != nil {
-		return *at.Value.Bool, true
+		return bool(*at.Value.Bool), true
 	}
 	if at.Value == nil {
 		return true, true

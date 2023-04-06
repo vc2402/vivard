@@ -28,6 +28,7 @@ type Sequence struct {
 
 type SequenceProvider struct {
 	db        *mongo.Database
+	ms        *Service
 	log       *zap.Logger
 	sequences map[string]*Sequence
 	seqMux    sync.RWMutex
@@ -37,22 +38,29 @@ func MongoSequenceForDB(db *mongo.Database) *SequenceProvider {
 	return &SequenceProvider{db: db}
 }
 
+func MongoSequenceForService(ms *Service) *SequenceProvider {
+	return &SequenceProvider{ms: ms}
+}
+
 func (msp *SequenceProvider) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
 	msp.log = prov.Logger("mongo-seq")
 	msp.sequences = map[string]*Sequence{}
 	if msp.db == nil {
-		mongo, ok := eng.GetService(ServiceMongo).(*Service)
-		if !ok {
-			return errors.New("MongoService is required for SequenceProvider")
+		if msp.ms == nil {
+			mongo, ok := eng.GetService(ServiceMongo).(*Service)
+			if !ok {
+				return errors.New("MongoService is required for SequenceProvider")
+			}
+			msp.ms = mongo
 		}
-		if mongo.db == nil {
-			err = mongo.Prepare(eng, prov)
+		if msp.ms.db == nil {
+			err = msp.ms.Prepare(eng, prov)
 			if err != nil {
 				return
 			}
 		}
 
-		msp.db = mongo.DB()
+		msp.db = msp.ms.DB()
 	}
 	return
 }

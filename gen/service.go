@@ -5,6 +5,7 @@ import (
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard"
 	"github.com/vc2402/vivard/resource"
+	"github.com/vc2402/vivard/utils"
 	"regexp"
 	"strings"
 	"unicode"
@@ -248,21 +249,40 @@ func (cg *ServiceGenerator) ProvideCodeFragment(module interface{}, action inter
 				case EngineNotAMethod:
 					if point == CFGEngineMembers {
 						first := true
-						for _, desc := range services {
-							if first {
-								first = false
-							} else {
-								cf.Add(jen.Line())
-							}
-							cf.Add(jen.Id(desc.varName).Add(desc.getType()))
-						}
+						utils.WalkMap(
+							services,
+							func(desc serviceDescriptor, _ string) error {
+								if first {
+									first = false
+								} else {
+									cf.Add(jen.Line())
+								}
+								cf.Add(jen.Id(desc.varName).Add(desc.getType()))
+								return nil
+							},
+						)
+						//for _, desc := range services {
+						//	if first {
+						//		first = false
+						//	} else {
+						//		cf.Add(jen.Line())
+						//	}
+						//	cf.Add(jen.Id(desc.varName).Add(desc.getType()))
+						//}
 						return true
 					}
 				case MethodEnginePrepare:
 					if point == CFGEngineEnter {
-						for srv, desc := range services {
-							cf.Add(jen.Id(EngineVar).Dot(desc.varName).Op("=").Id("v").Dot("GetService").Params(jen.Lit(srv)).Dot("Provide").Params().Assert(desc.getType()))
-						}
+						utils.WalkMap(
+							services,
+							func(desc serviceDescriptor, srv string) error {
+								cf.Add(jen.Id(EngineVar).Dot(desc.varName).Op("=").Id("v").Dot("GetService").Params(jen.Lit(srv)).Dot("Provide").Params().Assert(desc.getType()))
+								return nil
+							},
+						)
+						//for srv, desc := range services {
+						//	cf.Add(jen.Id(EngineVar).Dot(desc.varName).Op("=").Id("v").Dot("GetService").Params(jen.Lit(srv)).Dot("Provide").Params().Assert(desc.getType()))
+						//}
 						return true
 					}
 					if point == CFGEngineExit {

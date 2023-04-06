@@ -3,10 +3,10 @@ package mongo
 import (
 	"context"
 	"errors"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/vc2402/vivard"
 	dep "github.com/vc2402/vivard/dependencies"
 
@@ -24,7 +24,7 @@ type Service struct {
 	connections map[string]*mongo.Client
 	aliases     map[string]*connection
 	guard       sync.RWMutex
-	log         *logrus.Entry
+	log         *zap.Logger
 	dp          dep.Provider
 }
 
@@ -89,7 +89,7 @@ func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Data
 	defer ms.guard.Unlock()
 	connectString, _ := ms.dp.Config().GetConfig("Mongo.Aliases." + alias + ".ConnectString").(string)
 	if connectString == "" && alias != "default" {
-		ms.log.Warnf("getMongo: alias not found: %s", alias)
+		ms.log.Error("getMongo: alias not found", zap.String("alias", alias))
 		return nil, errors.New("invalid alias")
 	}
 	if connectString == "" {
@@ -107,14 +107,14 @@ func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Data
 	if dbName == "" {
 		dbnames, err := client.ListDatabaseNames(ctx, bson.D{})
 		if err != nil {
-			ms.log.Warnf("getMongo: ListDatabaseNames(%s): %s", connectString, err.Error())
+			ms.log.Error("getMongo: ListDatabaseNames", zap.String("cs", connectString), zap.Error(err))
 			return nil, err
 		} else if len(dbnames) == 0 {
-			ms.log.Warnf("getMongo: there is no databases %s", connectString)
+			ms.log.Error("getMongo: there is no databases %s", zap.String("cs", connectString))
 			return nil, errors.New("no database")
 		}
 		dbName = dbnames[0]
-		ms.log.Warnf("getMongo: no db name set for alias %s. Using the first one: %s", alias, dbName)
+		ms.log.Error("getMongo: no db name set for alias. Using the first one", zap.String("alias", alias), zap.String("result", dbName))
 	}
 	db := client.Database(dbName)
 	ms.aliases[alias] = &connection{connectString, db}
@@ -124,14 +124,14 @@ func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Data
 func (ms *Service) createClient(ctx context.Context, connectString string) (*mongo.Client, error) {
 	client, err := mongo.NewClient(options.Client().ApplyURI(connectString))
 	if err != nil {
-		ms.log.Warnf("getMongo: NewClient(%s): %s", connectString, err.Error())
+		ms.log.Error("getMongo: NewClient", zap.String("cs", connectString), zap.Error(err))
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	err = client.Connect(ctx)
 	if err != nil {
-		ms.log.Warnf("getMongo: client.Connect(%s): %s", connectString, err.Error())
+		ms.log.Error("getMongo: client.Connect", zap.String("cs", connectString), zap.Error(err))
 		return nil, err
 	}
 	ms.connections[connectString] = client

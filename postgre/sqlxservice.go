@@ -2,10 +2,10 @@ package postgre
 
 import (
 	"errors"
+	"go.uber.org/zap"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
-	"github.com/sirupsen/logrus"
 	"github.com/vc2402/vivard"
 	dep "github.com/vc2402/vivard/dependencies"
 )
@@ -13,15 +13,15 @@ import (
 type Service struct {
 	db    *sqlx.DB
 	guard sync.RWMutex
-	log   *logrus.Entry
+	log   *zap.Logger
 	dp    dep.Provider
 }
 
 func (ss *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
-	ss.log = prov.Logger("postgre")
+	ss.log = prov.Logger("postgres")
 	ss.dp = prov
 	if ss.db == nil {
-		ss.tryConnectPostgre()
+		ss.tryConnectPostgres()
 	}
 	return
 }
@@ -38,9 +38,9 @@ func (ss *Service) DB() *sqlx.DB {
 	return ss.db
 }
 
-func (ss *Service) getPostgreDB() (*sqlx.DB, error) {
+func (ss *Service) getPostgresDB() (*sqlx.DB, error) {
 	if ss.db == nil {
-		ss.tryConnectPostgre()
+		ss.tryConnectPostgres()
 	}
 	ss.guard.RLock()
 	defer ss.guard.RUnlock()
@@ -50,20 +50,20 @@ func (ss *Service) getPostgreDB() (*sqlx.DB, error) {
 	return nil, errors.New("can't connect to Postgre")
 }
 
-func (ss *Service) tryConnectPostgre() {
+func (ss *Service) tryConnectPostgres() {
 	if ss.db == nil {
 		ss.guard.Lock()
 		defer ss.guard.Unlock()
-		connectString := "user=guest password=postgre host=192.168.150.15 port=5432 dbname=om "
+		connectString := "user=guest password=postgre host=127.0.0.1 port=5432 dbname=postgre "
 
-		if cs, ok := ss.dp.Config().GetConfig("Postgre.connectString").(string); ok && cs != "" {
+		if cs, ok := ss.dp.Config().GetConfig("Postgres.connectString").(string); ok && cs != "" {
 			connectString = cs
 		}
-		ss.log.Tracef("pgsql: trying to connect with connect string '%s", connectString)
+		ss.log.Debug("pgsql: trying to connect", zap.String("connectString", connectString))
 		var err error
 		ss.db, err = sqlx.Open("pgx", connectString)
 		if err != nil {
-			ss.log.Warnf("pgsql connection: %v", err)
+			ss.log.Error("pgsql connection", zap.String("connectString", connectString), zap.Error(err))
 		}
 	}
 }

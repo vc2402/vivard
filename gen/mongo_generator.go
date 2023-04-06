@@ -101,6 +101,8 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 			f.Features.Set(mongoFeatures, mfSortDesc, true)
 		}
 		return true, nil
+	} else if ann.Name == AnnotationLookup && fld {
+		return true, nil
 	}
 	return false, nil
 }

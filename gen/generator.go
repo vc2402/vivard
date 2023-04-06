@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/vc2402/vivard/utils"
 	"os"
 	"path"
 	"reflect"
@@ -315,45 +316,53 @@ func (p *Project) Generate() (err error) {
 				bldr.Generator,
 			).Line()
 			bldr.JenFile.Add(bldr.Types)
-			for _, stmts := range bldr.consts {
-				if len(stmts) == 1 {
-					bldr.JenFile.Add(jen.Const().Add(stmts[0]))
-				} else {
-					multiLineConst := jen.Options{
-						Close: ")",
-						Multi: true,
-						Open:  "(",
+			utils.WalkMap(
+				bldr.consts,
+				func(stmts []*jen.Statement, _ string) error {
+					if len(stmts) == 1 {
+						bldr.JenFile.Add(jen.Const().Add(stmts[0]))
+					} else {
+						multiLineConst := jen.Options{
+							Close: ")",
+							Multi: true,
+							Open:  "(",
+						}
+						bldr.JenFile.Add(jen.Const().CustomFunc(
+							multiLineConst,
+							func(g *jen.Group) {
+								for _, stmt := range stmts {
+									g.Add(stmt)
+								}
+							},
+						))
 					}
-					bldr.JenFile.Add(jen.Const().CustomFunc(
-						multiLineConst,
-						func(g *jen.Group) {
-							for _, stmt := range stmts {
-								g.Add(stmt)
-							}
-						},
-					))
-				}
-			}
+					return nil
+				},
+			)
 
-			for _, stmts := range bldr.vars {
-				if len(stmts) == 1 {
-					bldr.JenFile.Add(jen.Var().Add(stmts[0]))
-				} else {
-					multiLineConst := jen.Options{
-						Close: ")",
-						Multi: true,
-						Open:  "(",
+			utils.WalkMap(
+				bldr.vars,
+				func(stmts []*jen.Statement, _ string) error {
+					if len(stmts) == 1 {
+						bldr.JenFile.Add(jen.Var().Add(stmts[0]))
+					} else {
+						multiLineConst := jen.Options{
+							Close: ")",
+							Multi: true,
+							Open:  "(",
+						}
+						bldr.JenFile.Add(jen.Var().CustomFunc(
+							multiLineConst,
+							func(g *jen.Group) {
+								for _, stmt := range stmts {
+									g.Add(stmt)
+								}
+							},
+						))
 					}
-					bldr.JenFile.Add(jen.Var().CustomFunc(
-						multiLineConst,
-						func(g *jen.Group) {
-							for _, stmt := range stmts {
-								g.Add(stmt)
-							}
-						},
-					))
-				}
-			}
+					return nil
+				},
+			)
 
 			bldr.JenFile.Add(gen)
 			bldr.JenFile.Add(bldr.Functions)

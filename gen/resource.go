@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard/resource"
+	"github.com/vc2402/vivard/utils"
 )
 
 type ResourceGenerator struct {
@@ -207,10 +208,18 @@ func (cg *ResourceGenerator) ProvideCodeFragment(module interface{}, action inte
 func (cg *ResourceGenerator) generateVarsAndConstants(cf *CodeFragmentContext) error {
 	if ds, ok := cf.Package.Features.Get(ResourceFeatureKind, RFResources); ok {
 		descriptors := ds.(map[string]resourceDescriptor)
-		for key, descriptor := range descriptors {
-			cf.Add(jen.Const().Id(descriptor.keyConstName).Op("=").Qual(ResourcePackage, "Key").Parens(jen.Lit(key)).Line())
-			cf.Add(jen.Var().Id(descriptor.idVarName).Qual(ResourcePackage, "ID").Line())
-		}
+		utils.WalkMap(
+			descriptors,
+			func(descriptor resourceDescriptor, key string) error {
+				cf.Add(jen.Const().Id(descriptor.keyConstName).Op("=").Qual(ResourcePackage, "Key").Parens(jen.Lit(key)).Line())
+				cf.Add(jen.Var().Id(descriptor.idVarName).Qual(ResourcePackage, "ID").Line())
+				return nil
+			},
+		)
+		//for key, descriptor := range descriptors {
+		//	cf.Add(jen.Const().Id(descriptor.keyConstName).Op("=").Qual(ResourcePackage, "Key").Parens(jen.Lit(key)).Line())
+		//	cf.Add(jen.Var().Id(descriptor.idVarName).Qual(ResourcePackage, "ID").Line())
+		//}
 	}
 	//constName := t.FS(ResourceFeatureKind, RFConstName)
 	//if constName != "" {
@@ -242,19 +251,36 @@ func (cg *ResourceGenerator) generateResourcesInitializer(cf *CodeFragmentContex
 					jen.Return(jen.Id("err"))),
 				)
 			}
-			for _, desc := range descriptors {
-				cf.Add(jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("FindResource").Params(jen.Id(desc.keyConstName)))
-				cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
-					jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("CreateResource").Params(
-						jen.Id(desc.keyConstName),
-						jen.Lit(desc.description),
-						jen.Qual(ResourcePackage, "Key").Parens(jen.Lit(desc.parent)),
-					),
-				))
-				cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
-					jen.Return(jen.Id("err"))),
-				)
-			}
+			utils.WalkMap(
+				descriptors,
+				func(desc resourceDescriptor, _ string) error {
+					cf.Add(jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("FindResource").Params(jen.Id(desc.keyConstName)))
+					cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
+						jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("CreateResource").Params(
+							jen.Id(desc.keyConstName),
+							jen.Lit(desc.description),
+							jen.Qual(ResourcePackage, "Key").Parens(jen.Lit(desc.parent)),
+						),
+					))
+					cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
+						jen.Return(jen.Id("err"))),
+					)
+					return nil
+				},
+			)
+			//for _, desc := range descriptors {
+			//	cf.Add(jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("FindResource").Params(jen.Id(desc.keyConstName)))
+			//	cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
+			//		jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("CreateResource").Params(
+			//			jen.Id(desc.keyConstName),
+			//			jen.Lit(desc.description),
+			//			jen.Qual(ResourcePackage, "Key").Parens(jen.Lit(desc.parent)),
+			//		),
+			//	))
+			//	cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
+			//		jen.Return(jen.Id("err"))),
+			//	)
+			//}
 			cf.Add(jen.Return(jen.Nil()))
 
 			cf.Pop()

@@ -7,6 +7,7 @@ require (
 	github.com/dave/jennifer v1.6.0
 	github.com/vc2402/vivard v0.0.0-20230130100825-fdb54e8f8872
 	github.com/vc2402/vivard/mongo v0.0.0-20230130100825-fdb54e8f8872
+	github.com/vc2402/vivard/utils v0.0.0-20230308144446-cd9bc918f689
 )
 
 require (

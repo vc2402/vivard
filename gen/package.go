@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"github.com/vc2402/vivard/utils"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -413,15 +414,28 @@ func (desc *Package) doGenerate(bldr *Builder) error {
 
 func (desc *Package) generateEngine() error {
 	extInit := &jen.Statement{}
-	for pckg, varname := range desc.extEngines {
-		pn := desc.Project.GetFullPackage(pckg)
-		desc.Engine.Fields.Add(
-			jen.Id(varname).Op("*").Qual(pn, "Engine").Line(),
-		)
-		extInit.Add(
-			jen.Id(EngineVar).Dot(varname).Op("=").Id("v").Dot("Engine").Params(jen.Lit(pckg)).Assert(jen.Op("*").Qual(pn, "Engine")).Line(),
-		)
-	}
+	utils.WalkMap(
+		desc.extEngines,
+		func(varname string, pckg string) error {
+			pn := desc.Project.GetFullPackage(pckg)
+			desc.Engine.Fields.Add(
+				jen.Id(varname).Op("*").Qual(pn, "Engine").Line(),
+			)
+			extInit.Add(
+				jen.Id(EngineVar).Dot(varname).Op("=").Id("v").Dot("Engine").Params(jen.Lit(pckg)).Assert(jen.Op("*").Qual(pn, "Engine")).Line(),
+			)
+			return nil
+		},
+	)
+	//for pckg, varname := range desc.extEngines {
+	//	pn := desc.Project.GetFullPackage(pckg)
+	//	desc.Engine.Fields.Add(
+	//		jen.Id(varname).Op("*").Qual(pn, "Engine").Line(),
+	//	)
+	//	extInit.Add(
+	//		jen.Id(EngineVar).Dot(varname).Op("=").Id("v").Dot("Engine").Params(jen.Lit(pckg)).Assert(jen.Op("*").Qual(pn, "Engine")).Line(),
+	//	)
+	//}
 	cf := CodeFragmentContext{
 		Package:    desc,
 		MethodKind: EngineNotAMethod,
@@ -482,9 +496,14 @@ func (desc *Package) generateEngine() error {
 			cf.Push(g)
 			desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false)
 			g.Add(desc.Engine.Initializator)
-			for _, statement := range desc.Engine.SingletonInits {
-				g.Add(statement)
-			}
+			utils.WalkMap(
+				desc.Engine.SingletonInits,
+				func(statement *jen.Statement, _ string) error {
+					g.Add(statement)
+					return nil
+				},
+			)
+
 			g.Add(desc.Engine.Initialized)
 			g.Add(extInit)
 			if desc.Engine.prepAdd != nil {

@@ -1,8 +1,8 @@
 package vivard
 
 import (
-	"github.com/sirupsen/logrus"
 	dep "github.com/vc2402/vivard/dependencies"
+	"go.uber.org/zap"
 )
 
 // well known services
@@ -13,9 +13,13 @@ const (
 	ServiceScripting        = "scripting"
 	ServiceCRON             = "cron"
 	ServiceLoggingLogrus    = "logging:logrus"
+	ServiceLoggingZap       = "logging:zap"
 	ServiceNATS             = "nats"
+	ServiceSQL              = "sql"
 	ServiceSQLX             = "sqlx"
 )
+
+const configZapLogger = "zap-logger"
 
 type Service interface {
 	// Prepare will be called for each registered service before SubEngine's Prepare
@@ -42,7 +46,7 @@ type Engine struct {
 	services map[string]Service
 	engines  map[string]SubEngine
 	config   *configProvider
-	logger   *logrus.Logger
+	logger   *zap.Logger
 }
 
 type Generator func(eng *Engine) error
@@ -54,14 +58,20 @@ func NewEngine() *Engine {
 		engines:  map[string]SubEngine{},
 	}
 
-	if logrusCfg := eng.ConfValue("logrusConfig"); logrusCfg != nil {
-		if lc, ok := logrusCfg.(map[string]interface{}); ok {
-			eng.logger, _ = initLogrus(lc)
+	if loggerCfg := eng.ConfValue(configZapLogger); loggerCfg != nil {
+		if lc, ok := loggerCfg.(map[string]interface{}); ok {
+			eng.logger, _ = InitZapLogger(lc)
 		}
 	}
 	if eng.logger == nil {
-		eng.logger = logrus.StandardLogger()
+		eng.logger = zap.L()
 	}
+	return eng
+}
+
+// WithLogger sets l as Engine's logger
+func (eng *Engine) WithLogger(l *zap.Logger) *Engine {
+	eng.logger = l
 	return eng
 }
 
@@ -130,8 +140,11 @@ func (eng *Engine) Config() dep.ConfigProvider {
 	return eng
 }
 
-func (eng *Engine) Logger(name string) *logrus.Entry {
-	return eng.logger.WithField("m", name)
+func (eng *Engine) Logger(name string) *zap.Logger {
+	if name == "" {
+		return eng.logger
+	}
+	return eng.logger.With(zap.String("m", name))
 }
 
 // func (eng *Engine) RegisterSequenceProvider(sp SequenceProvider) {
@@ -144,3 +157,8 @@ func (eng *Engine) Logger(name string) *logrus.Entry {
 // 	}
 // 	return eng.sequenceProvider.Sequence(ctx, name)
 // }
+
+func InitZapLogger(cfg map[string]interface{}) (*zap.Logger, error) {
+	// so far nothing
+	return zap.L(), nil
+}

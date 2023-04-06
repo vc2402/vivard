@@ -499,12 +499,13 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 			jen.Id("ok"),
 		).BlockFunc(func(g *jen.Group) {
 			g.If(jen.Id(obj).Op("==").Nil()).BlockFunc(func(g *jen.Group) {
-				if t.HasModifier(TypeModifierExtendable) {
-					g.Panic(jen.Lit("empty object for base type"))
-				} else {
-					g.List(jen.Id(obj), jen.Id("err")).Op("=").Id(EngineVar).Dot(cg.desc.GetMethodName(MethodInit, name)).Params(jen.Id("ctx"))
-					g.Add(returnIfErr())
-				}
+				//TODO: add option for panic?
+				//if t.HasModifier(TypeModifierExtendable) {
+				//	g.Panic(jen.Lit("empty object for base type"))
+				//} else {
+				g.List(jen.Id(obj), jen.Id("err")).Op("=").Id(EngineVar).Dot(cg.desc.GetMethodName(MethodInit, name)).Params(jen.Id("ctx"))
+				g.Add(returnIfErr())
+				//}
 			},
 			)
 			for _, f := range t.GetFields(true, true) {

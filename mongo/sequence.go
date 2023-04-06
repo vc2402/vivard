@@ -3,11 +3,11 @@ package mongo
 import (
 	"context"
 	"errors"
+	"go.uber.org/zap"
 	"sync"
 
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"github.com/sirupsen/logrus"
 	dep "github.com/vc2402/vivard/dependencies"
 	"go.mongodb.org/mongo-driver/bson"
 
@@ -28,7 +28,7 @@ type Sequence struct {
 
 type SequenceProvider struct {
 	db        *mongo.Database
-	log       *logrus.Entry
+	log       *zap.Logger
 	sequences map[string]*Sequence
 	seqMux    sync.RWMutex
 }
@@ -38,7 +38,7 @@ func MongoSequenceForDB(db *mongo.Database) *SequenceProvider {
 }
 
 func (msp *SequenceProvider) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
-	msp.log = prov.Logger("mng-seq")
+	msp.log = prov.Logger("mongo-seq")
 	msp.sequences = map[string]*Sequence{}
 	if msp.db == nil {
 		mongo, ok := eng.GetService(ServiceMongo).(*Service)
@@ -121,7 +121,7 @@ func (s *Sequence) Next(ctx context.Context) (int, error) {
 	s.curr++
 	err = s.save(ctx)
 	if err != nil {
-		s.p.log.Warnf("Sequence<%s>.Next: Update: %v", s.name, err)
+		s.p.log.Error("on update", zap.String("sequence", s.name), zap.Error(err))
 		return -1, err
 	}
 	return s.curr, nil
@@ -149,7 +149,7 @@ func (s *Sequence) SetCurrent(ctx context.Context, value int) (int, error) {
 	s.curr = value
 	err := s.save(ctx)
 	if err != nil {
-		s.p.log.Warnf("Sequence<%s>.Next: Update: %v", s.name, err)
+		s.p.log.Error("on update", zap.String("sequence", s.name), zap.Error(err))
 		return -1, err
 	}
 	return s.curr, nil
@@ -165,14 +165,14 @@ func (s *Sequence) load(ctx context.Context) error {
 		Decode(&m)
 	if err != nil {
 		if err != mongo.ErrNoDocuments {
-			s.p.log.Warnf("Sequence<%s>.load: FindOne: %v", s.name, err)
+			s.p.log.Error("load: FindOne", zap.String("sequence", s.name), zap.Error(err))
 			return err
 		}
 		s.curr = 1
-		s.p.log.Tracef("Sequence<%s>.load: Iniatializing", s.name)
+		s.p.log.Debug("load: initializing new", zap.String("sequence", s.name))
 		_, err := s.p.db.Collection(sequencesCollectionName).InsertOne(ctx, bson.M{"_id": s.name, "current": s.curr})
 		if err != nil {
-			s.p.log.Warnf("Sequence<%s>.load: Insert: %v", s.name, err)
+			s.p.log.Error("load: InsertOne", zap.String("sequence", s.name), zap.Error(err))
 		}
 		return err
 	}

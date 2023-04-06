@@ -1,9 +1,9 @@
 package scripting
 
 import (
+	"go.uber.org/zap"
 	"sync"
 
-	"github.com/sirupsen/logrus"
 	"github.com/vc2402/vivard"
 	dep "github.com/vc2402/vivard/dependencies"
 )
@@ -15,7 +15,7 @@ type Service struct {
 	context map[string]interface{}
 	modules map[string]interface{}
 	locker  sync.Mutex
-	log     *logrus.Entry
+	log     *zap.Logger
 }
 
 func (s *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {

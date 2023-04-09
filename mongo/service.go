@@ -3,6 +3,7 @@ package mongo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -19,8 +20,15 @@ const (
 	ServiceMongo = "mongo"
 )
 
+type ConnectionConfig struct {
+	Alias         string
+	ConnectString string
+	DBName        string
+}
+
 type Service struct {
 	db          *mongo.Database
+	config      map[string]ConnectionConfig
 	connections map[string]*mongo.Client
 	aliases     map[string]*connection
 	guard       sync.RWMutex
@@ -31,6 +39,42 @@ type Service struct {
 type connection struct {
 	url string
 	db  *mongo.Database
+}
+
+// New creates new mongo service
+// params may be:
+//
+//	*mongo.Database (should be first)
+//	connect string (will select first db from the available)
+//	pair connect string - db-name
+//	ConnectionConfig object
+func New(params ...any) (*Service, error) {
+	s := &Service{}
+	cs := map[string]ConnectionConfig{}
+	for i := 0; i < len(params); i++ {
+		switch v := params[i].(type) {
+		case *mongo.Database:
+			s.db = v
+		case string:
+			conf := ConnectionConfig{Alias: "default"}
+			conf.ConnectString = v
+			if i <= len(params)-2 {
+				if dbn, ok := params[i+1].(string); ok {
+					i++
+					conf.DBName = dbn
+				}
+			}
+			cs[conf.Alias] = conf
+		case ConnectionConfig:
+			cs[v.Alias] = v
+		default:
+			return nil, fmt.Errorf("invalid param: %v (%T)", params[i], params[i])
+		}
+	}
+	if len(cs) > 0 {
+		s.config = cs
+	}
+	return s, nil
 }
 
 func (ms *Service) With(db *mongo.Database) *Service {
@@ -87,51 +131,76 @@ func (ms *Service) getMongoDB(ctx context.Context, alias string) (*mongo.Databas
 func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Database, error) {
 	ms.guard.Lock()
 	defer ms.guard.Unlock()
-	connectString, _ := ms.dp.Config().GetConfig("Mongo.Aliases." + alias + ".ConnectString").(string)
-	if connectString == "" && alias != "default" {
-		ms.log.Error("getMongo: alias not found", zap.String("alias", alias))
-		return nil, errors.New("invalid alias")
+	var conf ConnectionConfig
+	confFound := false
+	if ms.config != nil {
+		if cf, ok := ms.config[alias]; ok {
+			conf = cf
+			confFound = true
+		}
 	}
-	if connectString == "" {
-		connectString = "mongodb://localhost:27017"
+	if !confFound {
+		if cf, ok := ms.dp.Config().GetConfig("mongo.aliases." + alias).(map[string]interface{}); ok {
+			conf.Alias = alias
+			if cs, ok := cf["connectstring"].(string); ok {
+				conf.ConnectString = cs
+				confFound = true
+			} else if cs, ok := cf["connect-string"].(string); ok {
+				conf.ConnectString = cs
+				confFound = true
+			}
+			if db, ok := cf["dbname"].(string); ok {
+				conf.DBName = db
+			} else if db, ok := cf["db-name"].(string); ok {
+				conf.ConnectString = db
+			}
+		}
 	}
-	client, exists := ms.connections[connectString]
+	if !confFound && alias != "default" {
+		ms.log.Error("Mongo: alias not found", zap.String("alias", alias))
+		return nil, fmt.Errorf("no configuration found for alias: %s", alias)
+	}
+	if !confFound {
+		conf.ConnectString = "mongodb://localhost:27017"
+	}
+	client, exists := ms.connections[conf.ConnectString]
 	if !exists {
 		var err error
-		client, err = ms.createClient(ctx, connectString)
+		client, err = ms.createClient(ctx, conf.ConnectString)
 		if err != nil {
 			return nil, err
 		}
+		ms.log.Info("Mongo: got new connection for alias", zap.String("alias", alias))
 	}
-	dbName, _ := ms.dp.Config().GetConfig("Mongo.Aliases." + alias + ".DBName").(string)
-	if dbName == "" {
+
+	if conf.DBName == "" {
 		dbnames, err := client.ListDatabaseNames(ctx, bson.D{})
 		if err != nil {
-			ms.log.Error("getMongo: ListDatabaseNames", zap.String("cs", connectString), zap.Error(err))
+			ms.log.Error("Mongo: ListDatabaseNames", zap.String("cs", conf.ConnectString), zap.Error(err))
 			return nil, err
 		} else if len(dbnames) == 0 {
-			ms.log.Error("getMongo: there is no databases %s", zap.String("cs", connectString))
+			ms.log.Error("Mongo: there is no databases for %s", zap.String("cs", conf.ConnectString))
 			return nil, errors.New("no database")
 		}
-		dbName = dbnames[0]
-		ms.log.Error("getMongo: no db name set for alias. Using the first one", zap.String("alias", alias), zap.String("result", dbName))
+		conf.DBName = dbnames[0]
+		ms.log.Info("Mongo: no db name set for alias. Using the first one", zap.String("alias", alias), zap.String("result", conf.DBName))
 	}
-	db := client.Database(dbName)
-	ms.aliases[alias] = &connection{connectString, db}
+	db := client.Database(conf.DBName)
+	ms.aliases[alias] = &connection{conf.ConnectString, db}
 	return db, nil
 }
 
 func (ms *Service) createClient(ctx context.Context, connectString string) (*mongo.Client, error) {
 	client, err := mongo.NewClient(options.Client().ApplyURI(connectString))
 	if err != nil {
-		ms.log.Error("getMongo: NewClient", zap.String("cs", connectString), zap.Error(err))
+		ms.log.Error("Mongo: NewClient", zap.String("cs", connectString), zap.Error(err))
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	err = client.Connect(ctx)
 	if err != nil {
-		ms.log.Error("getMongo: client.Connect", zap.String("cs", connectString), zap.Error(err))
+		ms.log.Error("Mongo: client.Connect", zap.String("cs", connectString), zap.Error(err))
 		return nil, err
 	}
 	ms.connections[connectString] = client

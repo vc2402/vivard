@@ -19,6 +19,7 @@ func main() {
 	pflag.Bool("print", false, "Print result to stdout")
 	pflag.String("cfgPath", ".", "Path to config file")
 	pflag.String("cfg", "gen.json", "Config file name")
+	pflag.String("pkgPrefix", "", "Package prefix")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -44,12 +45,15 @@ func main() {
 		fmt.Printf("errors found: %v\n", err)
 	} else {
 		// fmt.Printf("parsed: %#+v: \n", res)
+		opts := gen.Options(viper.GetString("out")).
+			With(gen.UnknownAnnotationWarning).
+			With(gen.NullablePointers)
+		if viper.GetString("pkgPrefix") != "" {
+			opts.With(gen.PackagePrefixOption(viper.GetString("pkgPrefix")))
+		}
 		desc := gen.New(
 			res,
-			gen.Options(viper.GetString("out")).
-				With(gen.PackagePrefixOption("parnasas.lt")).
-				With(gen.UnknownAnnotationWarning).
-				With(gen.NullablePointers).
+			opts.
 				WithCustom("mongo", map[string]interface{}{"idGenerator": false}).
 				WithCustom("gql-ts", map[string]interface{}{"path": viper.GetString("clientOut")}).
 				WithCustom("vue", &vue.VueClientOptions{

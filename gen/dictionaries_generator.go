@@ -2,8 +2,8 @@ package gen
 
 import (
 	"fmt"
-
 	"github.com/dave/jennifer/jen"
+	"github.com/vc2402/vivard/utils"
 )
 
 const (
@@ -71,12 +71,12 @@ type indexDescriptor struct {
 	unique       bool
 }
 
-//SetDescriptor from DescriptorAware
+// SetDescriptor from DescriptorAware
 func (ncg *DictionariesGenerator) SetDescriptor(proj *Project) {
 	ncg.proj = proj
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (ncg *DictionariesGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:
@@ -231,13 +231,32 @@ func (ncg *DictionariesGenerator) addDictionaryCache(t *Entity, idType *TypeRef)
 	//ncg.desc.Engine.Fields.Add(jen.Id(idxname).Map(idt).Int().Line())
 	if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
 		indexes := idxs.(map[string]indexDescriptor)
-		for _, descriptor := range indexes {
-			elementType := jen.Int()
-			if !descriptor.unique {
-				elementType = jen.Index().Int()
-			}
-			ncg.desc.Engine.Fields.Add(jen.Id(descriptor.engFieldName).Map(descriptor.keyType).Add(elementType).Line())
-		}
+		utils.WalkMap(
+			indexes,
+			func(descriptor indexDescriptor, _ string) error {
+				elementType := jen.Int()
+				if !descriptor.unique {
+					elementType = jen.Index().Int()
+				}
+				ncg.desc.Engine.Fields.Add(jen.Id(descriptor.engFieldName).Map(descriptor.keyType).Add(elementType).Line())
+				return nil
+			},
+		)
+		//keys := make([]string, len(indexes))
+		//idx := 0
+		//for key := range indexes {
+		//	keys[idx] = key
+		//	idx++
+		//}
+		//sort.Strings(keys)
+		//for _, key := range keys {
+		//	descriptor := indexes[key]
+		//	elementType := jen.Int()
+		//	if !descriptor.unique {
+		//		elementType = jen.Index().Int()
+		//	}
+		//	ncg.desc.Engine.Fields.Add(jen.Id(descriptor.engFieldName).Map(descriptor.keyType).Add(elementType).Line())
+		//}
 	}
 
 	//if t.FB(FeatureDictKind, FDQualified) {
@@ -511,13 +530,32 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 				//g.Id(EngineVar).Dot(idxname).Op("=").Map(idt).Int().Values()
 				if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
 					indexes := idxs.(map[string]indexDescriptor)
-					for _, descriptor := range indexes {
-						elementType := jen.Int()
-						if !descriptor.unique {
-							elementType = jen.Index().Int()
-						}
-						g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
-					}
+					utils.WalkMap(
+						indexes,
+						func(descriptor indexDescriptor, _ string) error {
+							elementType := jen.Int()
+							if !descriptor.unique {
+								elementType = jen.Index().Int()
+							}
+							g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
+							return nil
+						},
+					)
+					//keys := make([]string, len(indexes))
+					//idx := 0
+					//for key := range indexes {
+					//	keys[idx] = key
+					//	idx++
+					//}
+					//sort.Strings(keys)
+					//for _, key := range keys {
+					//	descriptor := indexes[key]
+					//	elementType := jen.Int()
+					//	if !descriptor.unique {
+					//		elementType = jen.Index().Int()
+					//	}
+					//	g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
+					//}
 				}
 				//if qualIdxName != "" {
 				//	var keyType *jen.Statement
@@ -913,29 +951,56 @@ func (ncg *DictionariesGenerator) indexesStatement(t *Entity, value string, inde
 	ret := &jen.Statement{}
 	if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
 		indexes := idxs.(map[string]indexDescriptor)
-		for _, descriptor := range indexes {
-			derefOp := ""
-			if !descriptor.field.Type.NonNullable {
-				derefOp = "*"
-			}
-			qfStmt := jen.Id(value).Dot(descriptor.field.Name)
-			qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
-			var idxStmt jen.Code
-			if descriptor.unique {
-				idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Id(index)
-			} else {
-				idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Append(
-					jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref),
-					jen.Id(index),
-				)
-			}
-			if descriptor.field.Type.NonNullable {
-				ret.Add(idxStmt)
-			} else {
-				ret.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
-			}
-			ret.Line()
-		}
+		utils.WalkMap(
+			indexes,
+			func(descriptor indexDescriptor, _ string) error {
+				derefOp := ""
+				if !descriptor.field.Type.NonNullable {
+					derefOp = "*"
+				}
+				qfStmt := jen.Id(value).Dot(descriptor.field.Name)
+				qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
+				var idxStmt jen.Code
+				if descriptor.unique {
+					idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Id(index)
+				} else {
+					idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Append(
+						jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref),
+						jen.Id(index),
+					)
+				}
+				if descriptor.field.Type.NonNullable {
+					ret.Add(idxStmt)
+				} else {
+					ret.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
+				}
+				ret.Line()
+				return nil
+			},
+		)
+		//for _, descriptor := range indexes {
+		//	derefOp := ""
+		//	if !descriptor.field.Type.NonNullable {
+		//		derefOp = "*"
+		//	}
+		//	qfStmt := jen.Id(value).Dot(descriptor.field.Name)
+		//	qfStmtDeref := jen.Op(derefOp).Add(qfStmt)
+		//	var idxStmt jen.Code
+		//	if descriptor.unique {
+		//		idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Id(index)
+		//	} else {
+		//		idxStmt = jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref).Op("=").Append(
+		//			jen.Id(EngineVar).Dot(descriptor.engFieldName).Index(qfStmtDeref),
+		//			jen.Id(index),
+		//		)
+		//	}
+		//	if descriptor.field.Type.NonNullable {
+		//		ret.Add(idxStmt)
+		//	} else {
+		//		ret.If(jen.Add(qfStmt).Op("!=").Nil()).Block(idxStmt)
+		//	}
+		//	ret.Line()
+		//}
 	}
 	return ret
 }

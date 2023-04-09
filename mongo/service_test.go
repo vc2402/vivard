@@ -16,17 +16,17 @@ func TestNew(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "connect string",
-			args: args{[]any{"connectString"}},
+			name: "dbName only",
+			args: args{[]any{"dbName"}},
 			want: &Service{
-				config: map[string]ConnectionConfig{"default": {Alias: "default", ConnectString: "connectString"}},
+				config: map[string]ConnectionConfig{"default": {Alias: "default", DBName: "dbName"}},
 			},
 		},
 		{
 			name: "connect string with dbName",
-			args: args{[]any{"connectString", "db name"}},
+			args: args{[]any{"connectString", "dbName"}},
 			want: &Service{
-				config: map[string]ConnectionConfig{"default": {Alias: "default", ConnectString: "connectString", DBName: "db name"}},
+				config: map[string]ConnectionConfig{"default": {Alias: "default", ConnectString: "connectString", DBName: "dbName"}},
 			},
 		},
 		{

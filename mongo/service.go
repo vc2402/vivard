@@ -45,7 +45,7 @@ type connection struct {
 // params may be:
 //
 //	*mongo.Database (should be first)
-//	connect string (will select first db from the available)
+//	db-name (connect string will be build for the local host)
 //	pair connect string - db-name
 //	ConnectionConfig object
 func New(params ...any) (*Service, error) {
@@ -57,12 +57,14 @@ func New(params ...any) (*Service, error) {
 			s.db = v
 		case string:
 			conf := ConnectionConfig{Alias: "default"}
-			conf.ConnectString = v
 			if i <= len(params)-2 {
 				if dbn, ok := params[i+1].(string); ok {
 					i++
 					conf.DBName = dbn
+					conf.ConnectString = v
 				}
+			} else {
+				conf.DBName = v
 			}
 			cs[conf.Alias] = conf
 		case ConnectionConfig:
@@ -133,34 +135,32 @@ func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Data
 	defer ms.guard.Unlock()
 	var conf ConnectionConfig
 	confFound := false
-	if ms.config != nil {
+	if cf, ok := ms.dp.Config().GetConfig("mongo.aliases." + alias).(map[string]interface{}); ok {
+		conf.Alias = alias
+		if cs, ok := cf["connectstring"].(string); ok {
+			conf.ConnectString = cs
+			confFound = true
+		} else if cs, ok := cf["connect-string"].(string); ok {
+			conf.ConnectString = cs
+			confFound = true
+		}
+		if db, ok := cf["dbname"].(string); ok {
+			conf.DBName = db
+		} else if db, ok := cf["db-name"].(string); ok {
+			conf.ConnectString = db
+		}
+	}
+	if !confFound && ms.config != nil {
 		if cf, ok := ms.config[alias]; ok {
 			conf = cf
 			confFound = true
-		}
-	}
-	if !confFound {
-		if cf, ok := ms.dp.Config().GetConfig("mongo.aliases." + alias).(map[string]interface{}); ok {
-			conf.Alias = alias
-			if cs, ok := cf["connectstring"].(string); ok {
-				conf.ConnectString = cs
-				confFound = true
-			} else if cs, ok := cf["connect-string"].(string); ok {
-				conf.ConnectString = cs
-				confFound = true
-			}
-			if db, ok := cf["dbname"].(string); ok {
-				conf.DBName = db
-			} else if db, ok := cf["db-name"].(string); ok {
-				conf.ConnectString = db
-			}
 		}
 	}
 	if !confFound && alias != "default" {
 		ms.log.Error("Mongo: alias not found", zap.String("alias", alias))
 		return nil, fmt.Errorf("no configuration found for alias: %s", alias)
 	}
-	if !confFound {
+	if !confFound || conf.ConnectString == "" {
 		conf.ConnectString = "mongodb://localhost:27017"
 	}
 	client, exists := ms.connections[conf.ConnectString]

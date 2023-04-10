@@ -2,8 +2,10 @@ package vivard
 
 import "context"
 
+// Context is the interface for default request context object
 type Context interface {
 	UserID() int
+	UserType() int
 	UserName() string
 	Source() string
 	HasRole(role string) bool
@@ -13,6 +15,7 @@ type Context interface {
 
 type DefaultContext struct {
 	userID    int
+	userType  int
 	userName  string
 	source    string
 	roles     []string
@@ -53,6 +56,10 @@ func RequestContext(ctx context.Context) DefaultContext {
 
 func (c DefaultContext) UserID() int {
 	return c.userID
+}
+
+func (c DefaultContext) UserType() int {
+	return c.userType
 }
 
 func (c DefaultContext) UserName() string {

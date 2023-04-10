@@ -19,7 +19,8 @@ const sequencesCollectionName = "_sequences"
 const sequencesAreCacheable = true
 
 // Sequence allows to create sequential numbers
-//  current value is cached!
+//
+//	current value is cached!
 type Sequence struct {
 	p    *SequenceProvider
 	name string
@@ -126,13 +127,14 @@ func (s *Sequence) Next(ctx context.Context) (int, error) {
 			return -1, err
 		}
 	}
+	curr := s.curr
 	s.curr++
 	err = s.save(ctx)
 	if err != nil {
 		s.p.log.Error("on update", zap.String("sequence", s.name), zap.Error(err))
 		return -1, err
 	}
-	return s.curr, nil
+	return curr, nil
 }
 
 // Current returns current sequence value
@@ -146,7 +148,7 @@ func (s *Sequence) Current(ctx context.Context) (int, error) {
 	return s.curr, nil
 }
 
-//SetCurrent sets current value of Sequence to value
+// SetCurrent sets current value of Sequence to value
 func (s *Sequence) SetCurrent(ctx context.Context, value int) (int, error) {
 	if s.curr == -1 || !sequencesAreCacheable {
 		err := s.load(ctx)

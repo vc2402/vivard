@@ -36,25 +36,44 @@ var variants = map[string]loggerDescriptor{
 }
 
 const (
-	loggerAttr                 = "log"
-	logFeatureKind FeatureKind = "logger-feature"
-	lfInited                   = "inited"
+	loggerGeneratorName             = "Logger"
+	loggerAttr                      = "log"
+	logFeatureKind      FeatureKind = "logger-feature"
+	lfInited                        = "inited"
 
 	OptionLoggerGenerator = "logger-generator"
 	OptionsVariant        = "variant"
 )
 
-// SetDescriptor from DescriptorAware
-func (cg *LoggerGenerator) SetDescriptor(proj *Project) {
-	cg.proj = proj
-	if opt, ok := proj.Options.Custom[OptionLoggerGenerator].(map[string]interface{}); ok {
-		if variant, ok := opt[OptionsVariant].(string); ok {
+func init() {
+	RegisterPlugin(&LoggerGenerator{variant: "zap"})
+}
+
+func (cg *LoggerGenerator) Name() string {
+	return historyGeneratorName
+}
+
+func (cg *LoggerGenerator) SetOptions(options any) error {
+	if o, ok := options.(map[string]interface{}); ok {
+		if variant, ok := o[OptionsVariant].(string); ok {
 			cg.variant = variant
 		}
 	} else {
 		cg.variant = "zap"
 	}
+	return nil
 }
+
+// SetDescriptor from DescriptorAware
+func (cg *LoggerGenerator) SetDescriptor(proj *Project) {
+	cg.proj = proj
+	if opt, ok := proj.Options.Custom[OptionLoggerGenerator]; ok {
+		_ = cg.SetOptions(opt)
+	} else if cg.variant == "" {
+		cg.variant = "zap"
+	}
+}
+
 func (cg *LoggerGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	return false, nil
 }

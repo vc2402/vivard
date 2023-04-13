@@ -15,10 +15,11 @@ type NoCacheGenerator struct {
 }
 
 const (
-	nocacheAnnotation = "nocache"
+	nocacheGeneratorName = "Go"
+	nocacheAnnotation    = "nocache"
 )
 
-//points for CodeFragmentProvider
+// points for CodeFragmentProvider
 const (
 	CFGPointEnterBeforeHooks = "enter-before-hooks"
 	CFGPointEnterAfterHooks  = "enter-after-hooks"
@@ -27,6 +28,14 @@ const (
 	CFGPointExitAfterHooks   = "exit-after-hooks"
 	CFGPointExitError        = "exit-error"
 )
+
+func init() {
+	RegisterPlugin(&NoCacheGenerator{})
+}
+
+func (ncg *NoCacheGenerator) Name() string {
+	return nocacheGeneratorName
+}
 
 func (ncg *NoCacheGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	ncg.desc = desc
@@ -361,7 +370,7 @@ func (b *Builder) generateDelete(t *Entity) error {
 	return nil
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (ncg *NoCacheGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:

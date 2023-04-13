@@ -14,11 +14,12 @@ type Validator struct {
 
 type ValidatorOptions struct {
 	// ValidateDictionaries defines behaviour of checking existing dictionary's value on instance create/set
-	ValidateDictionaries bool
+	ValidateDictionaries bool `json:"validate_dictionaries"`
 }
 
 const (
-	FeaturesValidator = "validator"
+	ValidatorGeneratorName = "Validator"
+	FeaturesValidator      = "validator"
 
 	FVValidateFunc       = "validate-func"
 	FVValidationRequired = "required"
@@ -28,9 +29,21 @@ const ValidatorFuncNameTemplate = "Validate%s"
 
 const ValidatorOptionsName = "validatorGO"
 
+func init() {
+	RegisterPlugin(&Validator{options: ValidatorOptions{ValidateDictionaries: true}})
+}
+
+func (cg *Validator) Name() string {
+	return ValidatorGeneratorName
+}
+
+func (cg *Validator) SetOptions(opts any) error {
+	return OptionsAnyToStruct(opts, &cg.options)
+}
+
 func (cg *Validator) SetDescriptor(proj *Project) {
 	cg.proj = proj
-	cg.options = ValidatorOptions{ValidateDictionaries: true}
+	//cg.options = ValidatorOptions{ValidateDictionaries: true}
 	cg.proj.Options.CustomToStruct(ValidatorOptionsName, &cg.options)
 }
 

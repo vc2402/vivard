@@ -9,20 +9,29 @@ import (
 )
 
 const (
+	cronGeneratorPluginName = "Cron"
 	cronGeneratorAnnotation = "cron"
 
 	cronSingletonDefaultFunctionName = "AtTime"
 	cronSingletonFunctionPrefix      = "->"
 )
 
-//CroneGenerator generates Go code for @time hook
+// CroneGenerator generates Go code for @time hook
 type CroneGenerator struct {
 	proj *Project
 	desc *Package
 	b    *Builder
 }
 
-//CheckAnnotation checks that annotation may be utilized by CodeGeneration
+func init() {
+	RegisterPlugin(&CroneGenerator{})
+}
+
+func (cg *CroneGenerator) Name() string {
+	return cronGeneratorPluginName
+}
+
+// CheckAnnotation checks that annotation may be utilized by CodeGeneration
 func (cg *CroneGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	cg.desc = desc
 	if ann.Name == cronGeneratorAnnotation {
@@ -31,13 +40,13 @@ func (cg *CroneGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 	return false, nil
 }
 
-//Prepare from Generator interface
+// Prepare from Generator interface
 func (cg *CroneGenerator) Prepare(desc *Package) error {
 	cg.desc = desc
 	return nil
 }
 
-//Generate from generator interface
+// Generate from generator interface
 func (cg *CroneGenerator) Generate(bldr *Builder) (err error) {
 	cg.desc = bldr.Descriptor
 	cg.b = bldr

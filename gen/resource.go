@@ -27,11 +27,12 @@ type resourceDescriptor struct {
 }
 
 const (
-	resourceAnnotation = "resource"
-	raKey              = "key"
-	raDescription      = "description"
-	raParent           = "parent"
-	raCheckAccess      = "checkAccess"
+	resourceGeneratorName = "Resource"
+	resourceAnnotation    = "resource"
+	raKey                 = "key"
+	raDescription         = "description"
+	raParent              = "parent"
+	raCheckAccess         = "checkAccess"
 
 	ResourceFeatureKind FeatureKind = "resource-feature"
 	// RFKKey may be set tor Entity that is resource or Package to define its resource key
@@ -58,7 +59,15 @@ const (
 	ResourcePackage   = "github.com/vc2402/vivard/resource"
 )
 
-//SetDescriptor from DescriptorAware
+func init() {
+	RegisterPlugin(&ResourceGenerator{})
+}
+
+func (cg *ResourceGenerator) Name() string {
+	return resourceGeneratorName
+}
+
+// SetDescriptor from DescriptorAware
 func (cg *ResourceGenerator) SetDescriptor(proj *Project) {
 	cg.proj = proj
 }

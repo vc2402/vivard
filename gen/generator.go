@@ -101,7 +101,16 @@ type EngineDescriptor struct {
 	prepAdd        *jen.Statement
 }
 
-//New creates new Project object
+var plugins = map[string]Generator{}
+
+func RegisterPlugin(plugin Generator) {
+	if _, ok := plugins[plugin.Name()]; ok {
+		panic(fmt.Sprintf("duplicate plugin name: %s", plugin.Name()))
+	}
+	plugins[plugin.Name()] = plugin
+}
+
+// New creates new Project object
 func New(files []*File, o *Opts) *Project {
 	cg := &CodeGenerator{}
 	if o.DefaultPackage == "" {
@@ -120,9 +129,10 @@ func New(files []*File, o *Opts) *Project {
 
 }
 
-//Options creates new Opts object and initializes it with given values
+// Options creates new Opts object and initializes it with given values
 // first two values, if strings, are OutputDir and DefaultPackage (may be omitted)
-//  PackagePrefix can be set with using corresponding type (DefaultPackageOption)
+//
+//	PackagePrefix can be set with using corresponding type (DefaultPackageOption)
 func Options(opts ...interface{}) *Opts {
 	o := &Opts{Custom: map[string]interface{}{}}
 	idx := 0
@@ -141,7 +151,7 @@ func Options(opts ...interface{}) *Opts {
 	return o.With(opts[idx:]...)
 }
 
-//With add options to object
+// With add options to object
 func (o *Opts) With(opts ...interface{}) *Opts {
 	for _, op := range opts {
 		switch opt := op.(type) {
@@ -169,7 +179,7 @@ func (o *Opts) WithCustom(name string, op interface{}) *Opts {
 	return o
 }
 
-//With registers Generator gen
+// With registers Generator gen
 func (p *Project) With(gen Generator) *Project {
 	p.generators = append(p.generators, gen)
 	if fp, ok := gen.(FeatureProvider); ok {
@@ -187,13 +197,36 @@ func (p *Project) With(gen Generator) *Project {
 	return p
 }
 
-//WithMetaProcessor registers meta processor (registered Generator will be added automatically if it implements MetaProcessor interface)
+// WithPlugin adds registered plugin as generator
+func (p *Project) WithPlugin(name string, options interface{}) error {
+	if gen, ok := plugins[name]; ok {
+		p.With(gen)
+		if os, ok := gen.(OptionsSetter); ok {
+			return os.SetOptions(options)
+		}
+		if options != nil {
+			return fmt.Errorf("plugin %s is not accepting options", name)
+		}
+	}
+	return nil
+}
+
+// WithPluginMust adds registered plugin as generator; panics in case of error
+func (p *Project) WithPluginMust(name string, options interface{}) *Project {
+	err := p.WithPlugin(name, options)
+	if err != nil {
+		panic(err.Error())
+	}
+	return p
+}
+
+// WithMetaProcessor registers meta processor (registered Generator will be added automatically if it implements MetaProcessor interface)
 func (p *Project) WithMetaProcessor(mp MetaProcessor) *Project {
 	p.metaProcs = append(p.metaProcs, mp)
 	return p
 }
 
-//WithHookHolder registers HookHolder (registered Generator will be added automatically if it implements HookHolder interface)
+// WithHookHolder registers HookHolder (registered Generator will be added automatically if it implements HookHolder interface)
 func (p *Project) WithHookHolder(hh GeneratorHookHolder) *Project {
 	p.hooks = append(p.hooks, hh)
 	return p
@@ -209,7 +242,7 @@ func (p *Project) HasErrors() bool {
 	return len(p.Errors) > 0
 }
 
-//GetFeature looks for feature in obj (*Package, *Entity, *Field or *Method); returns nil if feature not found
+// GetFeature looks for feature in obj (*Package, *Entity, *Field or *Method); returns nil if feature not found
 func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) interface{} {
 	var f Features
 	switch v := obj.(type) {
@@ -238,7 +271,7 @@ func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) int
 	return nil
 }
 
-//GetFeatureMust looks for feature in obj (*Entity, *Field or *Method); panics if feature not found
+// GetFeatureMust looks for feature in obj (*Entity, *Field or *Method); panics if feature not found
 func (p *Project) GetFeatureMust(obj interface{}, kind FeatureKind, name string) interface{} {
 	if f := p.GetFeature(obj, kind, name); f != nil {
 		return f
@@ -246,7 +279,7 @@ func (p *Project) GetFeatureMust(obj interface{}, kind FeatureKind, name string)
 	panic(fmt.Sprintf("no feature provider found for feature %s:%s (%T)", kind, name, obj))
 }
 
-//CallFeatureFunc looks for feature with given params, tries to assert it to CodeHelperFunc and call; panics if feature not found
+// CallFeatureFunc looks for feature with given params, tries to assert it to CodeHelperFunc and call; panics if feature not found
 func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string, args ...interface{}) jen.Code {
 	f := p.GetFeatureMust(obj, kind, name)
 	if chf, ok := f.(CodeHelperFunc); ok {
@@ -255,7 +288,7 @@ func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string
 	panic(fmt.Sprintf("feature %s:%s is not a feature function: %T", kind, name, f))
 }
 
-//CallFeatureHookFunc looks for feature with given params, tries to assert it to HookFeatureFunc and call
+// CallFeatureHookFunc looks for feature with given params, tries to assert it to HookFeatureFunc and call
 func (p *Project) CallFeatureHookFunc(obj interface{}, kind FeatureKind, name string, args HookArgsDescriptor) jen.Code {
 	if f, ok := p.GetFeature(obj, kind, name).(HookFeatureFunc); ok {
 		return f(args)
@@ -509,34 +542,39 @@ func (p *Project) addExternal(e *Entity) error {
 }
 
 func (o *Opts) CustomToStruct(name string, to interface{}) (found bool, err error) {
-	tov := reflect.ValueOf(to)
-	if tov.Kind() != reflect.Ptr {
-		return false, errors.New("only pointer can be used with CustomToStruct")
-	}
-
-	if o, ok := o.Custom[name]; ok {
-		switch v := o.(type) {
-		case map[string]interface{}:
-			b, e := json.Marshal(v)
-			if e != nil {
-				return true, e
-			}
-			e = json.Unmarshal(b, to)
-			if e != nil {
-				return true, nil
-			}
-		default:
-			vv := reflect.Indirect(reflect.ValueOf(o))
-			tov = reflect.Indirect(tov)
-			if vv.Type() == tov.Type() {
-				tov.Set(vv)
-				return true, nil
-			} else {
-				return true, fmt.Errorf("can not set %T from %T", to, o)
-			}
-		}
+	if opts, ok := o.Custom[name]; ok {
+		return true, OptionsAnyToStruct(opts, to)
 	}
 	return false, nil
+}
+
+func OptionsAnyToStruct(opts any, to any) (err error) {
+	tov := reflect.ValueOf(to)
+	if tov.Kind() != reflect.Ptr {
+		return errors.New("only pointer can be used with CustomToStruct")
+	}
+
+	switch v := opts.(type) {
+	case map[string]interface{}:
+		b, e := json.Marshal(v)
+		if e != nil {
+			return e
+		}
+		e = json.Unmarshal(b, to)
+		if e != nil {
+			return e
+		}
+	default:
+		vv := reflect.Indirect(reflect.ValueOf(opts))
+		tov = reflect.Indirect(tov)
+		if vv.Type() == tov.Type() {
+			tov.Set(vv)
+			return nil
+		} else {
+			return fmt.Errorf("can not set %T from %T", to, opts)
+		}
+	}
+	return nil
 }
 
 func (desc *Package) FindTypes(cb func(*Entity) bool) (ret []*Entity) {
@@ -684,7 +722,7 @@ var metaAnnParser = participle.MustBuild(&ampTags{},
 	participle.UseLookahead(1),
 )
 
-//ParseAnnotationMeta tries to parse meta as annotations set
+// ParseAnnotationMeta tries to parse meta as annotations set
 func (desc *Package) ParseAnnotationMeta(m *Meta) (ok bool, err error) {
 	if m.TypeRef == nil {
 		return

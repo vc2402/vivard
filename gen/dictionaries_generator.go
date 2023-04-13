@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	dictionaryGeneratorName = "Dictionary"
 	// AnnQual - may be used for dictionary fields to show that it is depends on another dictionary
 	// Field ma be ref to another dict or array to it; may be Nullable or no Null
 	AnnQual = "qualifier"
@@ -69,6 +70,14 @@ type indexDescriptor struct {
 	engFieldName string
 	keyType      jen.Code
 	unique       bool
+}
+
+func init() {
+	RegisterPlugin(&DictionariesGenerator{})
+}
+
+func (ncg *DictionariesGenerator) Name() string {
+	return dictionaryGeneratorName
 }
 
 // SetDescriptor from DescriptorAware

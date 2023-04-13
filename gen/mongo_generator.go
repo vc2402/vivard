@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	mongoGeneratorName                    = "Mongo"
 	mongoAnnotation                       = "mongo"
 	dbAnnotation                          = "db"
 	mongoAnnotationTagName                = "name"
@@ -64,6 +65,14 @@ type MongoGenerator struct {
 	deleteMethod                string
 }
 
+func init() {
+	RegisterPlugin(&MongoGenerator{})
+}
+
+func (cg *MongoGenerator) Name() string {
+	return mongoGeneratorName
+}
+
 func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	f, fld := item.(*Field)
 	_, ent := item.(*Entity)
@@ -107,7 +116,7 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 	return false, nil
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesDBKind:
@@ -157,11 +166,8 @@ func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj inte
 	return nil, FeatureNotProvided
 }
 
-func (cg *MongoGenerator) Prepare(desc *Package) error {
-	cg.init()
-	cg.desc = desc
-	cg.deleteMethod = madmUpdate
-	if opts, ok := desc.Options().Custom[optionsMongo].(map[string]interface{}); ok {
+func (cg *MongoGenerator) SetOptions(options any) error {
+	if opts, ok := options.(map[string]interface{}); ok {
 		if gengen, ok := opts[optionGenerateIDGenerator]; ok {
 			switch v := gengen.(type) {
 			case bool:
@@ -199,6 +205,16 @@ func (cg *MongoGenerator) Prepare(desc *Package) error {
 				)
 			}
 		}
+	}
+	return nil
+}
+
+func (cg *MongoGenerator) Prepare(desc *Package) error {
+	cg.init()
+	cg.desc = desc
+	cg.deleteMethod = madmUpdate
+	if opts, ok := desc.Options().Custom[optionsMongo]; ok {
+		_ = cg.SetOptions(opts)
 	}
 
 	desc.Engine.Fields.Add(jen.Id(engineMongo).Op("*").Qual(mongoPackage, "Database")).Line()

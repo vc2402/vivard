@@ -13,7 +13,8 @@ import (
 type GQLOperationKind int
 
 const (
-	GQLOperationGet GQLOperationKind = iota
+	GQLGeneratorName                  = "GraphQL"
+	GQLOperationGet  GQLOperationKind = iota
 	GQLOperationSet
 	GQLOperationCreate
 	GQLOperationList
@@ -88,6 +89,14 @@ var GQLOperationsAnnotationsTags = [GQLOperationLast]string{
 type GQLGenerator struct {
 	desc *Package
 	b    *Builder
+}
+
+func init() {
+	RegisterPlugin(&GQLGenerator{})
+}
+
+func (cg *GQLGenerator) Name() string {
+	return GQLGeneratorName
 }
 
 func (cg *GQLGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
@@ -1176,7 +1185,7 @@ func (cg *GQLGenerator) generateGQLConfigSetMutation(t *Entity) error {
 	return nil
 }
 
-//getGQLType returns type;
+// getGQLType returns type;
 // skipNotNull returns only type if true (without NotNull wrapper for NotNull fields)
 // next argument force to return key type for complex types
 // third - true if requires InputType
@@ -1259,7 +1268,7 @@ func (cg *GQLGenerator) getMapTypeName(ref *TypeRef) (string, error) {
 	return "", errors.New("not a map")
 }
 
-//inputParserGenerator returns function that returns code for parsing input;
+// inputParserGenerator returns function that returns code for parsing input;
 func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assignTo jen.Code) jen.Code {
 	ret := jen.If(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Op("==").Nil()).Block(
 		jen.Add(assignTo).Op("=").Add(cg.b.goEmptyValue(t)),
@@ -1396,7 +1405,7 @@ func (cg *GQLGenerator) callInputParserMethod(ctx jen.Code, name, argVar string,
 	return ret
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (cg *GQLGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case GQLFeatures:

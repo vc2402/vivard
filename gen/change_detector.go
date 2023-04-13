@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	bscdGeneratorName          = "ChangeDetector"
 	cdAnnotationChangeDetector = "record-changes"
 )
 
@@ -21,19 +22,27 @@ const (
 	bcdfGenerateChecker        = "generate-checker"
 )
 
-//BitSetChangeDetectorGenerator generates code for historic fields or whole entities (recording changes)
+func init() {
+	RegisterPlugin(&BitSetChangeDetectorGenerator{})
+}
+
+// BitSetChangeDetectorGenerator generates code for historic fields or whole entities (recording changes)
 type BitSetChangeDetectorGenerator struct {
 	proj *Project
 	desc *Package
 	b    *Builder
 }
 
-//SetDescriptor from DescriptorAware
+func (cdg *BitSetChangeDetectorGenerator) Name() string {
+	return bscdGeneratorName
+}
+
+// SetDescriptor from DescriptorAware
 func (cdg *BitSetChangeDetectorGenerator) SetDescriptor(proj *Project) {
 	cdg.proj = proj
 }
 
-//CheckAnnotation checks that annotation may be utilized by CodeGeneration
+// CheckAnnotation checks that annotation may be utilized by CodeGeneration
 func (cdg *BitSetChangeDetectorGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	if ann.Name == cdAnnotationChangeDetector {
 		switch v := item.(type) {
@@ -58,7 +67,7 @@ func (cdg *BitSetChangeDetectorGenerator) CheckAnnotation(desc *Package, ann *An
 	return false, nil
 }
 
-//Prepare from Generator interface
+// Prepare from Generator interface
 func (cdg *BitSetChangeDetectorGenerator) Prepare(desc *Package) error {
 	cdg.desc = desc
 
@@ -99,7 +108,7 @@ func (cdg *BitSetChangeDetectorGenerator) Prepare(desc *Package) error {
 	return nil
 }
 
-//Generate from generator interface
+// Generate from generator interface
 func (cdg *BitSetChangeDetectorGenerator) Generate(b *Builder) (err error) {
 	cdg.desc = b.Descriptor
 	cdg.b = b
@@ -133,7 +142,7 @@ func (cdg *BitSetChangeDetectorGenerator) Generate(b *Builder) (err error) {
 	return nil
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (cdg *BitSetChangeDetectorGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	if kind == FeaturesChangeDetectorKind {
 		switch name {
@@ -161,7 +170,7 @@ func (cdg *BitSetChangeDetectorGenerator) ProvideFeature(kind FeatureKind, name 
 	return
 }
 
-//OnEntityHook implements GeneratorHookHolder
+// OnEntityHook implements GeneratorHookHolder
 func (cdg *BitSetChangeDetectorGenerator) OnEntityHook(name HookType, mod HookModifier, e *Entity, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 	if name == HookSave || name == HookUpdate || name == HookCreate {
 		if mod == HMStart && e.FB(FeaturesChangeDetectorKind, bcdfChangedRequired) {
@@ -187,7 +196,7 @@ func (cdg *BitSetChangeDetectorGenerator) OnEntityHook(name HookType, mod HookMo
 	return
 }
 
-//OnFieldHook implements GeneratorHookHolder
+// OnFieldHook implements GeneratorHookHolder
 func (cdg *BitSetChangeDetectorGenerator) OnFieldHook(name HookType, mod HookModifier, f *Field, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 	if (name == HookSet || name == HookSetNull) && mod == HMStart &&
 		(f.Parent().FS(FeaturesChangeDetectorKind, FCDRequired) == FCDREntity || f.FB(FeaturesChangeDetectorKind, FCDRequired)) {
@@ -226,7 +235,7 @@ func (cdg *BitSetChangeDetectorGenerator) OnFieldHook(name HookType, mod HookMod
 	return
 }
 
-//OnMethodHook implements GeneratorHookHolder
+// OnMethodHook implements GeneratorHookHolder
 func (cdg *BitSetChangeDetectorGenerator) OnMethodHook(name HookType, mod HookModifier, m *Method, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 	return nil, 0
 

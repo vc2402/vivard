@@ -19,6 +19,7 @@ type ServiceGenerator struct {
 }
 
 const (
+	serviceGeneratorName    = "Service"
 	serviceAnnotation       = "service"
 	serviceInjectAnnotation = "inject-service"
 	saName                  = "name"
@@ -55,7 +56,15 @@ type serviceDescriptor struct {
 	varName string
 }
 
-//SetDescriptor from DescriptorAware
+func init() {
+	RegisterPlugin(&ServiceGenerator{})
+}
+
+func (cg *ServiceGenerator) Name() string {
+	return sequenceGeneratorName
+}
+
+// SetDescriptor from DescriptorAware
 func (cg *ServiceGenerator) SetDescriptor(proj *Project) {
 	cg.proj = proj
 }

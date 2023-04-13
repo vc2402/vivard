@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	codeGeneratorName           = "_codeGenerator"
 	codeGeneratorAnnotation     = "go"
 	codeGeneratorAnnotationTags = "gotags"
 	AnnotationDeletable         = "deletable"
@@ -32,7 +33,7 @@ const (
 
 	// FCGType - jen.Code feature for *Entity and *Field;
 	FCGType = "type"
-	// FCGAttrType - jen.Code feature for *Field - type of attr in struct (may be pointer);
+	// FCGAttrType - jen.Code feature for *Field - type of attr in struct (maybe pointer);
 	FCGAttrType = "attr-type"
 	// FCGName - string; name of field or struct
 	FCGName = "name"
@@ -68,7 +69,7 @@ type CodeGeneratorOptions struct {
 	GenerateFieldsAccessors bool
 	// GenerateNullMethods - generate IsNull and SetNull methods for each nullable field
 	GenerateNullMethods bool
-	// GenerateFieldsEnums - generate int consts for each field of each type, e.g. 'Type1Field1Field' (may be used for NullableField, search filters etc.)
+	// GenerateFieldsEnums - generate int consts for each field of each type, e.g. 'Type1Field1Field' (maybe used for NullableField, search filters etc.)
 	GenerateFieldsEnums bool
 	// GenerateRemoveOperation - generate Remove and Delete operations for each entity
 	GenerateRemoveOperation bool
@@ -78,7 +79,7 @@ type CodeGeneratorOptions struct {
 	AllowEmbeddedArraysForDictionary bool
 }
 
-//CodeGenerator generates Go code (structs, methods, Engine object  and other)
+// CodeGenerator generates Go code (structs, methods, Engine object  and other)
 type CodeGenerator struct {
 	proj    *Project
 	desc    *Package
@@ -134,18 +135,23 @@ var cgComplexMethodsTemplates = [cgLastComplexMethod]string{
 	"%sAdd%s",
 }
 
-//SetDescriptor from DescriptorAware
+// Name returns name of Generator
+func (cg *CodeGenerator) Name() string {
+	return codeGeneratorName
+}
+
+// SetDescriptor from DescriptorAware
 func (cg *CodeGenerator) SetDescriptor(proj *Project) {
 	cg.proj = proj
 }
 
-//ProcessMeta - implement MetaProcessor
+// ProcessMeta - implement MetaProcessor
 func (cg *CodeGenerator) ProcessMeta(m *Meta) (bool, error) {
 	ok, err := cg.parseHardcoded(m)
 	return ok, err
 }
 
-//CheckAnnotation checks that annotation may be utilized by CodeGeneration
+// CheckAnnotation checks that annotation may be utilized by CodeGeneration
 func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	cg.desc = desc
 	if ann.Name == codeGeneratorAnnotationTags {
@@ -169,7 +175,7 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 	return false, nil
 }
 
-//Prepare from Generator interface
+// Prepare from Generator interface
 func (cg *CodeGenerator) Prepare(desc *Package) error {
 	cg.desc = desc
 	if _, err := desc.Options().CustomToStruct(CodeGeneratorOptionsName, &cg.options); err != nil {
@@ -209,13 +215,16 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 					}
 				}
 			}
-			cg.prepareFields(t)
+			err := cg.prepareFields(t)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-//Generate from generator interface
+// Generate from generator interface
 func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 	cg.desc = bldr.Descriptor
 	cg.b = bldr
@@ -258,7 +267,7 @@ func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 	return nil
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:
@@ -517,7 +526,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 								g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
 									Str: cg.desc.GetHookName(AttrHookSet, d),
 									Params: []HookArgParam{
-										HookArgParam{"val", jen.Op("&").Id("val")},
+										{"val", jen.Op("&").Id("val")},
 									},
 								}))
 							}
@@ -890,7 +899,7 @@ func (b *Builder) mustAddType(stmt *jen.Statement, ref *TypeRef) *jen.Statement 
 	return s
 }
 
-//GoType returns statement with Go type for ref
+// GoType returns statement with Go type for ref
 func (b *Builder) GoType(ref *TypeRef) *jen.Statement {
 	ret, err := b.addType(&jen.Statement{}, ref)
 	if err != nil {
@@ -984,19 +993,6 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 		ent.Features.Set(FeatGoKind, FCGBaseTypeAccessorInterface, ent.Name+"er")
 		ent.Features.Set(FeatGoKind, FCGBaseTypeAccessorName, "Get"+ent.Name)
 	}
-	// if dfn, ok := ent.Features.GetString(FeatGoKind, FCGDeletedFieldName); ok {
-	// 	deletedField := &Field{
-	// 		Pos:      ent.Pos,
-	// 		Name:     dfn,
-	// 		Type:     &TypeRef{Type: TipDate},
-	// 		Features: Features{},
-	// 		parent:   ent,
-	// 	}
-	// 	deletedField.Features.Set(FeaturesDBKind, FCGName, mdDeletedFieldName)
-	// 	deletedField.Features.Set(FeaturesCommonKind, FCGDeletedField, true)
-	// 	ent.Fields = append(ent.Fields, deletedField)
-	// 	ent.FieldsIndex[dfn] = deletedField
-	// }
 	for _, f := range ent.Fields {
 		fname := f.Name
 		if n, ok := f.Annotations.GetStringAnnotation(codeGeneratorAnnotation, cgaNameTag); ok {
@@ -1041,7 +1037,7 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 			cg.desc.CallFeatureHookFunc(f, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
 				Str: cg.desc.GetHookName(AttrHookSet, f),
 				Params: []HookArgParam{
-					HookArgParam{"val", jen.Op("&").Id("val")},
+					{"val", jen.Op("&").Id("val")},
 				},
 			})
 		}

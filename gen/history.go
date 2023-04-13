@@ -8,7 +8,7 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-//HistoryGenerator generates code for historic fields or whole entities (recording changes)
+// HistoryGenerator generates code for historic fields or whole entities (recording changes)
 type HistoryGenerator struct {
 	proj *Project
 	desc *Package
@@ -16,6 +16,7 @@ type HistoryGenerator struct {
 }
 
 const (
+	historyGeneratorName     = "Historic"
 	historyAnn               = "historic"
 	historyAnnIncapsulate    = "incapsulate"
 	historyAnnFields         = "fields"
@@ -61,12 +62,20 @@ const (
 	FHtFunction = "function"
 )
 
-//SetDescriptor from DescriptorAware
+func init() {
+	RegisterPlugin(&HistoryGenerator{})
+}
+
+func (hg *HistoryGenerator) Name() string {
+	return historyGeneratorName
+}
+
+// SetDescriptor from DescriptorAware
 func (hg *HistoryGenerator) SetDescriptor(proj *Project) {
 	hg.proj = proj
 }
 
-//CheckAnnotation checks that annotation may be utilized by CodeGeneration
+// CheckAnnotation checks that annotation may be utilized by CodeGeneration
 func (hg *HistoryGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	if ann.Name == historyAnn {
 		if field, ok := item.(*Field); ok {
@@ -171,12 +180,12 @@ func (hg *HistoryGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 	return false, nil
 }
 
-//Prepare from Generator interface
+// Prepare from Generator interface
 func (hg *HistoryGenerator) Prepare(desc *Package) error {
 	return nil
 }
 
-//Generate from generator interface
+// Generate from generator interface
 func (hg *HistoryGenerator) Generate(b *Builder) (err error) {
 	return nil
 }
@@ -185,13 +194,13 @@ func (hg *HistoryGenerator) Generate(b *Builder) (err error) {
 // 	return
 // }
 
-//OnEntityHook implements GeneratorHookHolder
+// OnEntityHook implements GeneratorHookHolder
 func (hg *HistoryGenerator) OnEntityHook(name HookType, mod HookModifier, e *Entity, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 
 	return nil, 0
 }
 
-//OnFieldHook implements GeneratorHookHolder
+// OnFieldHook implements GeneratorHookHolder
 func (hg *HistoryGenerator) OnFieldHook(name HookType, mod HookModifier, f *Field, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 	if (name == HookSave || name == HookUpdate || name == HookCreate) && mod == HMModified && f.FB(FeatureHistKind, FHCollect) {
 		hfName := f.FS(FeatureHistKind, FHHistoryFieldName)
@@ -241,7 +250,7 @@ func (hg *HistoryGenerator) OnFieldHook(name HookType, mod HookModifier, f *Fiel
 
 }
 
-//OnMethodHook implements GeneratorHookHolder
+// OnMethodHook implements GeneratorHookHolder
 func (hg *HistoryGenerator) OnMethodHook(name HookType, mod HookModifier, m *Method, vars *GeneratorHookVars) (code *jen.Statement, order int) {
 	return nil, 0
 

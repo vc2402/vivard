@@ -10,7 +10,8 @@ const (
 )
 
 const (
-	SequenceFeatures FeatureKind = "seq-id"
+	sequenceGeneratorName             = "Sequence"
+	SequenceFeatures      FeatureKind = "seq-id"
 
 	sfInited   = "inited"
 	SFSetValue = "set-value"
@@ -19,6 +20,14 @@ const (
 type SequnceIDGenerator struct {
 	desc *Package
 	b    *Builder
+}
+
+func init() {
+	RegisterPlugin(&SequnceIDGenerator{})
+}
+
+func (cg *SequnceIDGenerator) Name() string {
+	return sequenceGeneratorName
 }
 
 func (cg *SequnceIDGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
@@ -68,7 +77,7 @@ func (cg *SequnceIDGenerator) generateIDGeneratorFunc(e *Entity) error {
 	return nil
 }
 
-//ProvideFeature from FeatureProvider interface
+// ProvideFeature from FeatureProvider interface
 func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case SequenceFeatures:

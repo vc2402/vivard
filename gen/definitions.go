@@ -2,28 +2,36 @@ package gen
 
 import "github.com/dave/jennifer/jen"
 
-//Generator interface can be used for creating custom generators
+// Generator interface can be used for creating custom generators
 type Generator interface {
-	//CheckAnnotation calls for every annotation to check that it is understandable
+	// Name returns the unique name of generator (plugin)
+	Name() string
+	// CheckAnnotation calls for every annotation to check that it is understandable
 	// item contains whether *Entity, *Field or *Method
 	// return (true, nil) if Generator does understand this annotation
 	//        (false, nil) if Generator does not understand this annotation
 	// error should be returned if annotation is understandable but contains errors
 	CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error)
-	//Prepare - prepare to generation
+	// Prepare - prepare to generation
 	Prepare(desc *Package) error
-	//Generate - do generate
+	// Generate - do generate
 	Generate(bldr *Builder) error
 }
 
-//MetaProcessor meta processor interface
+// MetaProcessor meta processor interface
 type MetaProcessor interface {
 	//ProcessMeta should try to process current slice in given meta and return true on success;
 	//  error shows that there are problems in known format
 	ProcessMeta(m *Meta) (bool, error)
 }
 
-//ProvideFeatureResult special type for ProvideFeature return value
+// OptionsSetter may be implemented by Generator if it depends on options
+type OptionsSetter interface {
+	// SetOptions sets plugin specific options
+	SetOptions(options any) error
+}
+
+// ProvideFeatureResult special type for ProvideFeature return value
 type ProvideFeatureResult int
 
 const (
@@ -35,7 +43,7 @@ const (
 	FeatureProvidedNonCacheable
 )
 
-//FeatureProvider provides features for code generation
+// FeatureProvider provides features for code generation
 type FeatureProvider interface {
 	//ProvideFeature - returns feature result and ok if can provided requested feature; nil and false otherwise
 	// params: kind and name of feature,
@@ -43,13 +51,13 @@ type FeatureProvider interface {
 	ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult)
 }
 
-//DescriptorAware may be used in case if generator requires reference to descriptor object
+// DescriptorAware may be used in case if generator requires reference to descriptor object
 type DescriptorAware interface {
 	//SetDescriptor will be called for all objects before first call of Generator methods
 	SetDescriptor(proj *Project)
 }
 
-//CodeFragmentProvider provides fragment of code
+// CodeFragmentProvider provides fragment of code
 type CodeFragmentProvider interface {
 	//ProvideCodeFragment should return code fragment for given point
 	// module is high-level generation abstraction (e.g., go skeleton or db)
@@ -61,7 +69,7 @@ type CodeFragmentProvider interface {
 	ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{}
 }
 
-//CodeHelperFunc Feature type for helping generate code (params depends on feature)
+// CodeHelperFunc Feature type for helping generate code (params depends on feature)
 type CodeHelperFunc func(args ...interface{}) jen.Code
 
 type HookArgParam struct {
@@ -69,7 +77,7 @@ type HookArgParam struct {
 	Param interface{}
 }
 
-//HookArgsDescriptor holds args for feature hook function
+// HookArgsDescriptor holds args for feature hook function
 type HookArgsDescriptor struct {
 	// Str  - string arg (defaultName for Go hooks)
 	Str string
@@ -85,7 +93,7 @@ type HookArgsDescriptor struct {
 	ErrVar interface{}
 }
 
-//HookFeatureFunc func can be returned as feature that can create code for hook
+// HookFeatureFunc func can be returned as feature that can create code for hook
 type HookFeatureFunc func(args HookArgsDescriptor) jen.Code
 
 // MethodKind type of generated method

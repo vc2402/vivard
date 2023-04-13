@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	GQLClientGeneratorName   = "GraphQL-TS"
 	GQLClientOptions         = "gql-ts"
 	GQLClientPathOption      = "path"
 	GQLClientNamespaceOption = "useNamespace"
@@ -60,6 +61,10 @@ type CodeFragmentContext struct {
 
 //TODO ref field is int not an object
 
+func init() {
+	gen.RegisterPlugin(&GQLCLientGenerator{})
+}
+
 type GQLCLientGenerator struct {
 	desc            *gen.Package
 	vivardGenerated bool
@@ -81,6 +86,10 @@ func (imp Imports) append(imps Imports) {
 			imp.addImport(file, t)
 		}
 	}
+}
+
+func (cg *GQLCLientGenerator) Name() string {
+	return GQLClientGeneratorName
 }
 
 func (cg *GQLCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
@@ -795,7 +804,7 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 	return
 }
 
-//Add adds str to file and append \n
+// Add adds str to file and append \n
 func (cfc CodeFragmentContext) Add(str string) error {
 	if cfc.Output != nil {
 		_, err := cfc.Output.WriteString(str)

@@ -1,6 +1,6 @@
 module github.com/vc2402/vivard/gen/vue
 
-go 1.18
+go 1.9
 
 require (
 	github.com/dave/jennifer v1.6.0 // indirect

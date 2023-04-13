@@ -1,6 +1,6 @@
 module github.com/vc2402/vivard/gen/js
 
-go 1.18
+go 1.19
 
 require (
 	github.com/aws/aws-sdk-go v1.44.172 // indirect

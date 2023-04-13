@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	vueGeneratorName         = "vue"
 	vueAnnotation            = "vue"
 	vueAnnotationFilePath    = "path"
 	vueAnnotationIgnore      = "ignore"
@@ -216,17 +217,29 @@ type vueComponent struct {
 	Entity        *gen.Entity
 }
 type VCOptionComponentSpec struct {
-	Name   string
-	Import string
+	Name   string `json:"name"`
+	Import string `json:"import"`
 }
 type VueClientOptions struct {
-	Components      map[string]VCOptionComponentSpec
-	ApolloClientVar string
+	Components      map[string]VCOptionComponentSpec `json:"components"`
+	ApolloClientVar string                           `json:"apollo_client_var"`
 }
 type VueCLientGenerator struct {
 	desc    *gen.Package
 	options VueClientOptions
 	b       *gen.Builder
+}
+
+func init() {
+	gen.RegisterPlugin(&VueCLientGenerator{})
+}
+
+func (cg *VueCLientGenerator) Name() string {
+	return vueGeneratorName
+}
+
+func (cg *VueCLientGenerator) SetOptions(options any) error {
+	return gen.OptionsAnyToStruct(options, &cg.options)
 }
 
 func (cg *VueCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
@@ -985,7 +998,7 @@ export const {{TypeName .}}Descriptor = {
 //{{end}}
 //`
 
-//CardView
+// CardView
 var htmlCardViewTemplate = `
 {{define "HTML"}}
 <template>
@@ -1124,7 +1137,7 @@ var htmlDictionaryLookupTemplate = `
 {{end}}
 `
 
-//TODO emit changed after input
+// TODO emit changed after input
 const vueDictionaryLookupTSTemplate = `
 {{define "TS"}}
 <script lang="ts">

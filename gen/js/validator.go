@@ -7,13 +7,22 @@ import (
 )
 
 const (
-	FeaturesValidator = "ts-validator"
-	FVGenerate        = "generate"
-	FVValidatorClass  = "validator"
+	ValidatorGeneratorName = "TSValidator"
+	FeaturesValidator      = "ts-validator"
+	FVGenerate             = "generate"
+	FVValidatorClass       = "validator"
 )
 
 type TSValidatorGenerator struct {
 	desc *gen.Package
+}
+
+func init() {
+	gen.RegisterPlugin(&TSValidatorGenerator{})
+}
+
+func (cg *TSValidatorGenerator) Name() string {
+	return ValidatorGeneratorName
 }
 
 func (cg *TSValidatorGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {

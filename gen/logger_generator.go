@@ -50,7 +50,7 @@ func init() {
 }
 
 func (cg *LoggerGenerator) Name() string {
-	return historyGeneratorName
+	return loggerGeneratorName
 }
 
 func (cg *LoggerGenerator) SetOptions(options any) error {

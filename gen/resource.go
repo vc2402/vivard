@@ -67,6 +67,23 @@ func (cg *ResourceGenerator) Name() string {
 	return resourceGeneratorName
 }
 
+func (cg *ResourceGenerator) SetOptions(options any) error {
+	if opts, ok := options.(map[string]any); ok {
+		if root, ok := opts[orRootResource].(string); ok {
+			cg.root = root
+		}
+		if pr, ok := opts[orKeyPrefix].(string); ok {
+			cg.prefix = pr
+		} else {
+			cg.prefix = cg.root
+		}
+		if d, ok := opts[orKeyDelimiter].(string); ok {
+			cg.delimiter = d
+		}
+	}
+	return nil
+}
+
 // SetDescriptor from DescriptorAware
 func (cg *ResourceGenerator) SetDescriptor(proj *Project) {
 	cg.proj = proj
@@ -82,16 +99,8 @@ func (cg *ResourceGenerator) Prepare(desc *Package) error {
 	if cg.delimiter == "" {
 		cg.delimiter = ":"
 		if opts, ok := desc.Options().Custom[optionsResource].(map[string]interface{}); ok {
-			if root, ok := opts[orRootResource].(string); ok {
-				cg.root = root
-			}
-			if pr, ok := opts[orKeyPrefix].(string); ok {
-				cg.prefix = pr
-			} else {
-				cg.prefix = cg.root
-			}
-			if d, ok := opts[orKeyDelimiter].(string); ok {
-				cg.delimiter = d
+			if err := cg.SetOptions(opts); err != nil {
+				return err
 			}
 		}
 	}

@@ -1,7 +1,6 @@
 package gen
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/vc2402/vivard/utils"
@@ -23,17 +22,19 @@ type NullsHandlingKind int
 type UnknownAnnotationBehaviour int
 type AutoGenerateIDFieldBehaviour bool
 type ExtendableTypeDescriptorBehaviour int
+type DefaultPackageOption string
+type OutputDirectoryOption string
 type PackagePrefixOption string
 
 const (
-	//NullableNothing - do nothing special fjr null handling (fields are not pointers, nulls - empty values) - default value
-	NullableNothing NullsHandlingKind = iota
 	// NullablePointers - all nullable fields will be pointers
-	NullablePointers
+	NullablePointers NullsHandlingKind = iota
 	// NullableField - create special field for nulls handling
 	NullableField
 	// NullableStorableField - like NullableField but when storing in DB just store it (not convert null values to nulls in DB)
 	NullableStorableField
+	// NullableNothing - do nothing special for null handling (fields are not pointers, nulls - empty values) - default value
+	NullableNothing
 )
 const (
 	//UnknownAnnotationError - stop generation if unknown annotation is met
@@ -45,9 +46,9 @@ const (
 )
 
 const (
-	GenerateStringFieldForExtandableTypes ExtendableTypeDescriptorBehaviour = iota
-	GenerateIntFieldForExtandableTypes
-	DoNotGenerateFieldForExtandableTypes
+	GenerateStringFieldForExtendableTypes ExtendableTypeDescriptorBehaviour = iota
+	GenerateIntFieldForExtendableTypes
+	DoNotGenerateFieldForExtendableTypes
 )
 const (
 	AutoGenerateIDField      AutoGenerateIDFieldBehaviour = true
@@ -151,6 +152,105 @@ func Options(opts ...interface{}) *Opts {
 	return o.With(opts[idx:]...)
 }
 
+// SetOutputDir sets output dir for generator
+func (o *Opts) SetOutputDir(od string) *Opts {
+	o.OutputDir = od
+	return o
+}
+
+// SetDefaultPackage sets default package for generator
+func (o *Opts) SetDefaultPackage(dp string) *Opts {
+	o.DefaultPackage = dp
+	return o
+}
+
+func (o *Opts) FromAny(options any) error {
+	if opts, ok := options.(map[string]interface{}); ok {
+		for name, opt := range opts {
+			var val any
+		nameCase:
+			switch name {
+			case "NullableHandling", "nullable_handling", "nullable-handling":
+				switch opt {
+				case "none":
+					val = NullableNothing
+				case "pointer":
+					val = NullablePointers
+				case "field":
+					val = NullableField
+				case "storable-field":
+					val = NullableStorableField
+				default:
+					break nameCase
+				}
+			case "UnknownAnnotation", "unknown_annotation", "unknown-annotation":
+				switch opt {
+				case "ignore":
+					val = UnknownAnnotationIgnore
+				case "warn", "warning":
+					val = UnknownAnnotationWarning
+				case "err", "error":
+					val = UnknownAnnotationError
+				default:
+					break nameCase
+				}
+			//AutoGenerateIDField: not implemented
+			case "DefaultPackage", "default_package", "default-package":
+				val = DefaultPackageOption(opt.(string))
+			case "OutputDir", "OutputDirectory", "output_dir", "output_directory", "output-dir", "output-directory":
+				val = OutputDirectoryOption(opt.(string))
+			case "PackagePrefix", "package_prefix", "package-prefix":
+				val = PackagePrefixOption(opt.(string))
+			case "ExtendableTypeField", "extendable_type_field", "extendable-type-field":
+				switch opt {
+				case "string":
+					val = GenerateStringFieldForExtendableTypes
+				case "int":
+					val = GenerateIntFieldForExtendableTypes
+				case "none", "ignore", "skip":
+					val = DoNotGenerateFieldForExtendableTypes
+				default:
+					break nameCase
+				}
+			case "CodeGenerator", "code-generator", "code_generator":
+				if opts, ok := opt.(map[string]any); ok {
+					if o.Custom == nil {
+						o.Custom = map[string]any{CodeGeneratorOptionsName: opts}
+					} else {
+						o.Custom[CodeGeneratorOptionsName] = opts
+					}
+				} else if opts, ok := opt.([]map[string]any); ok {
+					options := map[string]any{}
+					for _, opt := range opts {
+						for k, v := range opt {
+							options[k] = v
+						}
+					}
+					if o.Custom == nil {
+						o.Custom = map[string]any{CodeGeneratorOptionsName: options}
+					} else {
+						o.Custom[CodeGeneratorOptionsName] = options
+					}
+				} else {
+					break nameCase
+				}
+			}
+			if val != nil {
+				o.With(val)
+			} else {
+				return fmt.Errorf("undefined value for option %s: %s", name, opt)
+			}
+		}
+	} else if opts, ok := options.([]map[string]any); ok {
+		for _, opt := range opts {
+			o.FromAny(opt)
+		}
+	} else {
+		return fmt.Errorf("invalid type for options %T", options)
+	}
+	return nil
+}
+
 // With add options to object
 func (o *Opts) With(opts ...interface{}) *Opts {
 	for _, op := range opts {
@@ -163,6 +263,10 @@ func (o *Opts) With(opts ...interface{}) *Opts {
 			o.AutoGenerateIDField = opt
 		case PackagePrefixOption:
 			o.PackagePrefix = string(opt)
+		case DefaultPackageOption:
+			o.DefaultPackage = string(opt)
+		case OutputDirectoryOption:
+			o.OutputDir = string(opt)
 		default:
 			panic(fmt.Sprintf("undefined option: %#v (%T)", op, op))
 		}
@@ -202,13 +306,24 @@ func (p *Project) WithPlugin(name string, options interface{}) error {
 	if gen, ok := plugins[name]; ok {
 		p.With(gen)
 		if os, ok := gen.(OptionsSetter); ok {
-			return os.SetOptions(options)
+			// from viper options can come as array of maps...
+			if opts, ok := options.([]map[string]any); ok {
+				for _, opt := range opts {
+					err := os.SetOptions(opt)
+					if err != nil {
+						return err
+					}
+				}
+			} else {
+				return os.SetOptions(options)
+			}
 		}
 		if options != nil {
 			return fmt.Errorf("plugin %s is not accepting options", name)
 		}
+		return nil
 	}
-	return nil
+	return fmt.Errorf("plugin '%s' not found", name)
 }
 
 // WithPluginMust adds registered plugin as generator; panics in case of error
@@ -553,28 +668,96 @@ func OptionsAnyToStruct(opts any, to any) (err error) {
 	if tov.Kind() != reflect.Ptr {
 		return errors.New("only pointer can be used with CustomToStruct")
 	}
+	vv := reflect.Indirect(reflect.ValueOf(opts))
+	tov = reflect.Indirect(tov)
+	if vv.Type() == tov.Type() {
+		tov.Set(vv)
+		return nil
+	} else {
+		return AnyToReflect(opts, tov)
+	}
+}
 
-	switch v := opts.(type) {
+func AnyToReflect(opt any, to reflect.Value) error {
+	if to.Type().Kind() == reflect.Pointer {
+		return AnyToReflect(opt, reflect.Indirect(to))
+	}
+	switch val := opt.(type) {
 	case map[string]interface{}:
-		b, e := json.Marshal(v)
-		if e != nil {
-			return e
+		switch to.Type().Kind() {
+		case reflect.Struct:
+			for k, v := range val {
+				if idx, ok := FindFieldInStruct(to.Type(), k); ok {
+					err := AnyToReflect(v, to.Field(idx))
+					if err != nil {
+						return err
+					}
+				} else {
+					return fmt.Errorf("cannot unmarshal '%s' from %v to %s", k, opt, to.Type().Name())
+				}
+			}
+		case reflect.Map:
+			if to.IsNil() {
+				to.Set(reflect.MakeMap(to.Type()))
+			}
+			for k, v := range val {
+				mapVal := reflect.New(to.Type().Elem())
+				err := AnyToReflect(v, mapVal)
+				if err != nil {
+					return err
+				}
+				to.SetMapIndex(reflect.ValueOf(k), reflect.Indirect(mapVal))
+			}
+		default:
+			if to.CanSet() {
+				rv := reflect.ValueOf(val)
+				if rv.Type().AssignableTo(to.Type()) {
+					to.Set(reflect.ValueOf(val))
+					break
+				}
+			}
+			return fmt.Errorf("cannot set value from %v to %s", val, to.Type().Name())
 		}
-		e = json.Unmarshal(b, to)
-		if e != nil {
-			return e
+	case []map[string]interface{}:
+		switch to.Type().Kind() {
+		case reflect.Slice:
+			for _, opt := range val {
+				elem := reflect.New(to.Type().Elem())
+				err := AnyToReflect(opt, elem)
+				if err != nil {
+					return err
+				}
+				reflect.Append(to, reflect.Indirect(elem))
+			}
+		case reflect.Struct, reflect.Map:
+			for _, opt := range val {
+				err := AnyToReflect(opt, to)
+				if err != nil {
+					return err
+				}
+			}
 		}
 	default:
-		vv := reflect.Indirect(reflect.ValueOf(opts))
-		tov = reflect.Indirect(tov)
-		if vv.Type() == tov.Type() {
-			tov.Set(vv)
-			return nil
-		} else {
-			return fmt.Errorf("can not set %T from %T", to, opts)
+		if to.CanSet() {
+			rv := reflect.ValueOf(val)
+			if rv.Type().AssignableTo(to.Type()) {
+				to.Set(reflect.ValueOf(val))
+				break
+			}
 		}
+		return fmt.Errorf("cannot set value from %v to %s", val, to.Type().Name())
 	}
 	return nil
+}
+
+func FindFieldInStruct(struc reflect.Type, name string) (int, bool) {
+	for i := 0; i < struc.NumField(); i++ {
+		fld := struc.Field(i)
+		if fld.Name == name || strings.ToLower(fld.Name) == name {
+			return i, true
+		}
+	}
+	return -1, false
 }
 
 func (desc *Package) FindTypes(cb func(*Entity) bool) (ret []*Entity) {

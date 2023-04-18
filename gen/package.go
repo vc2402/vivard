@@ -8,7 +8,7 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-//points for CodeFragmentProvider
+// points for CodeFragmentProvider
 const (
 	CFGEngineEnter         = "engine-enter"
 	CFGEngineExit          = "engine-exit"
@@ -17,7 +17,7 @@ const (
 	CFGEngineFileFunctions = "engine-functions"
 )
 
-//Package - descriptor for generating package
+// Package - descriptor for generating package
 type Package struct {
 	Name     string
 	Files    []*File
@@ -52,7 +52,7 @@ func (desc *Package) postParsed() error {
 				e.TypeModifers[TypeModifierExtendable] = true
 			}
 			if e.HasModifier(TypeModifierExtendable) && e.BaseTypeName == "" {
-				if desc.Project.Options.ExtendableTypeDescr != DoNotGenerateFieldForExtandableTypes {
+				if desc.Project.Options.ExtendableTypeDescr != DoNotGenerateFieldForExtendableTypes {
 					tn := TipString
 					etdf := &Field{
 						parent:      e,
@@ -574,7 +574,7 @@ func returnIfErrValue(prefix ...*jen.Statement) *jen.Statement {
 	))
 }
 
-//FindType looks for type descriptor and returns it
+// FindType looks for type descriptor and returns it
 func (desc *Package) FindType(name string) (dt *DefinedType, ok bool) {
 	dt, ok = desc.types[name]
 	if !ok {
@@ -583,22 +583,22 @@ func (desc *Package) FindType(name string) (dt *DefinedType, ok bool) {
 	return
 }
 
-//RegisterType looks for type descriptor and returns it
+// RegisterType looks for type descriptor and returns it
 func (desc *Package) RegisterType(e *Entity) {
 	desc.types[e.Name] = &DefinedType{name: e.Name, external: false, pckg: desc.Name, entry: e, packagePath: desc.fullPackage}
 }
 
-//Entity returnsunderlaying type
+// Entity returnsunderlaying type
 func (dt *DefinedType) Entity() *Entity {
 	return dt.entry
 }
 
-//GetName returns name of entity
+// GetName returns name of entity
 func (e *Entity) GetName() string {
 	return e.Name
 }
 
-//GetMethodName returns name for method of given kind
+// GetMethodName returns name for method of given kind
 func (e *Entity) GetMethodName(mk MethodKind) string {
 	if mk > methodMax {
 		//TODO: lookup for custom methods
@@ -612,7 +612,7 @@ func (e *Entity) GetMethodName(mk MethodKind) string {
 	return fmt.Sprintf(templ, name)
 }
 
-//AddTag adds tag to Go struct
+// AddTag adds tag to Go struct
 func (desc *Package) AddTag(f *Field, key string, value string) {
 	if old, ok := f.Tags[key]; ok && old != value {
 		desc.AddWarning(fmt.Sprintf("at %v: gotags annotation rewrites tag's '%s' value: %s => %s", f.Pos, key, old, value))
@@ -629,13 +629,13 @@ func (desc *Package) GetTypeEngineAccessor(t *Entity) jen.Code {
 	return jen.Id(EngineVar)
 }
 
-//AddBaseFieldTag adds tag to Go struct
+// AddBaseFieldTag adds tag to Go struct
 func (desc *Package) AddBaseFieldTag(e *Entity, key string, value string) {
 	f := e.GetBaseField()
 	desc.AddTag(f, key, value)
 }
 
-//GetMethodName returns name for method of given kind
+// GetMethodName returns name for method of given kind
 func (desc *Package) GetMethodName(mk MethodKind, name string) string {
 	if mk > methodMax {
 		//TODO: lookup for custom methods
@@ -649,7 +649,7 @@ func (desc *Package) GetMethodName(mk MethodKind, name string) string {
 	return fmt.Sprintf(templ, parts[len(parts)-1])
 }
 
-//GetHookName returns name for method of given kind
+// GetHookName returns name for method of given kind
 func (desc *Package) GetHookName(hookKind string, f *Field) string {
 	if f != nil {
 		return fmt.Sprintf(hookFuncsTemmplates[hookKind], f.parent.Name, f.Name)
@@ -658,7 +658,7 @@ func (desc *Package) GetHookName(hookKind string, f *Field) string {
 	}
 }
 
-//HasModifier checks whether type that given TypeRef refers to has modifier
+// HasModifier checks whether type that given TypeRef refers to has modifier
 func (desc *Package) HasModifier(tr *TypeRef, modifier TypeModifier) bool {
 	if t, ok := desc.FindType(tr.Type); ok {
 		return t.Entity().HasModifier(modifier)
@@ -666,7 +666,7 @@ func (desc *Package) HasModifier(tr *TypeRef, modifier TypeModifier) bool {
 	return false
 }
 
-//GetExtEngineRef returns name of property in Engine for external engine with name pckgName
+// GetExtEngineRef returns name of property in Engine for external engine with name pckgName
 func (desc *Package) GetExtEngineRef(pckgName string) string {
 	if desc.extEngines[pckgName] == "" {
 		desc.extEngines[pckgName] = pckgName + "Eng"

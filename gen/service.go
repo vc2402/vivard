@@ -61,7 +61,7 @@ func init() {
 }
 
 func (cg *ServiceGenerator) Name() string {
-	return sequenceGeneratorName
+	return serviceGeneratorName
 }
 
 // SetDescriptor from DescriptorAware

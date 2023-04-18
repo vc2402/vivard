@@ -68,6 +68,8 @@ func init() {
 type GQLCLientGenerator struct {
 	desc            *gen.Package
 	vivardGenerated bool
+	useNS           bool
+	outputPath      string
 }
 
 type Imports map[string][]string
@@ -92,6 +94,18 @@ func (cg *GQLCLientGenerator) Name() string {
 	return GQLClientGeneratorName
 }
 
+func (cg *GQLCLientGenerator) SetOptions(options any) error {
+	if opts, ok := options.(map[string]any); ok {
+		if p, ok := opts[GQLClientNamespaceOption].(bool); ok {
+			cg.useNS = p
+		}
+		if p, ok := opts[GQLClientPathOption].(string); ok {
+			cg.outputPath = p
+		}
+	}
+	return nil
+}
+
 func (cg *GQLCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
 	if ann.Name == Annotation {
 		return true, nil
@@ -101,6 +115,13 @@ func (cg *GQLCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annota
 
 func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 	cg.desc = desc
+	if opts, ok := cg.desc.Options().Custom[GQLClientOptions].(map[string]interface{}); ok {
+		err := cg.SetOptions(opts)
+		if err != nil {
+			return err
+		}
+	}
+
 	for _, file := range desc.Files {
 		for _, t := range file.Entries {
 			tname := cg.GetJSEntityTypeName(t.Name)
@@ -217,13 +238,7 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	for fn, tt := range imports {
 		outFile.WriteString(fmt.Sprintf("import {%s} from './%s';\n", strings.Join(tt, ", "), fn))
 	}
-	useNS := false
-	if opts, ok := cg.desc.Options().Custom[GQLClientOptions].(map[string]interface{}); ok {
-		if p, ok := opts[GQLClientNamespaceOption].(bool); ok {
-			useNS = p
-		}
-	}
-	if useNS {
+	if cg.useNS {
 		outFile.WriteString(fmt.Sprintf("namespace %s {", b.File.Package))
 	}
 	for _, t := range b.File.Entries {
@@ -235,7 +250,7 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 		t.Features.Set(Features, FFilePath, p)
 	}
 	outFile.WriteString(cleanInputFunc)
-	if useNS {
+	if cg.useNS {
 		outFile.WriteString("}")
 	}
 	b.Project.ProvideCodeFragment(CodeFragmentModule, CodeFragmentActionFile, nil, cfc, false)
@@ -730,11 +745,10 @@ func (cg *GQLCLientGenerator) GetJSEntityInputTypeName(name string) string {
 
 func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 	ret = "./gql-ts"
-	if opts, ok := cg.desc.Options().Custom[GQLClientOptions].(map[string]interface{}); ok {
-		if p, ok := opts[GQLClientPathOption].(string); ok {
-			ret = p
-		}
+	if cg.outputPath != "" {
+		ret = cg.outputPath
 	}
+
 	ret = path.Join(ret, "types")
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return

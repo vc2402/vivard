@@ -63,10 +63,13 @@ type MongoGenerator struct {
 	prefixCollectionName        string
 	useBaseCollectionForDerived bool
 	deleteMethod                string
+	inited                      bool
 }
 
 func init() {
-	RegisterPlugin(&MongoGenerator{})
+	plugin := &MongoGenerator{}
+	plugin.init()
+	RegisterPlugin(plugin)
 }
 
 func (cg *MongoGenerator) Name() string {
@@ -1114,6 +1117,9 @@ func (cg *MongoGenerator) addDescendantsToQuery(e *Entity, queryVar string) *jen
 }
 
 func (cg *MongoGenerator) init() {
+	if cg.inited {
+		return
+	}
 	if cg.collections == nil {
 		cg.collections = map[string]string{}
 	}
@@ -1122,4 +1128,6 @@ func (cg *MongoGenerator) init() {
 	}
 	cg.prefixCollectionName = optPrefixWithPackage
 	cg.useBaseCollectionForDerived = true
+
+	cg.inited = true
 }

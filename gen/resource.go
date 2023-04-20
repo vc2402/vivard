@@ -286,19 +286,6 @@ func (cg *ResourceGenerator) generateResourcesInitializer(cf *CodeFragmentContex
 					return nil
 				},
 			)
-			//for _, desc := range descriptors {
-			//	cf.Add(jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("FindResource").Params(jen.Id(desc.keyConstName)))
-			//	cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
-			//		jen.List(jen.Id(desc.idVarName), jen.Id("err")).Op("=").Add(fldCode).Dot("CreateResource").Params(
-			//			jen.Id(desc.keyConstName),
-			//			jen.Lit(desc.description),
-			//			jen.Qual(ResourcePackage, "Key").Parens(jen.Lit(desc.parent)),
-			//		),
-			//	))
-			//	cf.Add(jen.If(jen.Id("err").Op("!=").Nil()).Block(
-			//		jen.Return(jen.Id("err"))),
-			//	)
-			//}
 			cf.Add(jen.Return(jen.Nil()))
 
 			cf.Pop()

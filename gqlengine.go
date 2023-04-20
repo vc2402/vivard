@@ -16,14 +16,14 @@ type GQLEngine struct {
 	descriptor *GQLDescriptor
 }
 
-type GQLTypeGenerator func() *gql.Object
-type GQLInputTypeGenerator func() *gql.InputObject
+type GQLTypeGenerator func() gql.Output
+type GQLInputTypeGenerator func() gql.Input
 type GQLQueryGenerator func() *gql.Field
 
 type GQLDescriptor struct {
 	// engine              *Engine
-	types               map[string]*gql.Object
-	inputs              map[string]*gql.InputObject
+	types               map[string]gql.Output
+	inputs              map[string]gql.Input
 	typesGenerators     map[string]GQLTypeGenerator
 	inputsGenerators    map[string]GQLInputTypeGenerator
 	queriesGenerators   map[string]GQLQueryGenerator
@@ -56,8 +56,8 @@ func (gqe *GQLEngine) Descriptor() *GQLDescriptor {
 func createGQLDescriptor() *GQLDescriptor {
 	return &GQLDescriptor{
 		// engine:              eng,
-		types:               map[string]*gql.Object{},
-		inputs:              map[string]*gql.InputObject{},
+		types:               map[string]gql.Output{},
+		inputs:              map[string]gql.Input{},
 		typesGenerators:     map[string]GQLTypeGenerator{},
 		inputsGenerators:    map[string]GQLInputTypeGenerator{},
 		queriesGenerators:   map[string]GQLQueryGenerator{},
@@ -155,7 +155,7 @@ func (gqe *GQLEngine) HTTPHandler() http.HandlerFunc {
 	}
 
 }
-func (gqld *GQLDescriptor) GetType(name string) *gql.Object {
+func (gqld *GQLDescriptor) GetType(name string) gql.Output {
 	if t, ok := gqld.types[name]; ok {
 		return t
 	}
@@ -177,7 +177,7 @@ func (gqld *GQLDescriptor) GetType(name string) *gql.Object {
 		panic(fmt.Sprintf("undefined gql type '%s'", name))
 	}
 }
-func (gqld *GQLDescriptor) GetInputType(name string) *gql.InputObject {
+func (gqld *GQLDescriptor) GetInputType(name string) gql.Input {
 	if t, ok := gqld.inputs[name]; ok {
 		return t
 	}

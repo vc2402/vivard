@@ -198,7 +198,7 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 		return
 	}
 	defer outFile.Close()
-	outFile.WriteString(fmt.Sprintf("/*Code generated from file %s by vivgen. DO NOT EDIT.*/", b.File.FileName))
+	outFile.WriteString(fmt.Sprintf("/*Code generated from file %s by vivgen. DO NOT EDIT.*/\n\n", b.File.FileName))
 	outFile.WriteString(apolloClientInclude)
 	outFile.WriteString(gqlInclude)
 	imports := Imports{}
@@ -267,7 +267,7 @@ func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeR
 		return "", nil
 	} else {
 		switch ref.Type {
-		case gen.TipBool, gen.TipString, gen.TipInt, gen.TipFloat, gen.TipDate:
+		case gen.TipBool, gen.TipString, gen.TipInt, gen.TipFloat, gen.TipDate, gen.TipAny:
 			return "", nil
 		default:
 			dt, _ := pckg.FindType(ref.Type)
@@ -643,6 +643,8 @@ func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef, asRef bool) (ret s
 				ret = "number"
 			case gen.TipDate:
 				ret = "string"
+			case gen.TipAny:
+				ret = "any"
 			default:
 				ret = cg.GetJSEntityTypeName(ref.Type)
 			}

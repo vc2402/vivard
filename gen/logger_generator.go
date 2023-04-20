@@ -91,7 +91,7 @@ func (cg *LoggerGenerator) Generate(b *Builder) (err error) {
 	cg.desc = b.Descriptor
 	ld, _ := variants[cg.variant]
 	if !cg.desc.Features.Bool(logFeatureKind, lfInited) {
-		cg.desc.Engine.Initializator.Add(jen.Id(EngineVar).Dot(loggerAttr).Op("=").Id("v").Dot("GetService").Params(jen.Lit(ld.service)).Assert(jen.Op("*").Qual(vivardPackage, ld.tip)).Dot("Log").Params().Line())
+		cg.desc.Engine.Initializator.Add(jen.Id(EngineVar).Dot(loggerAttr).Op("=").Id("v").Dot("GetService").Params(jen.Lit(ld.service)).Assert(jen.Op("*").Qual(VivardPackage, ld.tip)).Dot("Log").Params().Line())
 		cg.desc.Features.Set(logFeatureKind, lfInited, true)
 	}
 	return nil

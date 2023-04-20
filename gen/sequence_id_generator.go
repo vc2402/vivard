@@ -36,7 +36,7 @@ func (cg *SequnceIDGenerator) CheckAnnotation(desc *Package, ann *Annotation, it
 func (cg *SequnceIDGenerator) Prepare(desc *Package) error {
 	cg.desc = desc
 
-	desc.Engine.Fields.Add(jen.Id(engineSequenceProvider).Qual(vivardPackage, "SequenceProvider")).Line()
+	desc.Engine.Fields.Add(jen.Id(engineSequenceProvider).Qual(VivardPackage, "SequenceProvider")).Line()
 
 	return nil
 }
@@ -45,7 +45,7 @@ func (cg *SequnceIDGenerator) Generate(bldr *Builder) (err error) {
 	cg.b = bldr
 	if !cg.desc.Features.Bool(SequenceFeatures, sfInited) {
 		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(engineSequenceProvider).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceSequenceProvider)).
-			Assert(jen.Qual(vivardPackage, "SequenceProvider"))).Line()
+			Assert(jen.Qual(VivardPackage, "SequenceProvider"))).Line()
 		cg.desc.Features.Set(SequenceFeatures, sfInited, true)
 	}
 	for _, t := range bldr.File.Entries {

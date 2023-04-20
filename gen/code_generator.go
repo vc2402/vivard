@@ -146,7 +146,8 @@ func (cg *CodeGenerator) SetDescriptor(proj *Project) {
 }
 
 // ProcessMeta - implement MetaProcessor
-func (cg *CodeGenerator) ProcessMeta(m *Meta) (bool, error) {
+func (cg *CodeGenerator) ProcessMeta(desc *Package, m *Meta) (bool, error) {
+	cg.desc = desc
 	ok, err := cg.parseHardcoded(m)
 	return ok, err
 }
@@ -862,6 +863,11 @@ func (b *Builder) addType(stmt *jen.Statement, ref *TypeRef, embedded ...bool) (
 		f = stmt.Qual("time", "Time")
 	case TipFloat:
 		f = stmt.Float64()
+	case TipAny:
+		f = stmt.Any()
+	case TipAuto:
+		err = fmt.Errorf("'auto' type can be used only with annotation, changing it")
+		return
 	default:
 		ref.Complex = true
 		if dt, ok := b.Descriptor.FindType(ref.Type); ok {
@@ -918,6 +924,10 @@ func (b *Builder) checkIfEmptyValue(stmt *jen.Statement, ref *TypeRef, inverse b
 		v = 0
 	case TipBool:
 		v = false
+
+	case TipAny:
+		f = stmt.Op("==").Nil()
+		return
 	case TipDate:
 		f = stmt.Dot("Zero").Params()
 		if inverse {
@@ -949,6 +959,9 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 		v = false
 	case TipDate:
 		f = jen.Qual("time", "Time").Values()
+		return
+	case TipAny:
+		f = jen.Nil()
 		return
 	case TipFloat:
 		v = 0.0
@@ -1067,6 +1080,8 @@ func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statemen
 		f = jen.Qual("time", "Time")
 	case TipFloat:
 		f = jen.Float64()
+	case TipAny:
+		f = jen.Any()
 	default:
 		f = &jen.Statement{}
 		if dt, ok := cg.desc.FindType(ref.Type); ok {

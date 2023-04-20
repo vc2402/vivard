@@ -112,7 +112,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			if notNullable {
 				val = jen.Lit(int(*a.Num))
 			} else {
-				val = jen.Qual(vivardPackage, "Ptr").Params(jen.Lit(int(*a.Num)))
+				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(int(*a.Num)))
 			}
 		case TipFloat:
 			if a.Num == nil {
@@ -121,7 +121,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			if notNullable {
 				val = jen.Lit(*a.Num)
 			} else {
-				val = jen.Qual(vivardPackage, "Ptr").Params(jen.Lit(*a.Num))
+				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(*a.Num))
 			}
 		case TipString:
 			if a.Str == nil {
@@ -130,7 +130,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			if notNullable {
 				val = jen.Lit(*a.Str)
 			} else {
-				val = jen.Qual(vivardPackage, "Ptr").Params(jen.Lit(*a.Str))
+				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(*a.Str))
 			}
 		case TipBool:
 			if a.Bool == nil {
@@ -139,7 +139,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			if notNullable {
 				val = jen.Lit(bool(*a.Bool))
 			} else {
-				val = jen.Qual(vivardPackage, "Ptr").Params(jen.Lit(bool(*a.Bool)))
+				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(bool(*a.Bool)))
 			}
 		case TipDate:
 			return nil, fmt.Errorf("at %s:%d: type datetime of field %s can not be used for hardcoded", m.Pos.Filename, m.Pos.Line+pos, name)

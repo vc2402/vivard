@@ -82,6 +82,9 @@ func (cg *ServiceGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 			if !fld.Parent().HasModifier(TypeModifierSingleton) {
 				return false, fmt.Errorf("at %v: %s can be used for member of singleton only", ann.Pos, serviceInjectAnnotation)
 			}
+			if fld.Type.Type == TipAuto {
+				//TODO: replcae type with actual
+			}
 			return true, nil
 		}
 	}
@@ -223,7 +226,7 @@ func (cg *ServiceGenerator) ProvideFeature(kind FeatureKind, name string, obj in
 									pckg = ResourcePackage
 									tip = "AccessChecker"
 								case vivard.ServiceCRON:
-									pckg = vivardPackage
+									pckg = VivardPackage
 									tip = "*CRONService"
 								default:
 									panic("package and type should be provided for service for 'engine-service' feature")

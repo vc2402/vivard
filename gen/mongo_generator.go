@@ -409,7 +409,11 @@ func (cg *MongoGenerator) generateLoadFunc(e *Entity) error {
 	}
 	name := e.Name
 	fname := cg.desc.GetMethodName(MethodLoad, name)
-	params, err := cg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), e.GetIdField().Type)
+	idField := e.GetIdField()
+	if idField == nil {
+		return fmt.Errorf("at %v: Mongo:Load: no id field found for type %s", e.Pos, e.Name)
+	}
+	params, err := cg.b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idField.Type)
 
 	if err != nil {
 		return err

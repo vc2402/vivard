@@ -16,6 +16,8 @@ import (
 
 const (
 	EngineVivard = "Vivard"
+
+	InternalPackageName = "vivintrnl"
 )
 
 type NullsHandlingKind int
@@ -55,6 +57,16 @@ const (
 	DoNotAutoGenerateIDField AutoGenerateIDFieldBehaviour = false
 )
 
+type GenerationStage int
+
+const (
+	StageParsing GenerationStage = iota
+	StageBeforePrepare
+	StagePrepare
+	StageMetaProcessing
+	StageGenerating
+)
+
 type Opts struct {
 	NullsHandling       NullsHandlingKind
 	UnknownAnnotation   UnknownAnnotationBehaviour
@@ -88,6 +100,7 @@ type Project struct {
 	Warnings          []string
 	Errors            []error
 	hooks             []GeneratorHookHolder
+	stage             GenerationStage
 }
 
 type EngineDescriptor struct {
@@ -357,7 +370,7 @@ func (p *Project) HasErrors() bool {
 	return len(p.Errors) > 0
 }
 
-// GetFeature looks for feature in obj (*Package, *Entity, *Field or *Method); returns nil if feature not found
+// GetFeature looks for feature in obj (*Package (for *Package and *Builder), *Entity, *Field or *Method); returns nil if feature not found
 func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) interface{} {
 	var f Features
 	switch v := obj.(type) {
@@ -369,6 +382,8 @@ func (p *Project) GetFeature(obj interface{}, kind FeatureKind, name string) int
 		f = v.Features
 	case *Package:
 		f = v.Features
+	case *Builder:
+		f = v.Descriptor.Features
 	default:
 		panic(fmt.Sprintf("GetFeature was called for unknown type: %T", obj))
 	}
@@ -399,9 +414,18 @@ func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string
 	f := p.GetFeatureMust(obj, kind, name)
 	if chf, ok := f.(CodeHelperFunc); ok {
 		return chf(args...)
+	} else if ff, ok := f.(FeatureFunc); ok {
+		err := ff(args...)
+		if err != nil {
+			panic(fmt.Sprintf("feature %s:%s has returned an error: %v", kind, name, err))
+		}
+		return nil
 	}
-	panic(fmt.Sprintf("feature %s:%s is not a feature function: %T", kind, name, f))
+	panic(fmt.Sprintf("feature %s:%s is not found or not a feature function: %T", kind, name, f))
 }
+
+// CurrentStage returns current stage
+func (p *Project) CurrentStage() GenerationStage { return p.stage }
 
 // CallFeatureHookFunc looks for feature with given params, tries to assert it to HookFeatureFunc and call
 func (p *Project) CallFeatureHookFunc(obj interface{}, kind FeatureKind, name string, args HookArgsDescriptor) jen.Code {
@@ -429,12 +453,32 @@ func (p *Project) Generate() (err error) {
 			return
 		}
 	}
+
+	p.stage = StageBeforePrepare
+	for _, pckg := range p.packages {
+		err = pckg.beforePrepare()
+		if err != nil {
+			return
+		}
+	}
+
+	p.stage = StagePrepare
 	for _, pckg := range p.packages {
 		err = pckg.prepare()
 		if err != nil {
 			return
 		}
 	}
+
+	p.stage = StageMetaProcessing
+	for _, pckg := range p.packages {
+		err := pckg.processMetas()
+		if err != nil {
+			return err
+		}
+	}
+
+	p.stage = StageGenerating
 	for _, pckg := range p.packages {
 		for _, file := range pckg.Files {
 			bldr := &Builder{
@@ -527,6 +571,14 @@ func (p *Project) Generate() (err error) {
 	//}
 
 	return
+}
+
+func (p *Project) GetInternalPackage() *Package {
+	pckg := p.GetPackage(InternalPackageName)
+	if pckg.Engine == nil {
+		pckg.initEngine()
+	}
+	return pckg
 }
 
 func (p *Project) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}, theOnly bool) interface{} {
@@ -653,6 +705,18 @@ func (p *Project) addExternal(e *Entity) error {
 		p.extPackages[pckgAlias] = pckg
 	}
 	p.extTypes[fmt.Sprintf("%s.%s", pckgAlias, e.Name)] = &DefinedType{name: e.Name, entry: e, external: true, packagePath: pckg, pckg: pckgAlias}
+	return nil
+}
+
+// RegisterExternalType registers reference to external type
+func (p *Project) RegisterExternalType(pckg, alias string, name string) error {
+	if alias != "" {
+		if p, ok := p.extPackages[alias]; ok && p != pckg {
+			return fmt.Errorf("attpmt to reassign alias '%s' from package '%s' to '%s", alias, p, pckg)
+		}
+		p.extPackages[alias] = pckg
+	}
+	p.extTypes[fmt.Sprintf("%s.%s", alias, name)] = &DefinedType{name: name, external: true, packagePath: pckg, pckg: alias}
 	return nil
 }
 
@@ -796,7 +860,7 @@ META_LOOP:
 			continue
 		}
 		for _, mp := range desc.Project.metaProcs {
-			ok, e := mp.ProcessMeta(m)
+			ok, e := mp.ProcessMeta(desc, m)
 			if ok {
 				continue META_LOOP
 			}

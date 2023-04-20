@@ -12,9 +12,10 @@ import (
 
 type GQLOperationKind int
 
+const GQLGeneratorName = "GraphQL"
+
 const (
-	GQLGeneratorName                  = "GraphQL"
-	GQLOperationGet  GQLOperationKind = iota
+	GQLOperationGet GQLOperationKind = iota
 	GQLOperationSet
 	GQLOperationCreate
 	GQLOperationList
@@ -37,6 +38,8 @@ var gqlOperationsNamesTemplates = [GQLOperationLast]string{
 
 const gqlSetNullInputTemplate = "%sSetNull"
 
+const gqlPackage = "github.com/graphql-go/graphql"
+
 const (
 	gqlDescriptorVarName = "gqlDesc"
 
@@ -56,12 +59,13 @@ const (
 )
 
 const (
-	GQLFeatures       = "gql"
-	GQLFTypeTag       = "type"
-	GQLFArgTypeTag    = "argType"
-	GQLFIdTypeTag     = "idType"
-	GQLFInputTypeName = "inputType"
-	GQLFMethodName    = "name"
+	GQLFeatures        = "gql"
+	GQLFTypeTag        = "type"
+	GQLFUseDefinedType = "use-defined-type"
+	GQLFArgTypeTag     = "argType"
+	GQLFIdTypeTag      = "idType"
+	GQLFInputTypeName  = "inputType"
+	GQLFMethodName     = "name"
 	// GQLFMethodType - GQLFMethodTypeMutation or GQLFMethodTypeQuery
 	GQLFMethodType         = "method-type"
 	GQLFMethodTypeMutation = "mutation"
@@ -71,8 +75,12 @@ const (
 
 	// GQLFMethodResultType - code generator for method's result type
 	GQLFMethodResultType = "result-type"
-	// GQLFMethodResultTypeName - code generator for method's result type
+	// GQLFMethodResultTypeName - feature for method's result type name
 	GQLFMethodResultTypeName = "result-type-name"
+	// GQLGenerateUnionType - feature for Package; returns function that generates union type
+	//  and inserts generator in given Package's init procedure
+	//  function gets union name as first param and types (*Entity) that should be parts of union
+	GQLGenerateUnionType = "generate-union-type"
 	// GQLFSetNullInputField name of boolean field in input type for setting null for nullbale field
 	GQLFSetNullInputField = "set-null-input-field"
 )
@@ -211,7 +219,7 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 func (cg *GQLGenerator) Generate(b *Builder) (err error) {
 	cg.desc = b.Descriptor
 	cg.b = b
-	b.Generator.Id(gqlDescriptorVarName).Op(":=").Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Line()
+	b.Generator.Id(gqlDescriptorVarName).Op(":=").Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Line()
 	for _, t := range b.File.Entries {
 		level, ok := t.Features.GetString(FeaturesAPIKind, FAPILevel)
 		if !ok || level != FAPILIgnore {
@@ -292,9 +300,15 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 				continue
 			}
 
-			t, err := cg.getGQLType(f.Type, false, f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly))
-			if err != nil {
-				return err
+			var t *jen.Statement
+			var err error
+			if tn := f.FS(GQLFeatures, GQLFUseDefinedType); tn != "" {
+				t = cg.generateTypeLookupStatement(tn, false)
+			} else {
+				t, err = cg.getGQLType(f.Type, false, f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly))
+				if err != nil {
+					return err
+				}
 			}
 
 			gqlFields[jen.Lit(fieldName)] = jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
@@ -329,7 +343,7 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 							}
 							g.List(jen.Id("val"), jen.Id("_")).Op(":=").Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true))
 							g.Return(
-								jen.Qual(vivardPackage, fn).Params(jen.Id("val")),
+								jen.Qual(VivardPackage, fn).Params(jen.Id("val")),
 								jen.Nil(),
 							)
 						} else {
@@ -341,7 +355,7 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 			})
 			cg.desc.AddTag(f, gqlTagJSON, fieldName)
 		}
-		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Object").Block(
+		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Qual(gqlPackage, "Output").Block(
 			jen.Return(
 				jen.Qual(gqlPackage, "NewObject").Call(
 					jen.Qual(gqlPackage, "ObjectConfig").Values(jen.Dict{
@@ -396,7 +410,7 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 		for _, f := range e.GetFields(true, true) {
 			fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
 			// let's leave readonly fields as input for js simplicity
-			if !ok /*|| f.FB(FeaturesCommonKind, FCReadonly)*/ {
+			if !ok /*|| f.FB(FeaturesCommonKind, FCReadonly)*/ || f.HasModifier(AttrModifierCalculated) {
 				continue
 			}
 			t, err := cg.getGQLType(
@@ -418,7 +432,7 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 				})
 			}
 		}
-		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "InputObject").Block(
+		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Qual(gqlPackage, "Input").Block(
 			jen.Return(
 				jen.Qual(gqlPackage, "NewInputObject").Call(
 					jen.Qual(gqlPackage, "InputObjectConfig").Values(jen.Dict{
@@ -446,7 +460,7 @@ func (cg *GQLGenerator) generateGQLQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(
 						jen.Dict{
 							jen.Lit(id): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
@@ -519,7 +533,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 			)
 			for _, f := range t.GetFields(true, true) {
 				fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
-				if !ok || f.FB(FeaturesCommonKind, FCReadonly) {
+				if !ok || f.FB(FeaturesCommonKind, FCReadonly) || f.HasModifier(AttrModifierCalculated) {
 					continue
 				}
 				//TODO: check values for references
@@ -598,7 +612,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 								cg.desc.AddError(fmt.Errorf("at %v: GQL: only string and int can be used as Maps value currently", f.Pos))
 								return
 							}
-							g.List(jen.Id("values"), jen.Err()).Op(":=").Qual(vivardPackage, fn).Params(jen.Id("val"))
+							g.List(jen.Id("values"), jen.Err()).Op(":=").Qual(VivardPackage, fn).Params(jen.Id("val"))
 							g.Add(returnIfErrValue(jen.Nil()))
 							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else {
@@ -688,7 +702,7 @@ func (cg *GQLGenerator) generateGQLLookupQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
+					jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(
 						jen.Dict{
 							jen.Lit("query"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
@@ -750,7 +764,7 @@ func (cg *GQLGenerator) generateGQLListQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.DictFunc(func(d jen.Dict) {
-					d[jen.Id("Type")] = jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)))
+					d[jen.Id("Type")] = jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)))
 					d[jen.Id("Resolve")] = jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						BlockFunc(func(g *jen.Group) {
 							if withQualifier {
@@ -819,10 +833,10 @@ func (cg *GQLGenerator) generateGQLFindQuery(t *Entity) error {
 			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 				jen.Return(
 					jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-						jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
+						jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
 						jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(jen.Dict{
 							jen.Lit("query"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
-								jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(it.Name))),
+								jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(it.Name))),
 							}),
 						}),
 						jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
@@ -867,14 +881,14 @@ func (cg *GQLGenerator) generateGQLSetMutation(t *Entity) error {
 		fname := fmt.Sprintf("%sSetMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
-				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
+				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
 			}),
 		}
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
 					// jen.Id("Type"): jen.Qual(gqlPackage, "Boolean"),
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
@@ -926,13 +940,13 @@ func (cg *GQLGenerator) generateGQLCreateMutation(t *Entity) error {
 		fname := fmt.Sprintf("%sCreateMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
-				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
+				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
 			}),
 		}
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).Block(
 						jen.If(
@@ -1113,7 +1127,7 @@ func (cg *GQLGenerator) generateGQLConfigQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
 							jen.Return(
@@ -1139,14 +1153,14 @@ func (cg *GQLGenerator) generateGQLConfigSetMutation(t *Entity) error {
 		fname := fmt.Sprintf("%sSetMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
-				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
+				jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
 			}),
 		}
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
 					// jen.Id("Type"): jen.Qual(gqlPackage, "Boolean"),
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
@@ -1221,9 +1235,9 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 			}
 			if ret == nil {
 				typeName := ref.Type
-				typeLookuper := "GetType"
+				isInput := false
 				if len(skipNotNull) > 2 && skipNotNull[2] {
-					typeLookuper = "GetInputType"
+					isInput = true
 					typeName = cg.GetGQLInputTypeName(ref.Type)
 				}
 				if ref.Map != nil {
@@ -1234,7 +1248,7 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 				}
 				//TODO: add option for use package in type name
 				typeName = cg.desc.GetRealTypeName(typeName)
-				ret = jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(vivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot(typeLookuper).Call(jen.Lit(typeName))
+				ret = cg.generateTypeLookupStatement(typeName, isInput)
 				if ref.Map != nil {
 					ret = jen.Qual(gqlPackage, "NewList").Params(ret)
 				}
@@ -1251,6 +1265,13 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 	return ret, nil
 }
 
+func (cg *GQLGenerator) generateTypeLookupStatement(typeName string, isInput bool) *jen.Statement {
+	typeLookuper := "GetType"
+	if isInput {
+		typeLookuper = "GetInputType"
+	}
+	return jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot(typeLookuper).Call(jen.Lit(typeName))
+}
 func (cg *GQLGenerator) getMapTypeName(ref *TypeRef) (string, error) {
 	if ref.Map != nil {
 		if ref.Map.KeyType != TipString {
@@ -1418,18 +1439,13 @@ func (cg *GQLGenerator) ProvideFeature(kind FeatureKind, name string, obj interf
 			if m, ok := obj.(*Method); ok {
 				t := "Boolean"
 				if m.RetValue != nil {
-					// tn := m.RetValue.Type
-					// isArray := false
-					// if m.RetValue.Array != nil {
-					// 	isArray = true
-					// 	tn = m.RetValue.Array.Type
-					// }
 					t = cg.GetGQLTypeName(m.RetValue)
-					// if isArray {
-					// 	t = fmt.Sprintf("[%s]", t)
-					// }
 				}
 				return t, FeatureProvided
+			}
+		case GQLGenerateUnionType:
+			if p, ok := obj.(*Builder); ok {
+				return cg.getUnionGeneratorFunc(p), FeatureProvided
 			}
 		}
 	}
@@ -1447,5 +1463,74 @@ func (cg *GQLGenerator) getMethodResultTypeFunc(m *Method) CodeHelperFunc {
 			}
 		}
 		return t
+	}
+}
+
+func (cg *GQLGenerator) getUnionGeneratorFunc(builder *Builder) FeatureFunc {
+	return func(args ...interface{}) error {
+		//graphql.NewUnion(
+		//	graphql.UnionConfig{
+		//		Name:        "checkListUnion",
+		//		Description: "interface for all the checklist items types",
+		//		Types:       []*graphql.Object{checkListComboType, checkListIntegerType, checkListPhotosType},
+		//		ResolveType: func(p graphql.ResolveTypeParams) *graphql.Object {
+		//			switch p.Value.(*checkListItem).Type {
+		//			case clitCheckBox:
+		//				return checkListComboType
+		//			case clitInteger:
+		//				return checkListIntegerType
+		//			default:
+		//				return checkListPhotosType
+		//			}
+		//		},
+		//	},
+		//)
+		if len(args) < 2 {
+			return errors.New("GQLGenerateUnionType feature requires type name and entities as parameters")
+		}
+
+		name, ok := args[0].(string)
+		if !ok {
+			return errors.New("GQLGenerateUnionType feature: first parameter should be a string")
+		}
+		var types []jen.Code
+		var resolves []jen.Code
+		addEntity := func(e *Entity) {
+			typeRef := e.TypeRef()
+			typeName := builder.Pckg.GetRealTypeName(typeRef.Type)
+			typeLookup := cg.generateTypeLookupStatement(typeName, false).Assert(jen.Op("*").Qual(gqlPackage, "Object"))
+			types = append(types, typeLookup)
+			resolves = append(resolves, jen.Case(builder.Pckg.TypeStmt(e)).Block(jen.Return(typeLookup)))
+		}
+		for _, a := range args[1:] {
+			if e, ok := a.(*Entity); ok {
+				addEntity(e)
+			} else if ents, ok := a.([]*Entity); ok {
+				for _, e := range ents {
+					addEntity(e)
+				}
+			} else {
+				return errors.New("GQLGenerateUnionType feature: parameters from idx 1 should be *Entity")
+			}
+		}
+		fname := fmt.Sprintf("%sTypeGenerator", name)
+		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Qual(gqlPackage, "Output").Block(
+			jen.Return(
+				jen.Qual(gqlPackage, "NewUnion").Call(
+					jen.Qual(gqlPackage, "UnionConfig").Values(jen.Dict{
+						jen.Id("Name"):  jen.Lit(name),
+						jen.Id("Types"): jen.Index().Op("*").Qual(gqlPackage, "Object").Values(types...),
+						jen.Id("ResolveType"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveTypeParams")).Op("*").Qual(gqlPackage, "Object").Block(
+							jen.Switch(jen.Id("p").Dot("Value").Assert(jen.Type())).Block(resolves...),
+							jen.Return(jen.Nil()),
+						),
+					}),
+				),
+			),
+		).Line()
+
+		builder.Functions.Add(f)
+		builder.Generator.Id(gqlDescriptorVarName).Dot("AddTypeGenerator").Params(jen.Lit(name), jen.Id(EngineVar).Dot(fname)).Line()
+		return nil
 	}
 }

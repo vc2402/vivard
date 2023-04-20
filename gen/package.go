@@ -73,7 +73,18 @@ func (desc *Package) postParsed() error {
 	return nil
 }
 
-func (desc *Package) prepare() error {
+func (desc *Package) initEngine() {
+	desc.Engine = &EngineDescriptor{
+		Fields:         jen.Id(EngineVivard).Op("*").Qual(VivardPackage, "Engine").Line(),
+		Initializator:  &jen.Statement{},
+		Initialized:    &jen.Statement{},
+		Start:          &jen.Statement{},
+		Functions:      &jen.Statement{},
+		SingletonInits: map[string]*jen.Statement{},
+	}
+}
+
+func (desc *Package) beforePrepare() error {
 	for _, f := range desc.Files {
 		for _, e := range f.Entries {
 			if e.BaseTypeName != "" {
@@ -132,19 +143,12 @@ func (desc *Package) prepare() error {
 			}
 		}
 	}
-	err := desc.processMetas()
-	if err != nil {
-		return err
-	}
 
-	desc.Engine = &EngineDescriptor{
-		Fields:         jen.Id(EngineVivard).Op("*").Qual(vivardPackage, "Engine").Line(),
-		Initializator:  &jen.Statement{},
-		Initialized:    &jen.Statement{},
-		Start:          &jen.Statement{},
-		Functions:      &jen.Statement{},
-		SingletonInits: map[string]*jen.Statement{},
-	}
+	return nil
+}
+
+func (desc *Package) prepare() error {
+	desc.initEngine()
 	for _, gen := range desc.Project.generators {
 		err := gen.Prepare(desc)
 		if err != nil {
@@ -473,7 +477,7 @@ func (desc *Package) generateEngine() error {
 	if desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false) != nil {
 		desc.Engine.file.Add(
 			jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("ProvideServices").Params(
-				jen.Id("v").Op("*").Qual(vivardPackage, "Engine")).Block(cf.body).Line(),
+				jen.Id("v").Op("*").Qual(VivardPackage, "Engine")).Block(cf.body).Line(),
 		)
 	}
 	cf = CodeFragmentContext{
@@ -488,7 +492,7 @@ func (desc *Package) generateEngine() error {
 	desc.Engine.file.Add(
 		jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id("Prepare").
 			Params(
-				jen.Id("v").Op("*").Qual(vivardPackage, "Engine"),
+				jen.Id("v").Op("*").Qual(VivardPackage, "Engine"),
 				//jen.Id("_").Op("*").Qual(dependenciesPackage, "Provider"),
 			).Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
 			g.Var().Id("err").Id("error")
@@ -581,6 +585,43 @@ func (desc *Package) FindType(name string) (dt *DefinedType, ok bool) {
 		dt, ok = desc.Project.FindType(name)
 	}
 	return
+}
+
+func (desc *Package) AddType(name string) (*Entity, error) {
+	if _, ok := desc.FindType(name); ok {
+		return nil, fmt.Errorf("type '%s' already exists in package '%s", name, desc.Name)
+	}
+	tip := &Entity{
+		Modifiers:       []*EntityModifier{},
+		Name:            name,
+		BaseTypeName:    "",
+		Entries:         nil,
+		Incomplete:      false,
+		Fields:          []*Field{},
+		Methods:         []*Method{},
+		FieldsIndex:     map[string]*Field{},
+		MethodsIndex:    map[string]*Method{},
+		Annotations:     Annotations{},
+		Features:        Features{},
+		TypeModifers:    map[TypeModifier]bool{},
+		Pckg:            desc,
+		BaseField:       nil,
+		File:            nil,
+		FullAnnotations: nil,
+	}
+	desc.types[tip.Name] = &DefinedType{name: tip.Name, pckg: desc.Name, external: false, entry: tip, packagePath: desc.fullPackage}
+
+	file := &File{
+		Name:     strings.ToLower(name),
+		FileName: name,
+		Package:  desc.Name,
+		Meta:     nil,
+		Entries:  []*Entity{tip},
+		Pckg:     desc,
+	}
+	tip.File = file
+	desc.Files = append(desc.Files, file)
+	return tip, nil
 }
 
 // RegisterType looks for type descriptor and returns it
@@ -717,4 +758,11 @@ func (desc *Package) AddToEngineStart(stmt *jen.Statement) {
 	} else {
 		desc.Engine.startAdd.Add(stmt)
 	}
+}
+
+func (desc *Package) TypeStmt(e *Entity) *jen.Statement {
+	if e.Pckg == desc {
+		return e.Features.Stmt(FeatGoKind, FCGType)
+	}
+	return jen.Qual(e.Pckg.fullPackage, e.FS(FeatGoKind, FCGName))
 }

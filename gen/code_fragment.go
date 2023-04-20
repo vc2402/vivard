@@ -7,7 +7,7 @@ import (
 
 var (
 	//CodeFragmentModuleGeneral module of general functionality
-	CodeFragmentModuleGeneral = struct{}{}
+	CodeFragmentModuleGeneral = &struct{}{}
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 	ParamVivardEngine = "vivard"
 )
 
-//CodeFragmentContext holds context of function
+// CodeFragmentContext holds context of function
 type CodeFragmentContext struct {
 	MethodName string
 	TypeName   string

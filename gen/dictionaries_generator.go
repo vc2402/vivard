@@ -808,7 +808,7 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 								jen.Return(jen.Nil()),
 							).
 							Else().Block(
-							jen.Return(jen.Qual(vivardPackage, "ErrInvalidValueType")),
+							jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
 						)
 					} else {
 						g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
@@ -823,7 +823,7 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 									jen.Return(jen.Nil()),
 								).
 								Else().Block(
-								jen.Return(jen.Qual(vivardPackage, "ErrInvalidValueType")),
+								jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
 							),
 						)
 						g.Return(jen.Id("o").Dot(f.Name).Dot("SetConfigValue").Params(jen.Id("parts").Index(jen.Lit(1)), jen.Id("val")))

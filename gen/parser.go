@@ -106,7 +106,7 @@ type TypeRef struct {
 	Array       *TypeRef `( "[" @@ "]"`
 	Map         *MapType ` |  @@ `
 	Ref         bool     ` | ( @"*" )?`
-	Type        string   ` (@Ident | @QualifiedName) )`
+	Type        string   ` (@Ident | @QualifiedName | @"auto" ) )`
 	NonNullable bool     `[ @"!" ]`
 	Complex     bool
 	Embedded    bool
@@ -273,16 +273,7 @@ func (f *File) postProcess() error {
 				te.Field.parent = t
 				t.Fields = append(t.Fields, te.Field)
 				t.FieldsIndex[te.Field.Name] = te.Field
-				// stripAnnotations(te.Modifiers)
 				te.Field.PostProcess()
-				//te.Field.Type.Complex = !IsPrimitiveType(te.Field.Type.Type)
-				//te.Field.Type.Embedded = te.Field.HasModifier(AttrModifierEmbedded)
-				////trying to fill complex for ref types of arrays...
-				//arrType := te.Field.Type.Array
-				//for arrType != nil {
-				//	arrType.Complex = !IsPrimitiveType(arrType.Type)
-				//	arrType = arrType.Array
-				//}
 			} else if te.Method != nil {
 				te.Method.Modifiers = te.Modifiers
 				te.Method.Features = Features{}
@@ -295,7 +286,6 @@ func (f *File) postProcess() error {
 				for _, p := range te.Method.Params {
 					p.Features = Features{}
 				}
-				// stripAnnotations(te.Modifiers)
 			} else {
 				return fmt.Errorf("undefined entry at %v", te.Pos)
 			}
@@ -305,15 +295,15 @@ func (f *File) postProcess() error {
 }
 
 func IsPrimitiveType(name string) bool {
-	return name == TipBool || name == TipDate || name == TipFloat || name == TipInt || name == TipString
+	return name == TipBool || name == TipDate || name == TipFloat || name == TipInt || name == TipString || name == TipAny
 }
 
-//FS shorcut to Features.String()
+// FS shorcut to Features.String()
 func (e *Entity) FS(kind FeatureKind, name string) string {
 	return e.Features.String(kind, name)
 }
 
-//FB shorcut to Features.String()
+// FB shorcut to Features.String()
 func (e *Entity) FB(kind FeatureKind, name string) bool {
 	return e.Features.Bool(kind, name)
 }
@@ -405,7 +395,7 @@ func (e *Entity) GetBaseField() *Field {
 	return e.BaseField
 }
 
-//GetFullAnnotations returns annotation including base type annotations
+// GetFullAnnotations returns annotation including base type annotations
 func (e *Entity) GetFullAnnotations() Annotations {
 	if e.BaseTypeName != "" {
 		if e.FullAnnotations == nil {
@@ -419,7 +409,7 @@ func (e *Entity) GetFullAnnotations() Annotations {
 	return e.Annotations
 }
 
-//GetAnnotation looks for annotation in FullAnnotations (including BaseType annotations)
+// GetAnnotation looks for annotation in FullAnnotations (including BaseType annotations)
 func (e *Entity) GetAnnotation(name string, spec ...string) *Annotation {
 	ann := e.GetFullAnnotations()
 	if len(spec) == 0 || spec[0] == "" {
@@ -452,6 +442,30 @@ func (e *Entity) AddDescendant(desc *Entity) {
 	}
 }
 
+func (e *Entity) AddField(name string, tip string) (*Field, error) {
+	if _, ok := e.FieldsIndex[name]; ok {
+		return nil, fmt.Errorf("field '%s' is already exists in type '%s", name, e.Name)
+	}
+	fld := &Field{
+		Modifiers:   []*EntryModifier{},
+		Name:        name,
+		Type:        &TypeRef{Type: tip},
+		Tags:        map[string]string{},
+		Annotations: Annotations{},
+		Features:    Features{},
+		parent:      e,
+	}
+	e.Fields = append(e.Fields, fld)
+	e.FieldsIndex[name] = fld
+	return fld, nil
+}
+
+func (e *Entity) TypeRef() *TypeRef {
+	return &TypeRef{
+		Type: fmt.Sprintf("%s.%s", e.Pckg.Name, e.Name),
+	}
+}
+
 func (f *Field) IsIdField() bool {
 	for _, a := range f.Modifiers {
 		if a.AttrModifier == "id" || a.AttrModifier == "auto" {
@@ -481,102 +495,102 @@ func (f *Field) PostProcess() {
 	}
 }
 
-//Parent returns enclosing entity
+// Parent returns enclosing entity
 func (f *Field) Parent() *Entity {
 	return f.parent
 }
 
-//FS shorcut to Features.String()
+// FS shorcut to Features.String()
 func (f *Field) FS(kind FeatureKind, name string) string {
 	return f.Features.String(kind, name)
 }
 
-//FB shorcut to Features.String()
+// FB shorcut to Features.String()
 func (f *Field) FB(kind FeatureKind, name string) bool {
 	return f.Features.Bool(kind, name)
 }
 
-//FS shorcut to Features.String()
+// FS shorcut to Features.String()
 func (m *Method) FS(kind FeatureKind, name string) string {
 	return m.Features.String(kind, name)
 }
 
-//FB shorcut to Features.String()
+// FB shorcut to Features.String()
 func (m *Method) FB(kind FeatureKind, name string) bool {
 	return m.Features.Bool(kind, name)
 }
 
-//Parent returns enclosing entity
+// Parent returns enclosing entity
 func (m *Method) Parent() *Entity {
 	return m.parent
 }
 
-//Name returns string representing given kind and name
+// Name returns string representing given kind and name
 func (f Features) Name(kind FeatureKind, name string) string {
 	return fmt.Sprintf("%s:%s", kind, name)
 }
 
-//Get looks for feature and returns it if any
+// Get looks for feature and returns it if any
 func (f Features) Get(kind FeatureKind, name string) (val interface{}, ok bool) {
 	val, ok = f[f.Name(kind, name)]
 	return
 }
 
-//Set adds feature to a feature set
+// Set adds feature to a feature set
 func (f Features) Set(kind FeatureKind, name string, feat interface{}) {
 	f[f.Name(kind, name)] = feat
 }
 
-//GetString looks for feature and asserts it to string if any
+// GetString looks for feature and asserts it to string if any
 func (f Features) GetString(kind FeatureKind, name string) (val string, ok bool) {
 	val, ok = f[f.Name(kind, name)].(string)
 	return
 }
 
-//GetBool looks for feature and asserts it to bool if any
+// GetBool looks for feature and asserts it to bool if any
 func (f Features) GetBool(kind FeatureKind, name string) (val bool, ok bool) {
 	val, ok = f[f.Name(kind, name)].(bool)
 	return
 }
 
-//String looks for feature and asserts it to string if any; otherwise returns empty string
+// String looks for feature and asserts it to string if any; otherwise returns empty string
 func (f Features) String(kind FeatureKind, name string) (val string) {
 	val, _ = f[f.Name(kind, name)].(string)
 	return
 }
 
-//Stmt looks for feature and asserts it to *jen.Statement if any; otherwise returns empty statement
+// Stmt looks for feature and asserts it to *jen.Statement if any; otherwise returns empty statement
 func (f Features) Stmt(kind FeatureKind, name string) (val *jen.Statement) {
 	val = &jen.Statement{}
 	val, _ = f[f.Name(kind, name)].(*jen.Statement)
 	return
 }
 
-//Bool looks for feature and asserts it to bool if any; otherwise return false
+// Bool looks for feature and asserts it to bool if any; otherwise return false
 func (f Features) Bool(kind FeatureKind, name string) (val bool) {
 	val, ok := f[f.Name(kind, name)].(bool)
 	return ok && val
 }
 
-//GetEntity looks for feature and asserts it to *Entity if any
+// GetEntity looks for feature and asserts it to *Entity if any
 func (f Features) GetEntity(kind FeatureKind, name string) (val *Entity, ok bool) {
 	val, ok = f[f.Name(kind, name)].(*Entity)
 	return
 }
 
-//GetField looks for feature and asserts it to *Field if any
+// GetField looks for feature and asserts it to *Field if any
 func (f Features) GetField(kind FeatureKind, name string) (val *Field, ok bool) {
 	val, ok = f[f.Name(kind, name)].(*Field)
 	return
 }
 
-//Find returns Annotation of kind prefix:name if any; nil otherwise
+// Find returns Annotation of kind prefix:name if any; nil otherwise
 func (a Annotations) Find(name, spec string) *Annotation {
 	an := fmt.Sprintf("%s:%s", name, spec)
 	return a[an]
 }
 
-//ByPrefix returns Annotations of kind prefix:name with given prefix; keys are names only
+// ByPrefix returns Annotations of kind prefix:name with given prefix; keys are names only
 // params: prefix - first part of name
 // includeUnspec - include annotation without specifier (with name == kind)
 func (a Annotations) ByPrefix(prefix string, includeUnspec bool) map[string]*Annotation {
@@ -613,7 +627,8 @@ func (a Annotations) GetStringAnnotationDef(name string, key string, def string)
 }
 
 // GetNameAnnotation returns string tag annotation with given name if any or first tag key if it is bool and true
-//  e.g. in case $ann(someValue) it returns 'someValue' and for $ann(someValue name="somName") returns someName
+//
+//	e.g. in case $ann(someValue) it returns 'someValue' and for $ann(someValue name="somName") returns someName
 func (a Annotations) GetNameAnnotation(name string, key string) (val string, ok bool) {
 	if a == nil {
 		return
@@ -691,7 +706,7 @@ func (a Annotations) AddTag(name string, key string, val interface{}, spec ...st
 	return nil
 }
 
-//Append appends all annotation from another to a
+// Append appends all annotation from another to a
 func (a Annotations) Append(another Annotations) {
 	for k, v := range another {
 		if an, ok := a[k]; ok {
@@ -702,7 +717,7 @@ func (a Annotations) Append(another Annotations) {
 	}
 }
 
-//Add adds values from another to a rewrites values with the same key
+// Add adds values from another to a rewrites values with the same key
 func (a *Annotation) Append(another *Annotation) {
 	for _, av := range another.Values {
 		if v := a.GetTag(av.Key); v != nil {
@@ -922,7 +937,7 @@ func stripAnnotations(an []*EntryModifier) {
 	}
 }
 
-//Next looks for next slice; returns true if any false if no more slices found
+// Next looks for next slice; returns true if any false if no more slices found
 func (m *Meta) Next() bool {
 	if m.start > 0 && m.end == m.start {
 		m.err = errors.New("at end")
@@ -945,15 +960,15 @@ func (m *Meta) Next() bool {
 	return m.end > m.start
 }
 
-//Current returns current slice of meta lines (delimited by empty lines)
+// Current returns current slice of meta lines (delimited by empty lines)
 func (m *Meta) Current() []string {
 	return m.Lines[m.start:m.end]
 }
 
-//Err returns current error state
+// Err returns current error state
 func (m *Meta) Err() error { return m.err }
 
-//Position returns position with lines offset
+// Position returns position with lines offset
 func (m *Meta) Position() lexer.Position {
 	pos := m.Pos
 	pos.Line += m.start

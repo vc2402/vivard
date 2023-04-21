@@ -2,6 +2,7 @@ package scripting
 
 import (
 	js "github.com/dop251/goja"
+	"go.uber.org/zap"
 	// js "github.com/robertkrimen/otto"
 )
 
@@ -18,27 +19,26 @@ func (rt *runtime) require(call js.FunctionCall) js.Value {
 	val, ok := rt.srv.modules[mName]
 	// if err == nil && !val.IsUndefined() {
 	if ok {
-		rt.srv.log.Tracef("require: returning %+v", val)
+		rt.srv.log.Debug("require", zap.Any("ret", val))
 		return rt.runtime.ToValue(val)
 	} else {
 		prg, err := rt.srv.getScript(mName, rt.runtime)
 		if err != nil {
-			rt.srv.log.Warnf("require: Problem while loading module %s: %v", mName, err)
+			rt.srv.log.Warn("require: Problem while loading module", zap.String("module", mName), zap.Error(err))
 		} else {
 			exp := rt.runtime.Get("exports")
 			rt.runtime.Set("exports", rt.runtime.NewObject())
 			ret, err := rt.runtime.RunProgram(prg)
 			if err != nil {
-				rt.srv.log.Warnf("require: Problem while loading module %s: executing: %v", mName, err)
+				rt.srv.log.Warn("require: Problem while executing module", zap.String("module", mName), zap.Error(err))
 			} else {
 				ret = rt.runtime.Get("exports")
 				rt.runtime.Set("exports", exp)
-				rt.srv.log.Tracef("require: returning %+v", ret)
 				return ret
 			}
 		}
 	}
-	rt.srv.log.Warnf("require: Problem while loading module %s", mName)
+	rt.srv.log.Warn("require: module not found", zap.String("module", mName))
 	// return js.UndefinedValue()
 	return js.Undefined()
 }

@@ -747,6 +747,9 @@ func (cg *GQLCLientGenerator) GetJSEntityInputTypeName(name string) string {
 
 func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 	ret = "./gql-ts"
+	if opt := cg.desc.Options().ClientOutputDir; opt != "" {
+		ret = opt
+	}
 	if cg.outputPath != "" {
 		ret = cg.outputPath
 	}

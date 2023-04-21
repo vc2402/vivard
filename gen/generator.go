@@ -26,6 +26,7 @@ type AutoGenerateIDFieldBehaviour bool
 type ExtendableTypeDescriptorBehaviour int
 type DefaultPackageOption string
 type OutputDirectoryOption string
+type ClientOutputDirOption string
 type PackagePrefixOption string
 
 const (
@@ -73,6 +74,7 @@ type Opts struct {
 	AutoGenerateIDField AutoGenerateIDFieldBehaviour
 	DefaultPackage      string
 	OutputDir           string
+	ClientOutputDir     string
 	PackagePrefix       string
 	ExtendableTypeDescr ExtendableTypeDescriptorBehaviour
 
@@ -144,7 +146,7 @@ func New(files []*File, o *Opts) *Project {
 }
 
 // Options creates new Opts object and initializes it with given values
-// first two values, if strings, are OutputDir and DefaultPackage (may be omitted)
+// first three values, if strings, are OutputDir, DefaultPackage and ClientOutputDir (may be omitted)
 //
 //	PackagePrefix can be set with using corresponding type (DefaultPackageOption)
 func Options(opts ...interface{}) *Opts {
@@ -158,6 +160,13 @@ func Options(opts ...interface{}) *Opts {
 				if dp, ok := opts[idx].(string); ok {
 					o.DefaultPackage = dp
 					idx++
+					if len(opts) > 2 {
+						if dp, ok := opts[idx].(string); ok {
+							o.ClientOutputDir = dp
+							idx++
+						}
+					}
+
 				}
 			}
 		}
@@ -174,6 +183,12 @@ func (o *Opts) SetOutputDir(od string) *Opts {
 // SetDefaultPackage sets default package for generator
 func (o *Opts) SetDefaultPackage(dp string) *Opts {
 	o.DefaultPackage = dp
+	return o
+}
+
+// SetClientOutputDir sets default package for generator
+func (o *Opts) SetClientOutputDir(cd string) *Opts {
+	o.ClientOutputDir = cd
 	return o
 }
 
@@ -212,6 +227,8 @@ func (o *Opts) FromAny(options any) error {
 				val = DefaultPackageOption(opt.(string))
 			case "OutputDir", "OutputDirectory", "output_dir", "output_directory", "output-dir", "output-directory":
 				val = OutputDirectoryOption(opt.(string))
+			case "ClientOutputDir", "ClientOutputDirectory", "client_output_dir", "client_output_directory", "ClientOut", "client-out":
+				val = ClientOutputDirOption(opt.(string))
 			case "PackagePrefix", "package_prefix", "package-prefix":
 				val = PackagePrefixOption(opt.(string))
 			case "ExtendableTypeField", "extendable_type_field", "extendable-type-field":
@@ -280,6 +297,8 @@ func (o *Opts) With(opts ...interface{}) *Opts {
 			o.DefaultPackage = string(opt)
 		case OutputDirectoryOption:
 			o.OutputDir = string(opt)
+		case ClientOutputDirOption:
+			o.ClientOutputDir = string(opt)
 		default:
 			panic(fmt.Sprintf("undefined option: %#v (%T)", op, op))
 		}

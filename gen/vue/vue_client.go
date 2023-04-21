@@ -223,6 +223,7 @@ type VCOptionComponentSpec struct {
 type VueClientOptions struct {
 	Components      map[string]VCOptionComponentSpec `json:"components"`
 	ApolloClientVar string                           `json:"apollo_client_var"`
+	OutputDir       string                           `json:"output_dir"`
 }
 type VueCLientGenerator struct {
 	desc    *gen.Package
@@ -640,10 +641,11 @@ func (cg *VueCLientGenerator) getOutputDir() (ret string) {
 
 func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 	ret = "./gql-ts"
-	if opts, ok := cg.desc.Options().Custom[js.GQLClientOptions].(map[string]interface{}); ok {
-		if p, ok := opts[js.GQLClientPathOption].(string); ok {
-			ret = p
-		}
+	if opt := cg.desc.Options().ClientOutputDir; opt != "" {
+		ret = opt
+	}
+	if opt := cg.options.OutputDir; opt != "" {
+		ret = opt
 	}
 	return
 }

@@ -141,10 +141,10 @@ func (cg *ResourceGenerator) Prepare(desc *Package) error {
 				} else {
 					desc.Features.Set(ResourceFeatureKind, RFResources, map[string]resourceDescriptor{key: rd})
 					desc.Features.Set(ResourceFeatureKind, RFRequired, true)
-					desc.Features.Set(ResourceFeatureKind, RFManagerField, cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, resource.ServiceManager))
+					desc.Features.Set(ResourceFeatureKind, RFManagerField, cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, resource.ServiceManager, resource.ServiceManager))
 				}
 				if checkAccess {
-					desc.Features.Set(ResourceFeatureKind, RFAccessCheckerField, cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, resource.ServiceAccessChecker))
+					desc.Features.Set(ResourceFeatureKind, RFAccessCheckerField, cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, resource.ServiceAccessChecker, resource.ServiceAccessChecker))
 				}
 			}
 		}

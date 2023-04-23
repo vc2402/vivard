@@ -157,7 +157,7 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 					}
 					if fld, ok := f.Annotations.GetStringAnnotation(gen.GQLAnnotation, gen.GQLAnnotationNameTag); ok {
 						f.Annotations.AddTag(Annotation, AnnotationName, fld)
-						if !f.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
+						if !f.FB(gen.FeaturesCommonKind, gen.FCReadonly) && !f.HasModifier(gen.AttrModifierCalculated) {
 							f.Annotations.AddTag(Annotation, AnnotationInputName, fld)
 						}
 					}

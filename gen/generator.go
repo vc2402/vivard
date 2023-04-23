@@ -735,7 +735,16 @@ func (p *Project) RegisterExternalType(pckg, alias string, name string) error {
 		}
 		p.extPackages[alias] = pckg
 	}
-	p.extTypes[fmt.Sprintf("%s.%s", alias, name)] = &DefinedType{name: name, external: true, packagePath: pckg, pckg: alias}
+	fullName := fmt.Sprintf("%s.%s", alias, name)
+	if _, ok := p.extTypes[fullName]; !ok {
+		p.extTypes[fullName] = &DefinedType{
+			name:        name,
+			external:    true,
+			packagePath: pckg,
+			pckg:        alias,
+			entry:       &Entity{Name: name, TypeModifers: map[TypeModifier]bool{TypeModifierExternal: true}},
+		}
+	}
 	return nil
 }
 

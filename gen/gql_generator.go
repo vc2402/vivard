@@ -149,47 +149,49 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 					f := t.GetBaseField()
 					f.Annotations.AddTag(GQLAnnotation, GQLAnnotationNameTag, cg.GetGQLFieldName(f))
 				}
-				for _, f := range t.GetFields(true, true) {
-					if s, ok := f.Annotations.GetBoolAnnotation(GQLAnnotation, GQLAnnotationSkipTag); ok && s {
-						f.Features.Set(FeaturesAPIKind, FCIgnore, true)
-					}
-					if f.HasModifier(AttrModifierAuxiliary) {
-						f.Features.Set(FeaturesAPIKind, FCIgnore, true)
-					}
-					if f.FB(FeaturesAPIKind, FCIgnore) {
-						continue
-					}
-					fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
-					if !ok {
-						fieldName = cg.GetGQLFieldName(f)
-						f.Annotations.AddTag(GQLAnnotation, GQLAnnotationNameTag, fieldName)
-					}
-					tip := cg.GetGQLTypeName(f.Type)
-					f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+				if !t.HasModifier(TypeModifierSingleton) {
+					for _, f := range t.GetFields(true, true) {
+						if s, ok := f.Annotations.GetBoolAnnotation(GQLAnnotation, GQLAnnotationSkipTag); ok && s {
+							f.Features.Set(FeaturesAPIKind, FCIgnore, true)
+						}
+						if f.HasModifier(AttrModifierAuxiliary) {
+							f.Features.Set(FeaturesAPIKind, FCIgnore, true)
+						}
+						if f.FB(FeaturesAPIKind, FCIgnore) {
+							continue
+						}
+						fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
+						if !ok {
+							fieldName = cg.GetGQLFieldName(f)
+							f.Annotations.AddTag(GQLAnnotation, GQLAnnotationNameTag, fieldName)
+						}
+						tip := cg.GetGQLTypeName(f.Type)
+						f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
 
-					if f.Type.Complex {
-						if f.Type.Array != nil {
-							//TODO: add special handling for lists
-						} else if f.Type.Map != nil {
-							//TODO: add special handling for maps
-						} else {
-							ct, ok := f.Parent().File.Pckg.FindType(f.Type.Type)
-							if !ok {
-								return fmt.Errorf("gql: at %v: undefined type for %s", f.Pos, f.Name)
-							}
-							if idfld := ct.entry.GetIdField(); idfld != nil {
-								tip = cg.GetGQLTypeName(idfld.Type)
-								if ct.entry == t {
-									//TODO check for recursive types
-									f.Features.Set(GQLFeatures, GQLFIDOnly, true)
-									f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+						if f.Type.Complex {
+							if f.Type.Array != nil {
+								//TODO: add special handling for lists
+							} else if f.Type.Map != nil {
+								//TODO: add special handling for maps
+							} else {
+								ct, ok := f.Parent().File.Pckg.FindType(f.Type.Type)
+								if !ok {
+									return fmt.Errorf("gql: at %v: undefined type for %s", f.Pos, f.Name)
+								}
+								if idfld := ct.entry.GetIdField(); idfld != nil {
+									tip = cg.GetGQLTypeName(idfld.Type)
+									if ct.entry == t {
+										//TODO check for recursive types
+										f.Features.Set(GQLFeatures, GQLFIDOnly, true)
+										f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+									}
 								}
 							}
 						}
-					}
-					f.Features.Set(GQLFeatures, GQLFArgTypeTag, tip)
-					if !f.Type.NonNullable {
-						f.Features.Set(GQLFeatures, GQLFSetNullInputField, fmt.Sprintf(gqlSetNullInputTemplate, fieldName))
+						f.Features.Set(GQLFeatures, GQLFArgTypeTag, tip)
+						if !f.Type.NonNullable {
+							f.Features.Set(GQLFeatures, GQLFSetNullInputField, fmt.Sprintf(gqlSetNullInputTemplate, fieldName))
+						}
 					}
 				}
 				for _, m := range t.Methods {

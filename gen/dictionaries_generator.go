@@ -885,7 +885,7 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action
 							g.Id(EngineVar).Dot(fldname).Index(idx).Op("=").Add(cf.GetParam(ParamObject))
 							g.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject)))
 						} else if action == MethodNew {
-							g.Add(cf.GetErr().Op("=").Qual("errors", "New").Params(jen.Lit("duplicate id found")))
+							g.Add(cf.GetErr().Op("=").Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("%s: duplicate id found", cf.Entity.Name))))
 							g.Add(jen.Return())
 						} else if action == MethodDelete {
 							cf.Add(cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamID)))

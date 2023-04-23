@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard"
@@ -23,6 +24,7 @@ const (
 	serviceAnnotation       = "service"
 	serviceInjectAnnotation = "inject-service"
 	saName                  = "name"
+	saAlias                 = "alias"
 	saVar                   = "var"
 	saType                  = "type"
 	saPointer               = "usePointer"
@@ -35,7 +37,7 @@ const (
 	SFKInject = "inject"
 	// SFKRegister is used for singleton if it is required to register it as service
 	SFKRegister = "register"
-	// SFKEngineService requests Engine ref to service; returns field's name
+	// SFKEngineService requests Engine ref to service; returns field's name; params: serviceName, serviceAlias and, optionally, type and package
 	SFKEngineService = "engine-service"
 	// sFKServices map of Engine services (string -> serviceDescriptor)
 	sFKServices = "services"
@@ -49,11 +51,17 @@ const (
 	ossType    = "type"
 )
 
+const (
+	SQLPackage  = "github.com/vc2402/vivard/sql"
+	SQLXPackage = "github.com/vc2402/vivard/sqlx"
+)
+
 type serviceDescriptor struct {
 	name    string
 	pckg    string
 	tip     string
 	varName string
+	alias   string
 }
 
 func init() {
@@ -83,7 +91,19 @@ func (cg *ServiceGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 				return false, fmt.Errorf("at %v: %s can be used for member of singleton only", ann.Pos, serviceInjectAnnotation)
 			}
 			if fld.Type.Type == TipAuto {
-				//TODO: replcae type with actual
+				//TODO: replace type with actual
+				if srvName, ok := ann.GetNameTag(saName); ok {
+					_, t, tip, err := cg.getServiceType(srvName)
+					if err != nil {
+						return true, fmt.Errorf("at %v: ", ann.Pos)
+					}
+					fld.Type.Type = tip
+					fld.Type.Complex = true
+					// ! NonNullable == pointer
+					fld.Type.NonNullable = t[0] != '*'
+					return true, nil
+				}
+				return true, fmt.Errorf("at %v: service name should be given for 'auto' type", fld.Pos)
 			}
 			return true, nil
 		}
@@ -131,11 +151,15 @@ func (cg *ServiceGenerator) Prepare(desc *Package) error {
 							cg.desc.AddWarning(fmt.Sprintf("at %v: service name not found; ignoring", an.Pos))
 							continue
 						}
+						alias := an.GetString(saAlias, name)
 						var pckg string
 						var tip string
-						if t, ok := cg.proj.FindType(field.Type.Type); ok {
-							pckg = t.packagePath
-							tip = t.name
+						pckg, tip, _, err := cg.getServiceType(name)
+						if err != nil {
+							if t, ok := cg.proj.FindType(field.Type.Type); ok {
+								pckg = t.packagePath
+								tip = t.name
+							}
 						}
 						if p, ok := an.GetStringTag(saPackage); ok {
 							pckg = p
@@ -151,9 +175,9 @@ func (cg *ServiceGenerator) Prepare(desc *Package) error {
 						field.Features.Set(ServiceFeatureKind, SFKProvide, name)
 						t.Features.Set(ServiceFeatureKind, SFKInject, true)
 						if pckg != "" && tip != "" {
-							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, pckg, tip)
+							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias, pckg, tip)
 						} else {
-							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name)
+							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias)
 						}
 					}
 				}
@@ -201,53 +225,85 @@ func (cg *ServiceGenerator) ProvideFeature(kind FeatureKind, name string, obj in
 				sm = smf.(map[string]serviceDescriptor)
 			}
 			ret := func(args ...interface{}) jen.Code {
-				if len(args) > 0 {
+				if len(args) > 1 {
 					if srvName, ok := args[0].(string); ok {
-						var pckg string
-						var tip string
-						if wkSrv, ok := cg.services[srvName]; ok {
-							pckg = wkSrv.pckg
-							tip = wkSrv.tip
-						} else {
-							if len(args) > 2 {
-								if p, ok := args[1].(string); ok {
-									if t, ok := args[2].(string); ok {
+						if alias, ok := args[1].(string); ok {
+							var pckg string
+							var tip string
+							if len(args) > 3 {
+								if p, ok := args[2].(string); ok {
+									if t, ok := args[3].(string); ok {
 										pckg = p
 										tip = t
 									}
 								}
-							}
-							if pckg == "" || tip == "" {
-								switch srvName {
-								case resource.ServiceManager:
-									pckg = ResourcePackage
-									tip = "Manager"
-								case resource.ServiceAccessChecker:
-									pckg = ResourcePackage
-									tip = "AccessChecker"
-								case vivard.ServiceCRON:
-									pckg = VivardPackage
-									tip = "*CRONService"
-								default:
-									panic("package and type should be provided for service for 'engine-service' feature")
+							} else {
+								var err error
+								pckg, tip, _, err = cg.getServiceType(srvName)
+								if err != nil {
+									panic(fmt.Sprintf("Service '%s': %v", srvName, err))
 								}
-
 							}
+
+							varName := cg.normalizeName(fmt.Sprintf("srv%s%s", strings.ToUpper(alias[:1]), alias[1:]))
+							sm[alias] = serviceDescriptor{
+								name:    srvName,
+								pckg:    pckg,
+								tip:     tip,
+								varName: varName,
+							}
+							return jen.Id(EngineVar).Dot(varName)
 						}
-						varName := cg.normalizeName(fmt.Sprintf("srv%s%s", strings.ToUpper(srvName[:1]), srvName[1:]))
-						sm[srvName] = serviceDescriptor{
-							name:    srvName,
-							pckg:    pckg,
-							tip:     tip,
-							varName: varName,
-						}
-						return jen.Id(EngineVar).Dot(varName)
 					}
 				}
 				panic("there is no service name for 'engine-service' feature")
 			}
 			return CodeHelperFunc(ret), FeatureProvided
 		}
+	}
+	return
+}
+
+func (cg *ServiceGenerator) getServiceType(srvName string) (pckg, tip, typeRefType string, err error) {
+	if wkSrv, ok := cg.services[srvName]; ok {
+		pckg = wkSrv.pckg
+		tip = wkSrv.tip
+	}
+	if pckg == "" || tip == "" {
+		switch srvName {
+		case resource.ServiceManager:
+			pckg = ResourcePackage
+			tip = "Manager"
+		case resource.ServiceAccessChecker:
+			pckg = ResourcePackage
+			tip = "AccessChecker"
+		case vivard.ServiceCRON:
+			pckg = VivardPackage
+			tip = "*CRONService"
+		case vivard.ServiceSQL:
+			pckg = SQLPackage
+			tip = "*Service"
+		case vivard.ServiceSQLX:
+			pckg = SQLXPackage
+			tip = "*Service"
+		default:
+			err = errors.New("service is undefined")
+		}
+	}
+	if pckg != "" && tip != "" {
+		pckgIdx := strings.LastIndex(pckg, "/")
+		var alias string
+		if pckgIdx != -1 {
+			alias = pckg[pckgIdx+1:]
+		} else {
+			alias = pckg
+		}
+		realType := tip
+		if realType[0] == '*' {
+			realType = tip[1:]
+		}
+		typeRefType = fmt.Sprintf("%s.%s", alias, realType)
+		err = cg.proj.RegisterExternalType(pckg, alias, realType)
 	}
 	return
 }

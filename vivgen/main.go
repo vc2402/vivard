@@ -72,15 +72,19 @@ func main() {
 		opts := gen.Options(viper.GetString("out")).
 			With(gen.UnknownAnnotationWarning).
 			With(gen.NullablePointers)
-		if viper.GetString("pkgPrefix") != "" {
-			opts.With(gen.PackagePrefixOption(viper.GetString("pkgPrefix")))
-		}
+
 		if options := viper.Get("options"); options != nil {
 			err = opts.FromAny(options)
 			if err != nil {
 				fmt.Printf("config file error: invalid option: %v\n", err)
 				return
 			}
+		}
+		if viper.GetString("pkgPrefix") != "" {
+			opts.With(gen.PackagePrefixOption(viper.GetString("pkgPrefix")))
+		}
+		if viper.GetString("clientOut") != "" {
+			opts.SetClientOutputDir(viper.GetString("clientOut"))
 		}
 		var proj *gen.Project
 		if pls := viper.Get("plugins"); pls != nil {

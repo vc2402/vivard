@@ -31,7 +31,7 @@ func (c DefaultContext) GetExt(key string) (interface{}, bool) {
 	return ret, ok
 }
 
-var ContextID = &struct{}{}
+var ContextID = &struct{ vivardName string }{"VivardContext"}
 
 func NewContext(ctx context.Context, userID int, userName string, source string, roles []string, rolesMask int, ext ...interface{}) context.Context {
 	newCtx := DefaultContext{userID: userID, userName: userName, source: source, roles: roles, rolesMask: rolesMask}

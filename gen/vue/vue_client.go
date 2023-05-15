@@ -1111,6 +1111,7 @@ var htmlDictionaryLookupTemplate = `
       :hint="hint"
       :items="items"
       :readonly="readonly"
+      :disabled="disabled"
       :label="label"
       :item-text="'{{ItemText}}'"
       :item-value="'{{ItemValue}}'"
@@ -1120,7 +1121,6 @@ var htmlDictionaryLookupTemplate = `
       hide-no-data
       {{if CanBeMultiple}}:multiple="multiple"
       :chips="multiple"
-      :disabled="disabled"
       :rules="rules"
       small-chips{{end}}
       @update:search-input="onChange($event)"
@@ -1205,8 +1205,11 @@ export default class {{TypeName}}LookupComponent extends Vue {
       this.onValueChange();
   }
   async load() {
+    {{if DictWithQualifier .}}if(!({{IsQualifierFilled}}))
+      return;{{end}}
     this.loading = true;
     this.items = [];
+    this.problem = "";
     try {
       let res = await {{ListQuery}}({{ApolloClient}},{{ListQueryAttrs}});
       if(res) {
@@ -1318,6 +1321,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
   async search() {
     this.loading = true;
     this.items = [];
+    this.problem = "";
     try {
       this.lastSearch = this.searchString;
       let res = await {{LookupQuery}}({{ApolloClient}}, this.lastSearch);
@@ -1352,8 +1356,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    //if(this.selected && this.selected.{{ItemText}} && this.selected.{{ItemText}}.toString() == event)
-    if(this.searchString == event)
+    if(this.searchString == event || this.selected && this.selected.{{ItemText}} && this.selected.{{ItemText}}.toString() == event)
       return
     if(this.timer)
       clearTimeout(this.timer);

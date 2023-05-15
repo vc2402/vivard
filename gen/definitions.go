@@ -73,7 +73,7 @@ type CodeFragmentProvider interface {
 type CodeHelperFunc func(args ...interface{}) jen.Code
 
 // FeatureFunc may be returned by feature provider
-type FeatureFunc func(args ...interface{}) error
+type FeatureFunc func(args ...interface{}) (any, error)
 
 type HookArgParam struct {
 	Name  string
@@ -119,6 +119,8 @@ const (
 	MethodGetAll
 	//MethodInit inits new struct (if necessary fills id with auto value)
 	MethodInit
+	// MethodNewBulk creates set of new instances
+	MethodNewBulk
 
 	// methods for store-based actions (db)
 
@@ -164,6 +166,7 @@ var MethodsNamesTemplates = [methodMax]string{
 	"Generate%sID",
 	"GetAll%s",
 	"Init%s",
+	"New%ss",
 	"Load%s",
 	"Save%s",
 	"Update%s",
@@ -457,6 +460,8 @@ const (
 	FAPIFindParamType = "find-param-type"
 	//FAPIFindFor - for *Entity or *Field - ref to object this is find for
 	FAPIFindFor = "find-for"
+	//FAPIFindForEmbedded - for *Field - array of fields (if find for attr of embedded type)
+	FAPIFindForEmbedded = "find-for-emb"
 	//FAPIFindForName - for *Field - name of type this is find for
 	FAPIFindForName = "find-for-name"
 	//FAPIFindParam - string; for *Field; find param descriptor (values as for @AnnFndTypeTag)

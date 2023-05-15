@@ -3,6 +3,7 @@ package gen
 import (
 	"errors"
 	"fmt"
+	"github.com/alecthomas/participle/lexer"
 	"github.com/vc2402/vivard/utils"
 	"os"
 	"path"
@@ -243,12 +244,15 @@ func (o *Opts) FromAny(options any) error {
 					break nameCase
 				}
 			case "CodeGenerator", "code-generator", "code_generator":
-				if opts, ok := opt.(map[string]any); ok {
+				setCodeGeneratorOptions := func(opts map[string]any) {
 					if o.Custom == nil {
 						o.Custom = map[string]any{CodeGeneratorOptionsName: opts}
 					} else {
 						o.Custom[CodeGeneratorOptionsName] = opts
 					}
+				}
+				if opts, ok := opt.(map[string]any); ok {
+					setCodeGeneratorOptions(opts)
 				} else if opts, ok := opt.([]map[string]any); ok {
 					options := map[string]any{}
 					for _, opt := range opts {
@@ -256,24 +260,24 @@ func (o *Opts) FromAny(options any) error {
 							options[k] = v
 						}
 					}
-					if o.Custom == nil {
-						o.Custom = map[string]any{CodeGeneratorOptionsName: options}
-					} else {
-						o.Custom[CodeGeneratorOptionsName] = options
-					}
+					setCodeGeneratorOptions(options)
 				} else {
 					break nameCase
 				}
+				continue
 			}
 			if val != nil {
 				o.With(val)
 			} else {
-				return fmt.Errorf("undefined value for option %s: %s", name, opt)
+				return fmt.Errorf("undefined value for option %s: %v", name, opt)
 			}
 		}
 	} else if opts, ok := options.([]map[string]any); ok {
 		for _, opt := range opts {
-			o.FromAny(opt)
+			err := o.FromAny(opt)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
 		return fmt.Errorf("invalid type for options %T", options)
@@ -425,20 +429,44 @@ func (p *Project) GetFeatureMust(obj interface{}, kind FeatureKind, name string)
 	if f := p.GetFeature(obj, kind, name); f != nil {
 		return f
 	}
-	panic(fmt.Sprintf("no feature provider found for feature %s:%s (%T)", kind, name, obj))
+	var objName string
+	var pos lexer.Position
+	switch v := obj.(type) {
+	case *Entity:
+		objName = v.Name
+		pos = v.Pos
+	case *Field:
+		objName = v.Name
+		pos = v.Pos
+	case *Method:
+		objName = v.Name
+		pos = v.Pos
+	case *Package:
+		objName = v.Name
+		if len(v.Files) > 0 {
+			pos = v.Files[0].Pos
+		}
+	case *Builder:
+		objName = v.Name
+		pos = v.Pos
+	}
+	panic(fmt.Sprintf("at %v: %s: no feature provider found for feature %s:%s (%T)", pos, objName, kind, name, obj))
 }
 
-// CallFeatureFunc looks for feature with given params, tries to assert it to CodeHelperFunc and call; panics if feature not found
-func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string, args ...interface{}) jen.Code {
+// CallCodeFeatureFunc looks for feature with given params, tries to assert it to CodeHelperFunc and call; panics if feature not found
+func (p *Project) CallCodeFeatureFunc(obj interface{}, kind FeatureKind, name string, args ...interface{}) jen.Code {
 	f := p.GetFeatureMust(obj, kind, name)
 	if chf, ok := f.(CodeHelperFunc); ok {
 		return chf(args...)
-	} else if ff, ok := f.(FeatureFunc); ok {
-		err := ff(args...)
-		if err != nil {
-			panic(fmt.Sprintf("feature %s:%s has returned an error: %v", kind, name, err))
-		}
-		return nil
+	}
+	panic(fmt.Sprintf("feature %s:%s is not found or not a feature function: %T", kind, name, f))
+}
+
+// CallFeatureFunc looks for feature with given params, tries to assert it to FeatureFunc and call and returns it's result; panics if feature not found
+func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string, args ...interface{}) (any, error) {
+	f := p.GetFeatureMust(obj, kind, name)
+	if ff, ok := f.(FeatureFunc); ok {
+		return ff(args...)
 	}
 	panic(fmt.Sprintf("feature %s:%s is not found or not a feature function: %T", kind, name, f))
 }

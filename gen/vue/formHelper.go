@@ -284,6 +284,15 @@ import {RoundNumber} from '@/filters/numberFilter';
 			}
 			return ""
 		},
+		"IsQualifierFilled": func() string {
+			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
+				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
+				idfld := qt.GetIdField()
+				return fmt.Sprintf("this.qualifier && this.qualifier.%s", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+			}
+			return ""
+
+		},
 		"GUITableTooltip": func(f fieldDescriptor) string {
 			ret := ""
 			ttfn := f.ann.getStringDef(vueATTooltip, "")
@@ -293,26 +302,53 @@ import {RoundNumber} from '@/filters/numberFilter';
 			return ret
 		},
 		"GetQuery": func(arg ...interface{}) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationGet])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationGet)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationGet])
 		},
 		"SaveQuery": func(arg ...interface{}) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationSet])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationSet)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationSet])
 		},
 		"CreateQuery": func(arg ...interface{}) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationCreate])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationCreate)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationCreate])
 		},
 		"DeleteQuery": func(arg ...interface{}) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationDelete])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationDelete)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationDelete])
 		},
 		"ListQuery": func() string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationList])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationList)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationList])
 		},
-		// "ListQueryAttrs": func() string {
-		// 	if e.FB(gen.FeatureDictKind, gen.FDQualified) {
-		// 		return "this.qualifier"
-		// 	}
-		// 	return ""
-		// },
+		"LookupQuery": func() string {
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationLookup)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationLookup])
+		},
 		"DictWithQualifier": func(hlp *helper) bool {
 			return e.FB(gen.FeatureDictKind, gen.FDQualified)
 		},
@@ -338,9 +374,6 @@ import {RoundNumber} from '@/filters/numberFilter';
 				}
 			}
 			return ""
-		},
-		"LookupQuery": func() string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationLookup])
 		},
 		"TypesFilePath": func(arg ...interface{}) string {
 			return typesPath

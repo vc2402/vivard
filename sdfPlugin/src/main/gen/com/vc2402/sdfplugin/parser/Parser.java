@@ -119,6 +119,7 @@ public class Parser implements PsiParser, LightPsiParser {
   /* ********************************************************** */
   // ann_param
   //     | IDENTIFIER
+  //     | STRING_VALUE
   //     | DUMMYIDENTIFIER
   public static boolean annotation_value(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "annotation_value")) return false;
@@ -126,6 +127,7 @@ public class Parser implements PsiParser, LightPsiParser {
     Marker m = enter_section_(b, l, _NONE_, ANNOTATION_VALUE, "<annotation value>");
     r = ann_param(b, l + 1);
     if (!r) r = consumeToken(b, IDENTIFIER);
+    if (!r) r = consumeToken(b, STRING_VALUE);
     if (!r) r = consumeToken(b, DUMMYIDENTIFIER);
     exit_section_(b, l, m, r, false, null);
     return r;

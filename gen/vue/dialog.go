@@ -32,7 +32,7 @@ func (h *helper) createDialog(compPath ...string) error {
 	return nil
 }
 
-//Dialog
+// Dialog
 var htmlGridDialogTemplate = `
 {{define "HTML"}}
 <template>
@@ -165,8 +165,15 @@ export default class {{.Name}}DialogComponent extends Vue {
   }
   async saveAndClose() {
     //TODO: check that all necessary fields are filled
+    {{if Readonly}}this.resolve(this.value);
+    this.showDialog = false;{{else}}
+    if(this.doNotGQL) {
+      this.resolve(this.value);
+      this.showDialog = false;
+      return;
+    }
     try {
-      let res: {{TypeName .}};
+      let res: {{TypeName .}}|undefined;
       if(this.forDelete) {
         if(this.value) {
           const deleted = await {{DeleteQuery .}}({{ApolloClient}}, this.value.{{IDField}});
@@ -174,25 +181,22 @@ export default class {{.Name}}DialogComponent extends Vue {
             res = this.value;
         }
       } else {
-          {{if Readonly}}this.resolve(res);{{else}}
-          if(this.doNotGQL) {
-            this.resolve(this.value)
-          } else {
-            if(this.isNew) {
-              res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
-            } else {
-              res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
-            }
-            this.resolve(res);
-          }{{end}} 
+        if(this.isNew) {
+          res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
+        } else {
+          res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
+        }
       }
-      this.showDialog = false;
+      if(res) {
+        this.resolve(res);
+        this.showDialog = false;
+      }
     } catch(exc) {
       {{if WithValidator}}if(this.validator.setFromServerResponse(exc)) {
         return
       } {{end}}
       this.reject(exc);
-    }
+    }{{end}}
   }
   async close(save: boolean) {
     if(!save) {

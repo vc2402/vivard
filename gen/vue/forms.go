@@ -92,7 +92,7 @@ func (h *helper) generateForm(formName string) error {
 	return nil
 }
 
-//Forms templates
+// Forms templates
 var htmlFormTemplate = `
 {{define "FORM"}}
   <div class="d-flex flex-row flex-wrap justify-space-around align-center">
@@ -184,9 +184,9 @@ const htmlFormTextInputTemplate = `{{define "TEXT_INPUT"}}<v-text-field v-if="va
 const htmlFormTextAreaTemplate = `{{define "TEXT_AREA_INPUT"}}<v-textarea v-if="value"
     v-model="value.{{FieldName .}}"
     label="{{Label .}}" {{InputAttrs .}}
-	auto-grow
-	outlined
-	rows="{{TextAreaRows .}}"
+    auto-grow
+    outlined
+    rows="{{TextAreaRows .}}"
     @change="changed('{{FieldName .}}')"
     :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if IsIcon .}}
     :append-icon="value.{{FieldName .}}"{{end}}

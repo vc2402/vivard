@@ -24,6 +24,9 @@ const (
 	deletableAnnotationWithField = "field"
 	// deletableAnnotationIgnore - do not generate Delete operation (overwrites default generation)
 	deletableAnnotationIgnore = "ignore"
+
+	AnnotationBulk    = "bulk" // special annotation for bulk operations
+	AnnotationBulkNew = "new"
 )
 
 const (
@@ -61,6 +64,8 @@ const (
 	FCGDeletedFieldName = "del-fld"
 	// FCGDeletedField - for field; set to true for DeletedOn field
 	FCGDeletedField = "del-fld"
+	// FCGBulkNew - for Entity; true if should be generated bulk New operations
+	FCGBulkNew = "bulk-new"
 )
 
 // CodeGeneratorOptions describes possible options for CodeGenerator
@@ -77,6 +82,8 @@ type CodeGeneratorOptions struct {
 	GenerateDeletedField bool
 	// AllowEmbeddedArraysForDictionary - allow arrays of embedded types for dictionary
 	AllowEmbeddedArraysForDictionary bool
+	// GenerateBulkNew - generate bulk new operations for every type (default false)
+	GenerateBulkNew bool
 }
 
 // CodeGenerator generates Go code (structs, methods, Engine object  and other)
@@ -173,6 +180,22 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 	if _, ok := item.(*Method); ok && ann.Name == AnnotationCall {
 		return true, nil
 	}
+	if ann.Name == AnnotationBulk {
+		if _, ok := item.(*Entity); ok {
+			for _, value := range ann.Values {
+				switch value.Key {
+				case AnnotationBulkNew:
+					if _, ok := value.GetBool(); !ok {
+						return true, fmt.Errorf("at %v: annotation %s:%s accepts only bool values", ann.Pos, ann.Name, value.Key)
+					}
+				default:
+					return true, fmt.Errorf("at %v: annotation %s: unknown annotation parameter: %s", ann.Pos, ann.Name, value.Key)
+				}
+			}
+			return true, nil
+		}
+		return true, fmt.Errorf("at %v: annotation %s should be used for Entity", ann.Pos, ann.Name)
+	}
 	return false, nil
 }
 
@@ -216,6 +239,10 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 					}
 				}
 			}
+			if ann, ok := t.Annotations[AnnotationBulk]; ok || cg.options.GenerateBulkNew {
+				generate := ann.GetBool(AnnotationBulkNew, cg.options.GenerateBulkNew)
+				t.Features.Set(FeatGoKind, FCGBulkNew, generate)
+			}
 			err := cg.prepareFields(t)
 			if err != nil {
 				return err
@@ -253,6 +280,7 @@ func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 			err = fmt.Errorf("while generating interface for %s (%s): %w", t.Name, bldr.File.FileName, err)
 			return
 		}
+
 	}
 	if cg.desc.Features.Bool(FeatGoKind, FCGScriptingRequired) &&
 		!cg.desc.Features.Bool(FeatGoKind, FCGScriptingCreated) {
@@ -401,7 +429,8 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 		cg.b.AddConst(constSection, jen.Id(cn).Id(tn).Op("=").Lit(typeName))
 	}
 	for _, d := range ent.Fields {
-		if ent.IsDictionary() && ( /*d.Type.Embedded != "" || */ d.Type.Array != nil && !d.HasModifier(AttrModifierEmbeddedRef)) &&
+		if ent.IsDictionary() &&
+			(d.Type.Array != nil && d.Type.Array.Complex && !d.HasModifier(AttrModifierEmbeddedRef)) &&
 			!d.HasModifier(AttrModifierEmbedded) || !cg.options.AllowEmbeddedArraysForDictionary {
 			return fmt.Errorf("%s:%s: only simple types allowed for Dictionary", ent.Name, d.Name)
 		}
@@ -456,7 +485,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 						} else if itsManyToMany {
 							if mtm.IsDictionary() {
 								if mtm.Pckg.Name == ent.Pckg.Name {
-									if code := cg.desc.CallFeatureFunc(mtm, FeaturesCommonKind, FCListDictByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
+									if code := cg.desc.CallCodeFeatureFunc(mtm, FeaturesCommonKind, FCListDictByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
 										g.Add(code)
 										return
 									}
@@ -479,7 +508,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 									return
 								}
 							}
-							if code := cg.desc.CallFeatureFunc(mtm, FeaturesCommonKind, FCListByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
+							if code := cg.desc.CallCodeFeatureFunc(mtm, FeaturesCommonKind, FCListByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
 								g.Add(code)
 								return
 							}
@@ -495,7 +524,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 								g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookCalculate, descr))
 							})
 						} else {
-							engVar := cg.desc.CallFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
+							engVar := cg.desc.CallCodeFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
 							g.Return(
 								jen.List(
 									jen.Add(engVar).Dot(cg.desc.GetMethodName(MethodGet, d.Type.Type)).Call(
@@ -720,7 +749,7 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 				if !ok {
 					return fmt.Errorf("at %v: type not found for embedded field: %s", d.Pos, d.Type.Type)
 				}
-				engVar := cg.desc.CallFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
+				engVar := cg.desc.CallCodeFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
 				//TODO: check that it is not necessary add params to initializer
 				fields[jen.Id(fieldName)] = jen.Id(d.Name)
 				idstmt.Add(
@@ -970,7 +999,9 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 			if dt, ok := b.Descriptor.FindType(ref.Type); ok {
 				it := dt.entry.GetIdField()
 				if it == nil {
-					b.Descriptor.AddWarning(fmt.Sprintf("there is no id field for type: %s", dt.name))
+					if !dt.external {
+						b.Descriptor.AddWarning(fmt.Sprintf("there is no id field for type: %s", dt.name))
+					}
 					return
 				}
 				return b.goEmptyValue(it.Type)

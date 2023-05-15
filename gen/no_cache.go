@@ -12,6 +12,7 @@ type NoCacheOptions struct {
 type NoCacheGenerator struct {
 	Options NoCacheOptions
 	desc    *Package
+	b       *Builder
 }
 
 const (
@@ -81,6 +82,7 @@ func (ncg *NoCacheGenerator) Prepare(desc *Package) error {
 
 func (ncg *NoCacheGenerator) Generate(b *Builder) (err error) {
 	ncg.desc = b.Descriptor
+	ncg.b = b
 	for _, t := range b.File.Entries {
 		name := t.Name
 		f := t.GetIdField()
@@ -110,6 +112,11 @@ func (ncg *NoCacheGenerator) Generate(b *Builder) (err error) {
 					if err != nil {
 						return fmt.Errorf("while generating delete for %s: %w", name, err)
 					}
+				}
+				err = ncg.generateBulk(t)
+				if err != nil {
+					err = fmt.Errorf("while generating bulk methods for %s: %w", name, err)
+					return
 				}
 			}
 		}
@@ -248,14 +255,7 @@ func (b *Builder) generateNew(t *Entity) error {
 					// jen.Id("o").Dot(idField.Name).Op("=").Id("id").Line(),
 				),
 			)
-		} /*else {
-			c.If(
-				b.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
-			).Block(
-				jen.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("id should not be empty for New")),
-				jen.Return(),
-			)
-		}*/
+		}
 		if t.BaseTypeName != "" || t.HasModifier(TypeModifierExtendable) {
 			tn := t.FS(FeatGoKind, FCGDerivedTypeNameConst)
 			c.If(jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("==").Lit("")).Block(
@@ -292,6 +292,32 @@ func (b *Builder) generateNew(t *Entity) error {
 	}).Line()
 
 	b.Functions.Add(f)
+	return nil
+}
+
+func (ncg *NoCacheGenerator) generateBulk(t *Entity) error {
+	if !t.FB(FeaturesCommonKind, FCReadonly) {
+		if t.FB(FeatGoKind, FCGBulkNew) {
+			name := t.Name
+			methodName := ncg.b.Descriptor.GetMethodName(MethodNewBulk, name)
+			newMethodName := ncg.b.Descriptor.GetMethodName(MethodNew, name)
+			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(methodName).
+				Params(
+					jen.Id("ctx").Qual("context", "Context"),
+					jen.Id("objs").Index().Op("*").Id(name),
+				).Parens(jen.List(jen.Id("ret").Index().Op("*").Id(name), jen.Err().Error())).Block(
+				jen.For(jen.List(jen.Id("idx"), jen.Id("o")).Op(":=").Range().Id("objs")).Block(
+					jen.List(jen.Id("objs").Index(jen.Id("idx")), jen.Err()).Op("=").Id(EngineVar).Dot(newMethodName).Params(
+						jen.Id("ctx"),
+						jen.Id("o"),
+					),
+					jen.Add(returnIfErrValue(jen.Id("objs"))),
+				),
+				jen.Return(jen.List(jen.Id("objs"), jen.Nil())),
+			).Line()
+			ncg.b.Functions.Add(f)
+		}
+	}
 	return nil
 }
 

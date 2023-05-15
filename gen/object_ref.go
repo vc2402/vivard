@@ -164,6 +164,9 @@ func (cg *ObjectRefGenerator) createRefType() error {
 	f.Modifiers = append(f.Modifiers, &EntryModifier{Hook: &Hook{Key: AttrHookCalculate, Value: derefFunctionName}})
 	// may be not the most elegant way but the only one at the moment
 	f.Modifiers = append(f.Modifiers, &EntryModifier{Annotation: &Annotation{Name: "vue", Values: []*AnnotationTag{{Key: "ignore"}}}})
+	trueValue := Boolean(true)
+	f.Annotations["vue"] = &Annotation{Name: "vue", Values: []*AnnotationTag{{Key: "ignore", Value: &AnnotationValue{Bool: &trueValue}}}}
+	f.Annotations["gql"] = &Annotation{Name: "gql", Values: []*AnnotationTag{{Key: "skip", Value: &AnnotationValue{Bool: &trueValue}}}}
 	cg.objectField = f
 	cg.typeCreated = true
 	return nil

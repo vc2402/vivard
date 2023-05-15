@@ -90,7 +90,7 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 	return nil
 }
 
-//Forms templates
+// Forms templates
 var htmlTablessFormTemplate = `
 {{define "FORM"}}
 {{template "FORM_CONTENT" .}}
@@ -226,7 +226,7 @@ export default class {{Name}}FormComponent extends Vue {
     let resources: string[] = [{{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}
       "{{ResourceForTab (TabID .)}}", {{end}}
     {{end}}];
-	const result = await this.loginManager.getResources(resources);
+    const result = await this.loginManager.getResources(resources);
 
     {{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}this.{{TabID .}}Accessible = result.resource("{{ResourceForTab (TabID .)}}") && result.resource("{{ResourceForTab (TabID .)}}")!.checkAccessRight("r") || false;{{end}}
     {{end}}

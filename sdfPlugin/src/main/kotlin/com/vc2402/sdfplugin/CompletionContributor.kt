@@ -139,16 +139,17 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
                         if(annParam != null)
                             fillValuesForTagParam(resultSet, annotationTag, annParam!!)
                         else
-                            fillParamsForTag(resultSet, annotationTag)
+                            fillParamsForTag(resultSet, annotationTag, false)
 
                     } else {
                         resultSet.addElement(LookupElementBuilder.create("id"))
                         resultSet.addElement(LookupElementBuilder.create("auto"))
-                        resultSet.addElement(LookupElementBuilder.create("lookup"))
+//                        resultSet.addElement(LookupElementBuilder.create("lookup"))
                         resultSet.addElement(LookupElementBuilder.create("embedded"))
                         resultSet.addElement(LookupElementBuilder.create("calculated"))
                         resultSet.addElement(LookupElementBuilder.create("ref-embedded"))
                         resultSet.addElement(LookupElementBuilder.create("one-to-many"))
+                        resultSet.addElement(LookupElementBuilder.create("auxiliary"))
                         fillAttrHooks(resultSet, "@")
                         fillAttrAnnotations(resultSet, "$")
                     }
@@ -305,11 +306,19 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
             if (annParam != null)
                 fillValuesForTagParam(resultSet, annotationTag, annParam)
             else
-                fillParamsForTag(resultSet, annotationTag)
+                fillParamsForTag(resultSet, annotationTag, true)
         }
     }
     fun fillTypeAnnotations(resultSet: CompletionResultSet, prefix: String) {
         resultSet.addElement(LookupElementBuilder.create("${prefix}vue"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-form"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-view"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-dialog"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-lookup"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-table"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-tabs"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-tab:"))
+
         resultSet.addElement(LookupElementBuilder.create("${prefix}gql"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}db"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}mongo"))
@@ -319,10 +328,13 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
         resultSet.addElement(LookupElementBuilder.create("${prefix}gotags"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}config"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}deletable"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}resource"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}service"))
     }
 
     fun fillTypeHooks(resultSet: CompletionResultSet, prefix: String) {
         resultSet.addElement(LookupElementBuilder.create("${prefix}create"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}delete"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}change"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}start"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}time=\"@every 1m -> fnname\""))
@@ -330,6 +342,13 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
 
     fun fillAttrAnnotations(resultSet: CompletionResultSet, prefix: String) {
         resultSet.addElement(LookupElementBuilder.create("${prefix}vue"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-form"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-view"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-dialog"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-lookup"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}vue-table"))
+
+        resultSet.addElement(LookupElementBuilder.create("${prefix}gotags"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}gql"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}historic"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}db"))
@@ -337,30 +356,84 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
         resultSet.addElement(LookupElementBuilder.create("${prefix}js"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}config"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}find"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}lookup"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}sort"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}index"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}qualifier"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}qualified-by"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}record-changes"))
+        resultSet.addElement(LookupElementBuilder.create("${prefix}inject-service"))
     }
 
     fun fillAttrHooks(resultSet: CompletionResultSet, prefix: String) {
         resultSet.addElement(LookupElementBuilder.create("${prefix}set"))
         resultSet.addElement(LookupElementBuilder.create("${prefix}resolve"))
     }
-    fun fillParamsForTag(resultSet: CompletionResultSet, tag: String) {
+    fun fillParamsForTag(resultSet: CompletionResultSet, tag: String, isType: Boolean) {
         when(tag) {
             "\$go" -> {
                 resultSet.addElement(LookupElementBuilder.create("name"))
-                resultSet.addElement(LookupElementBuilder.create("attr-name"))
+                if(isType) {
+                    resultSet.addElement(LookupElementBuilder.create("attr-name"))
+                }
             }
-            "\$ghl" -> {
+            "\$deletable" -> {
+                if(isType) {
+                    resultSet.addElement(LookupElementBuilder.create("field"))
+                    resultSet.addElement(LookupElementBuilder.create("ignore"))
+                }
+            }
+            "\$gql" -> {
                 resultSet.addElement(LookupElementBuilder.create("name"))
                 resultSet.addElement(LookupElementBuilder.create("skip"))
+                if(isType) {
+                    resultSet.addElement(LookupElementBuilder.create("get"))
+                    resultSet.addElement(LookupElementBuilder.create("set"))
+                    resultSet.addElement(LookupElementBuilder.create("create"))
+                    resultSet.addElement(LookupElementBuilder.create("list"))
+                    resultSet.addElement(LookupElementBuilder.create("lookup"))
+                    resultSet.addElement(LookupElementBuilder.create("delete"))
+                    resultSet.addElement(LookupElementBuilder.create("query"))
+                }
             }
             "\$historic" -> {
                 resultSet.addElement(LookupElementBuilder.create("fields"))
             }
-            "\$vue" -> {
+            "\$vue","\$vue-form","\$vue-dialog" -> {
                 resultSet.addElement(LookupElementBuilder.create("ignore"))
-                resultSet.addElement(LookupElementBuilder.create("type"))
+                resultSet.addElement(LookupElementBuilder.create("width"))
+                resultSet.addElement(LookupElementBuilder.create("label"))
+                if(!isType) {
+                    resultSet.addElement(LookupElementBuilder.create("type"))
+                    resultSet.addElement(LookupElementBuilder.create("color"))
+                    resultSet.addElement(LookupElementBuilder.create("order"))
+                    resultSet.addElement(LookupElementBuilder.create("tab"))
+                    resultSet.addElement(LookupElementBuilder.create("row"))
+                    resultSet.addElement(LookupElementBuilder.create("roles"))
+                    resultSet.addElement(LookupElementBuilder.create("textArea"))
+                } else {
+                    resultSet.addElement(LookupElementBuilder.create("card"))
+                    resultSet.addElement(LookupElementBuilder.create("layout"))
+                }
+            }
+            "\$vue-lookup" -> {
+                if(isType) {
+                    resultSet.addElement(LookupElementBuilder.create("multiple"))
+                } else {
+                    resultSet.addElement(LookupElementBuilder.create("custom"))
+                }
+                resultSet.addElement(LookupElementBuilder.create("readonly"))
+            }
+            "\$vue-table" -> {
+                if(!isType) {
+                    resultSet.addElement(LookupElementBuilder.create("useIcon"))
+                    resultSet.addElement(LookupElementBuilder.create("type"))
+                    resultSet.addElement(LookupElementBuilder.create("value"))
+                    resultSet.addElement(LookupElementBuilder.create("editable"))
+                    resultSet.addElement(LookupElementBuilder.create("tooltip"))
+                    resultSet.addElement(LookupElementBuilder.create("roles"))
+                    resultSet.addElement(LookupElementBuilder.create("custom"))
+                }
             }
             "\$find" -> {
                 resultSet.addElement(LookupElementBuilder.create("field"))
@@ -370,14 +443,20 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
                 resultSet.addElement(LookupElementBuilder.create("name"))
                 resultSet.addElement(LookupElementBuilder.create("js"))
             }
-            "\$config" -> {
-                resultSet.addElement(LookupElementBuilder.create("value"))
-                resultSet.addElement(LookupElementBuilder.create("group"))
-                resultSet.addElement(LookupElementBuilder.create("mutable"))
+            "\$sort" -> {
+                if(!isType) {
+                    resultSet.addElement(LookupElementBuilder.create("asc"))
+                    resultSet.addElement(LookupElementBuilder.create("desc"))
+                }
             }
-            "\$deletable" -> {
-                resultSet.addElement(LookupElementBuilder.create("field"))
-                resultSet.addElement(LookupElementBuilder.create("ignore"))
+            "\$config" -> {
+                if(isType) {
+                    resultSet.addElement(LookupElementBuilder.create("value"))
+                    resultSet.addElement(LookupElementBuilder.create("group"))
+                } else {
+                    resultSet.addElement(LookupElementBuilder.create("mutable"))
+                }
+
             }
             "\$js" -> {
                 resultSet.addElement(LookupElementBuilder.create("name"))
@@ -387,17 +466,33 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
                 resultSet.addElement(LookupElementBuilder.create("force"))
                 resultSet.addElement(LookupElementBuilder.create("color"))
             }
+            else -> {
+                if(tag.startsWith("\$vue-tab:")) {
+                    if(isType) {
+                        resultSet.addElement(LookupElementBuilder.create("order"))
+                        resultSet.addElement(LookupElementBuilder.create("label"))
+                        resultSet.addElement(LookupElementBuilder.create("resource"))
+                        resultSet.addElement(LookupElementBuilder.create("roles"))
+                        resultSet.addElement(LookupElementBuilder.create("default"))
+                    }
+                }
+            }
         }
     }
     fun fillValuesForTagParam(resultSet: CompletionResultSet, tag: String, param: String) {
         when(tag) {
-            "\$vue" -> {
+            "\$vue","\$vue-form","\$vue-dialog" -> {
                 when(param) {
                     "type" -> {
                         resultSet.addElement(LookupElementBuilder.create("isodate"))
                         resultSet.addElement(LookupElementBuilder.create("date"))
                         resultSet.addElement(LookupElementBuilder.create("custom"))
                         resultSet.addElement(LookupElementBuilder.create("value"))
+                    }
+                    "layout" -> {
+                        resultSet.addElement(LookupElementBuilder.create("grid"))
+                        resultSet.addElement(LookupElementBuilder.create("flex"))
+//                        resultSet.addElement(LookupElementBuilder.create("table"))
                     }
                 }
 

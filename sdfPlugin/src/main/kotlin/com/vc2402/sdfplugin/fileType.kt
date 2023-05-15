@@ -13,11 +13,11 @@ class SDFFileType: LanguageFileType(SDFLanguage.INSTANCE) {
         val INSTANCE = SDFFileType()
     }
 
-    override fun getName() = "SDF"
+    override fun getName() = "VVF"
 
-    override fun getDescription() = "SDF language file"
+    override fun getDescription() = "VVF language file"
 
-    override fun getDefaultExtension() = "sdf"
+    override fun getDefaultExtension() = "vvf"
 
     override fun getIcon() = Icons.FILE
 

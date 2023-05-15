@@ -306,10 +306,20 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 			return cmp
 		},
 		"GetQuery": func(e *gen.Entity) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationGet])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationGet)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationGet])
 		},
 		"SaveQuery": func(e *gen.Entity) string {
-			return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationSet])
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationSet)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
+			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationSet])
 		},
 		"TypesFilePath": func(e *gen.Entity) string {
 			return typesPath
@@ -545,7 +555,7 @@ func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs str
 		leafs[prefix] = leafDescriptor{ID: prefix, Ent: e, Tip: tip, Path: path}
 		return fmt.Sprintf("%s{id:'%s', name: '%s', leaf: true},\n", tabs, prefix, name)
 	} else {
-		cg.b.AddWarning(fmt.Sprintf("there is no 'config' annotation for type %s", e.Name))
+		cg.b.AddWarning(fmt.Sprintf("vue-config: at %v: there is no 'config' annotation for non-dictionary type %s", e.Pos, e.Name))
 		return ""
 	}
 }

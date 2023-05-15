@@ -4,7 +4,7 @@ package com.vc2402.sdfplugin;
 
 import com.intellij.lang.Language;
 
-class SDFLanguage: Language("sdf") {
+class SDFLanguage: Language("vvf") {
 
     companion object {
         val INSTANCE = SDFLanguage()

@@ -140,6 +140,11 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 					qb.Features.Set(FeatureDictKind, FDQualifierFor, fld)
 					return true, nil
 				}
+			} else if _, ok := fld.Parent().Annotations[AnnotationFind]; ok {
+				return true, nil
+			} else {
+				return true, fmt.Errorf("at %v: invalid use of annotation %s", ann.Pos, ann.Name)
+
 			}
 		case AnnIndex:
 			unique := ann.GetBool(aiUnique, false)

@@ -60,7 +60,7 @@ func (cg *CroneGenerator) Generate(bldr *Builder) (err error) {
 		}
 		for _, m := range t.Modifiers {
 			if h := m.Hook; h != nil && h.Key == TypeHookTime {
-				cronField := bldr.Project.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, vivard.ServiceCRON, vivard.ServiceCRON)
+				cronField := bldr.Project.CallCodeFeatureFunc(t, ServiceFeatureKind, SFKEngineService, vivard.ServiceCRON, vivard.ServiceCRON)
 				fname := cronSingletonDefaultFunctionName
 				spec := h.Value
 				if pref := strings.LastIndex(h.Value, cronSingletonFunctionPrefix); pref != -1 {
@@ -113,7 +113,7 @@ func (cg *CroneGenerator) Generate(bldr *Builder) (err error) {
 		}
 		for _, m := range t.Methods {
 			if h, ok := m.HaveHook(MethodHookTime); ok {
-				cronField := bldr.Project.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, vivard.ServiceCRON, vivard.ServiceCRON)
+				cronField := bldr.Project.CallCodeFeatureFunc(t, ServiceFeatureKind, SFKEngineService, vivard.ServiceCRON, vivard.ServiceCRON)
 				cg.desc.Engine.Initializator.Add(
 					jen.List(jen.Id("_"), jen.Id("err")).Op("=").Add(cronField).Dot("AddNamedFunc").Params(
 						jen.Lit(h.Value),

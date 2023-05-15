@@ -227,9 +227,9 @@ func (desc *Package) checkAnnotation(ann *Annotation, item interface{}) error {
 	if !found {
 		switch desc.Options().UnknownAnnotation {
 		case UnknownAnnotationError:
-			return fmt.Errorf("unknown annotation: %s", ann.Name)
+			return fmt.Errorf("at %v: unknown annotation: %s", ann.Pos, ann.Name)
 		case UnknownAnnotationWarning:
-			desc.AddWarning(fmt.Sprintf("unknown annotation: %s", ann.Name))
+			desc.AddWarning(fmt.Sprintf("at %v: unknown annotation: %s", ann.Pos, ann.Name))
 		}
 	}
 	return nil
@@ -281,7 +281,16 @@ func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 						f.Features.Set(FeaturesAPIKind, FAPIFindForName, fldName)
 						if searchField == nil {
 							if fldName != AFFDeleted {
-								return fmt.Errorf("at %v: can not find field %s for find attr %s", f.Pos, fldName, f.Name)
+								if strings.Index(fldName, ".") != -1 {
+									fields, err := desc.FindFieldsForComplexName(t.entry, fldName)
+									if err != nil {
+										return fmt.Errorf("at %v: %v", an.Pos, err)
+									}
+									f.Features.Set(FeaturesAPIKind, FAPIFindFor, fields[0])
+									f.Features.Set(FeaturesAPIKind, FAPIFindForEmbedded, fields)
+								} else {
+									return fmt.Errorf("at %v: can not find field %s for find attr %s", f.Pos, fldName, f.Name)
+								}
 							}
 						} else {
 							f.Features.Set(FeaturesAPIKind, FAPIFindFor, searchField)
@@ -765,4 +774,43 @@ func (desc *Package) TypeStmt(e *Entity) *jen.Statement {
 		return e.Features.Stmt(FeatGoKind, FCGType)
 	}
 	return jen.Qual(e.Pckg.fullPackage, e.FS(FeatGoKind, FCGName))
+}
+
+func (desc *Package) FindFieldsForComplexName(e *Entity, name string) ([]*Field, error) {
+	return desc.findFieldsForParts(e, strings.Split(name, "."), nil)
+}
+
+func (desc *Package) findFieldsForParts(e *Entity, parts []string, fields []*Field) ([]*Field, error) {
+	if fields == nil {
+		fields = make([]*Field, 0, len(parts))
+	}
+	if len(parts) == 0 {
+		return fields, nil
+	}
+	f := e.GetField(parts[0])
+	if f == nil {
+		return nil, fmt.Errorf("field '%s' not found in type '%s'", parts[0], e.Name)
+	}
+	if f.Type.Map != nil {
+		return nil, fmt.Errorf("field '%s': maps are not supported", parts[0])
+	}
+	if f.Type.Complex && len(parts) > 1 && !f.HasModifier(AttrModifierEmbedded) {
+		return nil, fmt.Errorf("field '%s': only embedded fields are supported", parts[0])
+	}
+
+	typeName := f.Type.Type
+
+	if f.Type.Array != nil {
+		typeName = f.Type.Array.Type
+	}
+
+	dt, ok := desc.FindType(typeName)
+	if !ok {
+		return nil, fmt.Errorf("field '%s': type '%s' not found", parts[0], f.Type.Type)
+	}
+	if dt.external || dt.entry == nil {
+		return nil, fmt.Errorf("field '%s': external types are not supported", parts[0])
+	}
+	fields = append(fields, f)
+	return desc.findFieldsForParts(dt.entry, parts[1:], fields)
 }

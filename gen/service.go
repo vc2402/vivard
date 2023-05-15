@@ -175,9 +175,9 @@ func (cg *ServiceGenerator) Prepare(desc *Package) error {
 						field.Features.Set(ServiceFeatureKind, SFKProvide, name)
 						t.Features.Set(ServiceFeatureKind, SFKInject, true)
 						if pckg != "" && tip != "" {
-							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias, pckg, tip)
+							cg.proj.CallCodeFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias, pckg, tip)
 						} else {
-							cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias)
+							cg.proj.CallCodeFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name, alias)
 						}
 					}
 				}
@@ -195,7 +195,7 @@ func (cg *ServiceGenerator) Generate(b *Builder) (err error) {
 	//		for _, field := range t.Fields {
 	//			name := field.FS(ServiceFeatureKind, SFKProvide)
 	//			if name != "" {
-	//				cg.proj.CallFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name)
+	//				cg.proj.CallCodeFeatureFunc(t, ServiceFeatureKind, SFKEngineService, name)
 	//			}
 	//		}
 	//

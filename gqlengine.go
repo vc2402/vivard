@@ -310,6 +310,7 @@ func GQLArgToMapStringString(arg []interface{}) (ret map[string]string, err erro
 			}
 			ret[kv.KeyStr()] = kv.ValStr()
 		} else {
+
 			err = fmt.Errorf("map[string]interface{} is expected; but found: %v", a)
 			return
 		}

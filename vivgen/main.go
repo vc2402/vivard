@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/vc2402/vivard/gen/js"
 	"github.com/vc2402/vivard/gen/vue"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/pflag"
@@ -17,11 +18,12 @@ func main() {
 	pflag.String("package", "test", "default package name")
 	pflag.String("in", ".", "Input directory")
 	pflag.String("out", ".", "Output directory")
-	pflag.String("clientOut", "/home/victor/work/vivasoft/vue/gen-test/src/generated", "Output directory for client files")
+	pflag.String("clientOut", "", "Output directory for client files")
 	pflag.Bool("print", false, "Print result to stdout")
 	pflag.String("cfgPath", ".", "Path to config file")
 	pflag.String("cfg", ".vivgen", "Config file name")
 	pflag.String("pkgPrefix", "", "Package prefix")
+	pflag.Bool("v", false, "verbose")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -29,6 +31,7 @@ func main() {
 	viper.AddConfigPath(viper.GetString("."))
 	viper.AddConfigPath(viper.GetString("in"))
 	viper.AddConfigPath(viper.GetString("cfgPath"))
+	verbose := viper.GetBool("v")
 
 	viper.AutomaticEnv()
 	err := viper.ReadInConfig()
@@ -40,12 +43,19 @@ func main() {
 			return
 		}
 	}
+	if verbose {
+		fmt.Println("config file used: ", viper.ConfigFileUsed())
+	}
 	args := pflag.Args()
 	if len(args) == 0 {
 		fmt.Println("no files to parse given")
 		return
 	}
 	in := viper.GetString("in")
+	if verbose {
+		wd, _ := os.Getwd()
+		fmt.Println("in is: ", in, "; cwd is: ", wd)
+	}
 	files := make([]string, 0, len(args))
 	if in == "" {
 		in = "."
@@ -64,6 +74,9 @@ func main() {
 		}
 		files = append(files, matches...)
 	}
+	if verbose {
+		fmt.Printf("found %d files: %v\n", len(files), files)
+	}
 	res, err := gen.Parse(files)
 	if err != nil {
 		fmt.Printf("errors found: %v\n", err)
@@ -78,6 +91,9 @@ func main() {
 			if err != nil {
 				fmt.Printf("config file error: invalid option: %v\n", err)
 				return
+			}
+			if verbose {
+				fmt.Println("got options:", options)
 			}
 		}
 		if viper.GetString("pkgPrefix") != "" {
@@ -96,6 +112,9 @@ func main() {
 			proj = gen.New(res, opts)
 			for _, pl := range plugins {
 				if name, ok := pl.(string); ok {
+					if verbose {
+						fmt.Println("adding plugin ", name)
+					}
 					err = proj.WithPlugin(name, nil)
 					if err != nil {
 						fmt.Printf("error while creating plugin: %v\n", err)
@@ -140,6 +159,10 @@ func main() {
 					if len(opts) == 0 {
 						opts = nil
 					}
+					if verbose {
+						fmt.Println("adding plugin ", name, " with options ", opts)
+					}
+
 					err = proj.WithPlugin(name, opts)
 					if err != nil {
 						fmt.Printf("error while creating plugin: %v", err)
@@ -151,6 +174,9 @@ func main() {
 				}
 			}
 		} else {
+			if verbose {
+				fmt.Println("no plugins found; using default")
+			}
 			proj = gen.New(
 				res,
 				opts.

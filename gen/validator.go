@@ -104,7 +104,7 @@ func (cg *Validator) generateValidator(e *Entity) error {
 		//TODO call base class validator if any
 		for _, f := range e.Fields {
 			if f.FB(FeaturesValidator, FVValidationRequired) {
-				engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
+				engVar := cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 				valueChecker := func(id jen.Code) *jen.Statement {
 					return jen.If(jen.List(jen.Id("v"), jen.Id("_")).Op(":=").Add(engVar).
 						Dot(

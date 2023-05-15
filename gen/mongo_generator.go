@@ -777,7 +777,21 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 				var mngFldName string
 				var elseStmt *jen.Statement = jen.Empty()
 				if ok {
-					mngFldName = cg.fieldName(searchField)
+					if fields, ok := f.Features.Get(FeaturesAPIKind, FAPIFindForEmbedded); ok {
+						for i, field := range fields.([]*Field) {
+							if i > 0 {
+								mngFldName += "."
+							}
+							mngFldName += cg.fieldName(field)
+						}
+					} else {
+						//TODO save mongo name in feature...
+						if searchField.IsIdField() {
+							mngFldName = "_id"
+						} else {
+							mngFldName = cg.fieldName(searchField)
+						}
+					}
 				} else {
 					if n := f.FS(FeaturesAPIKind, FAPIFindForName); n == AFFDeleted {
 						mngFldName = mdDeletedFieldName
@@ -989,7 +1003,7 @@ func (cg *MongoGenerator) generateCongifLoadFunc(e *Entity) error {
 					sg.Case(jen.Lit(f.Name)).BlockFunc(func(g *jen.Group) {
 						g.Id("curr").Dot("Current").Dot("Lookup").Call(jen.Lit("value")).Dot("Unmarshal").Call(jen.Op("&").Id("ret").Dot(f.Name))
 						if /*isPointer &&*/ complex {
-							engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
+							engVar := cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 							g.If(jen.Id("ret").Dot(f.Name).Op("==").Nil()).Block(
 								jen.List(jen.Id("ret").Dot(f.Name), jen.Id("_")).Op("=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(
 									jen.Id("ctx"),
@@ -1061,7 +1075,8 @@ func (cg *MongoGenerator) generateConfigSaveFunc(e *Entity) error {
 }
 
 func (cg *MongoGenerator) collectionName(e *Entity) string {
-	cn, ok := cg.collections[e.Name]
+	key := e.Pckg.Name + e.Name
+	cn, ok := cg.collections[key]
 	if !ok {
 		pref := ""
 		if cg.prefixCollectionName != "" {
@@ -1087,7 +1102,7 @@ func (cg *MongoGenerator) collectionName(e *Entity) string {
 		if cg.usedCollections[cn] && t.BaseTypeName == "" && !t.HasModifier(TypeModifierExtendable) {
 			cg.desc.AddWarning(fmt.Sprintf("mongo: collection duplicate: %s", cn))
 		}
-		cg.collections[e.Name] = cn
+		cg.collections[key] = cn
 		cg.usedCollections[cn] = true
 	}
 	return cn

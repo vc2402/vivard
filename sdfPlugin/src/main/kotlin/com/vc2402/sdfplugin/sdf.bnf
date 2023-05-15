@@ -84,6 +84,7 @@ annotation_values ::= annotation_value*
 
 annotation_value ::= ann_param
     | IDENTIFIER
+    | STRING_VALUE
     | DUMMYIDENTIFIER
 
 ann_param ::= ann_param_name EQUAL ann_param_value

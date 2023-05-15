@@ -22,6 +22,7 @@ const (
 	GQLOperationLookup
 	GQLOperationDelete
 	GQLOperationFind
+	GQLOperationBulkCreate
 
 	GQLOperationLast
 )
@@ -34,6 +35,7 @@ var gqlOperationsNamesTemplates = [GQLOperationLast]string{
 	"lookup%s",
 	"delete%s",
 	"find%s",
+	"create%ss",
 }
 
 const gqlSetNullInputTemplate = "%sSetNull"
@@ -43,17 +45,18 @@ const gqlPackage = "github.com/graphql-go/graphql"
 const (
 	gqlDescriptorVarName = "gqlDesc"
 
-	GQLAnnotation            = "gql"
-	GQLAnnotationNameTag     = "name"
-	GQLAnnotationSkipTag     = "skip"
-	GQLAnnotationGetTag      = "get"
-	GQLAnnotationSetTag      = "set"
-	GQLAnnotationCreateTag   = "create"
-	GQLAnnotationListTag     = "list"
-	GQLAnnotationLookupTag   = "lookup"
-	GQLAnnotationDeleteTag   = "delete"
-	GQLAnnotationQueryTag    = "query"
-	GQLAnnotationMutationTag = "mutation"
+	GQLAnnotation              = "gql"
+	GQLAnnotationNameTag       = "name"
+	GQLAnnotationSkipTag       = "skip"
+	GQLAnnotationGetTag        = "get"
+	GQLAnnotationSetTag        = "set"
+	GQLAnnotationCreateTag     = "create"
+	GQLAnnotationListTag       = "list"
+	GQLAnnotationLookupTag     = "lookup"
+	GQLAnnotationDeleteTag     = "delete"
+	GQLAnnotationQueryTag      = "query"
+	GQLAnnotationMutationTag   = "mutation"
+	GQLAnnotationBulkCreateTag = "bulkCreate"
 
 	gqlTagJSON = "json"
 )
@@ -92,15 +95,21 @@ var GQLOperationsAnnotationsTags = [GQLOperationLast]string{
 	GQLAnnotationListTag,
 	GQLAnnotationLookupTag,
 	GQLAnnotationDeleteTag,
+	GQLAnnotationBulkCreateTag,
+}
+
+type GQLOptions struct {
+	UsePackageNameInTypeNames bool
 }
 
 type GQLGenerator struct {
-	desc *Package
-	b    *Builder
+	desc    *Package
+	b       *Builder
+	options GQLOptions
 }
 
 func init() {
-	RegisterPlugin(&GQLGenerator{})
+	RegisterPlugin(&GQLGenerator{options: GQLOptions{UsePackageNameInTypeNames: true}})
 }
 
 func (cg *GQLGenerator) Name() string {
@@ -139,7 +148,7 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 						t.Features.Set(GQLFeatures, GQLOperationsAnnotationsTags[i], false)
 					}
 				}
-				t.Features.Set(GQLFeatures, GQLFIdTypeTag, cg.GetGQLEntityTypeName(t.Name))
+				t.Features.Set(GQLFeatures, GQLFTypeTag, cg.GetGQLEntityTypeName(t.Name))
 				t.Features.Set(GQLFeatures, GQLFInputTypeName, cg.GetGQLInputTypeName(t.Name))
 				if t.HasModifier(TypeModifierTransient) || t.HasModifier(TypeModifierEmbeddable) ||
 					(!t.HasModifier(TypeModifierConfig) && t.Annotations[AnnotationConfig] != nil) {
@@ -272,7 +281,12 @@ func (cg *GQLGenerator) Generate(b *Builder) (err error) {
 						return err
 					}
 				}
+				err = cg.generateGQLBulkMethods(t)
+				if err != nil {
+					return err
+				}
 			}
+
 			if t.HasModifier(TypeModifierConfig) {
 				err = cg.generateGQLConfigSetMutation(t)
 				if err != nil {
@@ -294,6 +308,7 @@ func (cg *GQLGenerator) Generate(b *Builder) (err error) {
 
 func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 	if name, ok := e.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
+		goTypeName := e.Name
 		fname := fmt.Sprintf("%sTypeGenerator", name)
 		gqlFields := jen.Dict{}
 		for _, f := range e.GetFields(true, true) {
@@ -318,13 +333,13 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 				jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 					// Block(resolve),
 					BlockFunc(func(g *jen.Group) {
-						g.Id("obj").Op(":=").Id("p").Dot("Source").Assert(jen.Op("*").Id(name))
+						g.Id("obj").Op(":=").Id("p").Dot("Source").Assert(jen.Op("*").Id(goTypeName))
 						if f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly) {
 							g.Return(jen.Id("obj").Dot(f.FS(FeatGoKind, FCGName)), jen.Nil())
 							return
 						}
 						if !f.Type.NonNullable && !f.HasModifier(AttrModifierCalculated) {
-							g.If(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCIsNullCode, "obj")).Block(
+							g.If(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCIsNullCode, "obj")).Block(
 								jen.Return(jen.Nil(), jen.Nil()),
 							)
 						}
@@ -343,14 +358,14 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 								cg.desc.AddError(fmt.Errorf("at %v: GQL: only string and int can be used as Maps value currently", f.Pos))
 								return
 							}
-							g.List(jen.Id("val"), jen.Id("_")).Op(":=").Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true))
+							g.List(jen.Id("val"), jen.Id("_")).Op(":=").Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true))
 							g.Return(
 								jen.Qual(VivardPackage, fn).Params(jen.Id("val")),
 								jen.Nil(),
 							)
 						} else {
 							g.Return(
-								jen.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true)),
+								jen.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true)),
 							)
 						}
 					}),
@@ -405,9 +420,9 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 	// 		},
 	// 	},
 	// )
-	if name, ok := e.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
-		fname := fmt.Sprintf("%sInputGenerator", name)
-		typeName := cg.GetGQLInputTypeName(name)
+	if _, ok := e.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
+		fname := fmt.Sprintf("%sInputGenerator", e.Name)
+		typeName := cg.GetGQLInputTypeName(e.Name)
 		gqlFields := jen.Dict{}
 		for _, f := range e.GetFields(true, true) {
 			fieldName, ok := f.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag)
@@ -455,6 +470,7 @@ func (cg *GQLGenerator) generateInputTypeGenerator(e *Entity) error {
 func (cg *GQLGenerator) generateGQLQuery(t *Entity) error {
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationGet]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		idField := t.GetIdField()
 		id := idField.Annotations.GetStringAnnotationDef(GQLAnnotation, GQLAnnotationNameTag, "id")
 		fname := fmt.Sprintf("%sQueryGenerator", name)
@@ -462,7 +478,7 @@ func (cg *GQLGenerator) generateGQLQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(
 						jen.Dict{
 							jen.Lit(id): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
@@ -538,6 +554,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 				if !ok || f.FB(FeaturesCommonKind, FCReadonly) || f.HasModifier(AttrModifierCalculated) {
 					continue
 				}
+				engVar := cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 				//TODO: check values for references
 				// useParser := f.Annotations.GetInterfaceAnnotation(codeGeneratorAnnotation, AnnotationTagOneToManyType) != nil
 				_, oneToMany := f.Features.GetEntity(FeaturesCommonKind, FCOneToManyType)
@@ -566,7 +583,6 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 					if useParser {
 						if oneToMany || manyToMany {
 							artype := jen.Index().Op("*").Id(f.Type.Array.Type)
-							engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 							g.Id("values").Op(":=").Make(artype, jen.Len(jen.Id("val")))
 							g.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("val")).Block(
 								jen.List(
@@ -582,7 +598,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 								returnIfErrValue(jen.Nil()),
 								jen.Id("values").Index(jen.Id("i")).Op("=").Id("v"),
 							)
-							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
+							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else if f.Type.Array != nil {
 							artype := f.Features.Stmt(FeatGoKind, FCGType)
 							g.Id("values").Op(":=").Make(artype, jen.Len(jen.Id("val")))
@@ -598,7 +614,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 								)),
 								jen.Id("values").Index(jen.Id("i")).Op("=").Id("v"),
 							)
-							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
+							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else if f.Type.Map != nil {
 							if f.Type.Map.KeyType != TipString {
 								cg.desc.AddError(fmt.Errorf("at %v: GQL: only string can be used as Key for Maps", f.Pos))
@@ -616,7 +632,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 							}
 							g.List(jen.Id("values"), jen.Err()).Op(":=").Qual(VivardPackage, fn).Params(jen.Id("val"))
 							g.Add(returnIfErrValue(jen.Nil()))
-							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
+							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else {
 							typeName := f.Type.Type
 							if f.Type.Map != nil {
@@ -629,7 +645,6 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 							// if f.Type.Array != nil {
 							// 	typeName = f.Type.Array.Type
 							// }
-							engVar := cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
 
 							g.List(jen.Id("v"), jen.Err()).Op(":=").Add(engVar).Dot(cg.getInputParserMethodName(typeName)).Params(
 								jen.Id("ctx"),
@@ -638,7 +653,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 								jen.False(),
 							)
 							g.Add(returnIfErrValue(jen.Nil()))
-							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "v"))
+							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "v"))
 
 						}
 					} else {
@@ -648,13 +663,13 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 							g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
 								jen.Id("attr").Index(jen.Id("i")).Op("=").Id("v").Assert(jen.Int()),
 							)
-							g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode, "obj", "attr"))
+							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode, "obj", "attr"))
 						} else {
 							if f.HasModifier(AttrModifierEmbeddedRef) || f.FB(GQLFeatures, GQLFIDOnly) {
 								//TODO: may be problem with changes tracking...
-								g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode))
+								g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode))
 							} else {
-								g.Add(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetterCode))
+								g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode))
 							}
 						}
 					}
@@ -667,7 +682,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 					stmt.Else().If(
 						jen.List(jen.Id("setNull"), jen.Id("ok")).Op(":=").Id("p").Index(jen.Lit(setNullField)).Assert(jen.Bool()),
 						jen.Id("ok").Op("&&").Id("setNull"),
-					).Block(cg.desc.CallFeatureFunc(f, FeaturesCommonKind, FCSetNullCode))
+					).Block(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetNullCode))
 				}
 
 				g.Add(stmt)
@@ -700,11 +715,12 @@ func (cg *GQLGenerator) generateGQLLookupQuery(t *Entity) error {
 	// if opername, ok := t.Annotations.GetStringAnnotation(gqlAnnotation, gqlOperationsAnnotationsTags[GQLOperationLookup]); ok {
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationLookup]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sLookupQueryGenerator", name)
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
+					jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType))),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(
 						jen.Dict{
 							jen.Lit("query"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
@@ -738,6 +754,7 @@ func (cg *GQLGenerator) generateGQLListQuery(t *Entity) error {
 	// if opername, ok := t.Annotations.GetStringAnnotation(gqlAnnotation, gqlOperationsAnnotationsTags[GQLOperationList]); ok {
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationList]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sListQueryGenerator", name)
 
 		listMethod := MethodList
@@ -766,7 +783,7 @@ func (cg *GQLGenerator) generateGQLListQuery(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.DictFunc(func(d jen.Dict) {
-					d[jen.Id("Type")] = jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)))
+					d[jen.Id("Type")] = jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)))
 					d[jen.Id("Resolve")] = jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						BlockFunc(func(g *jen.Group) {
 							if withQualifier {
@@ -831,11 +848,12 @@ func (cg *GQLGenerator) generateGQLFindQuery(t *Entity) error {
 	if it, ok := t.Features.GetEntity(FeaturesAPIKind, FAPIFindParamType); ok {
 		if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationFind]); ok {
 			name := t.GetName()
+			gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 			fname := fmt.Sprintf("%sFindQueryGenerator", name)
 			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 				jen.Return(
 					jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-						jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name))),
+						jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType))),
 						jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(jen.Dict{
 							jen.Lit("query"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
 								jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(it.Name))),
@@ -880,6 +898,7 @@ func (cg *GQLGenerator) generateGQLSetMutation(t *Entity) error {
 	}
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationSet]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sSetMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
@@ -890,7 +909,7 @@ func (cg *GQLGenerator) generateGQLSetMutation(t *Entity) error {
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
 					// jen.Id("Type"): jen.Qual(gqlPackage, "Boolean"),
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
@@ -939,6 +958,7 @@ func (cg *GQLGenerator) generateGQLCreateMutation(t *Entity) error {
 	}
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationCreate]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sCreateMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
@@ -948,7 +968,7 @@ func (cg *GQLGenerator) generateGQLCreateMutation(t *Entity) error {
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).Block(
 						jen.If(
@@ -1034,6 +1054,62 @@ func (cg *GQLGenerator) generateGQLDeleteMutation(t *Entity) error {
 	return nil
 }
 
+func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
+	if !t.FB(FeaturesCommonKind, FCReadonly) {
+		if t.FB(FeatGoKind, FCGBulkNew) {
+			if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationBulkCreate]); ok {
+				name := t.GetName()
+				gqlType := t.FS(GQLFeatures, GQLFTypeTag)
+				fname := fmt.Sprintf("%sBulkCreateMutationGenerator", name)
+				args := jen.Dict{
+					jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
+						jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name)))),
+					}),
+				}
+				f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
+					jen.Return(
+						jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
+							jen.Id("Type"): jen.Qual(gqlPackage, "NewList").Params(jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType))),
+							jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
+							jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).Block(
+								jen.If(
+									jen.List(jen.Id("vals"), jen.Id("ok").Op(":=").Id("p").Dot("Args").Index(jen.Lit("val")).Assert(jen.Index().Any())),
+									jen.Id("ok"),
+								).BlockFunc(func(g *jen.Group) {
+									g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Len(jen.Id("vals")))
+									g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).Block(
+										jen.Var().Id("obj").Op("*").Id(name),
+										jen.Var().Err().Error(),
+										jen.List(jen.Id("obj"), jen.Err()).Op("=").Add(cg.callInputParserMethod(jen.Id("p").Dot("Context"), name, "param", jen.Id("obj"), false)),
+										jen.Add(returnIfErrValue(jen.Nil())),
+										jen.Id("objs").Index(jen.Id("idx")).Op("=").Id("obj"),
+									)
+									g.Return(
+										jen.List(
+											jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodNewBulk, name)).Params(
+												jen.Id("p").Dot("Context"),
+												jen.Id("objs"),
+											),
+										),
+									)
+								}).Else().Block(
+									jen.Return(
+										jen.Nil(),
+										jen.Qual("errors", "New").Params(jen.Lit("set without val"))),
+								),
+							),
+						}),
+					),
+				).Line()
+
+				cg.b.Functions.Add(f)
+				cg.b.Generator.Id(gqlDescriptorVarName).Dot("AddMutationGenerator").Params(jen.Lit(opername), jen.Id(EngineVar).Dot(fname)).Line()
+			}
+		}
+	}
+	return nil
+}
+
 func (cg *GQLGenerator) generateGQLMethods(t *Entity) error {
 	for _, m := range t.Methods {
 		switch m.FS(GQLFeatures, GQLFMethodType) {
@@ -1064,7 +1140,7 @@ func (cg *GQLGenerator) generateGQLMethodMutation(m *Method) (err error) {
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 		jen.Return(
 			jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-				jen.Id("Type"): cg.desc.CallFeatureFunc(m, GQLFeatures, GQLFMethodResultType),
+				jen.Id("Type"): cg.desc.CallCodeFeatureFunc(m, GQLFeatures, GQLFMethodResultType),
 				jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").ValuesFunc(func(g *jen.Group) {
 					args := jen.Dict{}
 					if idField != nil {
@@ -1095,7 +1171,7 @@ func (cg *GQLGenerator) generateGQLMethodMutation(m *Method) (err error) {
 						id = jen.Id("p").Dot("Args").Index(jen.Lit("id")).Assert(cg.b.GoType(idField.Type))
 					}
 					g.Var().Err().Error()
-					g.List(jen.Id("obj"), jen.Err()).Op(":=").Add(cg.desc.CallFeatureFunc(m.parent, FeaturesCommonKind, FCGetterCode,
+					g.List(jen.Id("obj"), jen.Err()).Op(":=").Add(cg.desc.CallCodeFeatureFunc(m.parent, FeaturesCommonKind, FCGetterCode,
 						id, jen.Id("p").Dot("Context"), true))
 					g.Add(returnIfErrValue(jen.Nil()))
 					g.ReturnFunc(func(g *jen.Group) {
@@ -1125,11 +1201,12 @@ func (cg *GQLGenerator) generateGQLConfigQuery(t *Entity) error {
 	// if opername, ok := t.Annotations.GetStringAnnotation(gqlAnnotation, gqlOperationsAnnotationsTags[GQLOperationGet]); ok {
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationGet]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sQueryGenerator", name)
 		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(gqlPackage, "Field").Block(
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
 							jen.Return(
@@ -1152,6 +1229,7 @@ func (cg *GQLGenerator) generateGQLConfigSetMutation(t *Entity) error {
 	// if opername, ok := t.Annotations.GetStringAnnotation(gqlAnnotation, gqlOperationsAnnotationsTags[GQLOperationSet]); ok {
 	if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationSet]); ok {
 		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
 		fname := fmt.Sprintf("%sSetMutationGenerator", name)
 		args := jen.Dict{
 			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(jen.Dict{
@@ -1162,7 +1240,7 @@ func (cg *GQLGenerator) generateGQLConfigSetMutation(t *Entity) error {
 			jen.Return(
 				jen.Op("&").Qual(gqlPackage, "Field").Values(jen.Dict{
 					// jen.Id("Type"): jen.Qual(gqlPackage, "Boolean"),
-					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(name)),
+					jen.Id("Type"): jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
 					jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
 					jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).
 						Block(
@@ -1236,20 +1314,23 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 				}
 			}
 			if ret == nil {
-				typeName := ref.Type
-				isInput := false
-				if len(skipNotNull) > 2 && skipNotNull[2] {
-					isInput = true
-					typeName = cg.GetGQLInputTypeName(ref.Type)
-				}
+				var typeName string
+				isInput := len(skipNotNull) > 2 && skipNotNull[2]
 				if ref.Map != nil {
 					typeName, err = cg.getMapTypeName(ref)
 					if err != nil {
 						return
 					}
+				} else {
+					e, ok := cg.desc.FindType(ref.Type)
+					if !ok {
+						return nil, fmt.Errorf("type not found: %s", ref.Type)
+					}
+					typeName = e.entry.FS(GQLFeatures, GQLFTypeTag)
+					if isInput {
+						typeName = e.entry.FS(GQLFeatures, GQLFInputTypeName)
+					}
 				}
-				//TODO: add option for use package in type name
-				typeName = cg.desc.GetRealTypeName(typeName)
 				ret = cg.generateTypeLookupStatement(typeName, isInput)
 				if ref.Map != nil {
 					ret = jen.Qual(gqlPackage, "NewList").Params(ret)
@@ -1332,14 +1413,21 @@ func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assign
 }
 
 func (cg *GQLGenerator) GetGQLOperationName(e *Entity, tip GQLOperationKind) string {
-	return fmt.Sprintf(gqlOperationsNamesTemplates[tip], e.GetName())
+	name := cg.GetGQLEntityTypeName(e.Name)
+	return fmt.Sprintf(gqlOperationsNamesTemplates[tip], strings.ToUpper(name[:1])+name[1:])
 }
 
 func (cg *GQLGenerator) GetGQLEntityTypeName(name string) (ret string) {
+	if cg.options.UsePackageNameInTypeNames && name != "" {
+		return fmt.Sprintf("%s%s%s", cg.desc.Name, strings.ToUpper(name[:1]), name[1:])
+	}
 	return name
 }
 
 func (cg *GQLGenerator) GetGQLInputTypeName(name string) (ret string) {
+	if cg.options.UsePackageNameInTypeNames && name != "" {
+		return fmt.Sprintf("%s%s%sInput", cg.desc.Name, strings.ToUpper(name[:1]), name[1:])
+	}
 	return name + "Input"
 }
 func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef, forInput ...bool) (ret string) {
@@ -1421,8 +1509,13 @@ func (cg *GQLGenerator) getIdFromInputMethodName(name string) string {
 
 func (cg *GQLGenerator) callInputParserMethod(ctx jen.Code, name, argVar string, obj jen.Code, checkId bool) jen.Code {
 	ret := &jen.Group{}
+	ret.Add(jen.Id(EngineVar))
+	if dot := strings.Index(name, "."); dot != -1 {
+		packageName := name[:dot]
+		ret.Add(jen.Dot(cg.desc.GetExtEngineRef(packageName)))
+	}
 	ret.Add(
-		jen.Id(EngineVar).Dot(cg.getInputParserMethodName(name)).Params(ctx, jen.Id(argVar), obj, jen.Lit(checkId)).Line(),
+		jen.Dot(cg.getInputParserMethodName(name)).Params(ctx, jen.Id(argVar), obj, jen.Lit(checkId)).Line(),
 		returnIfErrValue(jen.Nil()),
 	)
 	return ret
@@ -1469,7 +1562,7 @@ func (cg *GQLGenerator) getMethodResultTypeFunc(m *Method) CodeHelperFunc {
 }
 
 func (cg *GQLGenerator) getUnionGeneratorFunc(builder *Builder) FeatureFunc {
-	return func(args ...interface{}) error {
+	return func(args ...interface{}) (any, error) {
 		//graphql.NewUnion(
 		//	graphql.UnionConfig{
 		//		Name:        "checkListUnion",
@@ -1488,19 +1581,19 @@ func (cg *GQLGenerator) getUnionGeneratorFunc(builder *Builder) FeatureFunc {
 		//	},
 		//)
 		if len(args) < 2 {
-			return errors.New("GQLGenerateUnionType feature requires type name and entities as parameters")
+			return nil, errors.New("GQLGenerateUnionType feature requires type name and entities as parameters")
 		}
 
 		name, ok := args[0].(string)
 		if !ok {
-			return errors.New("GQLGenerateUnionType feature: first parameter should be a string")
+			return nil, errors.New("GQLGenerateUnionType feature: first parameter should be a string")
 		}
 		var types []jen.Code
 		var resolves []jen.Code
 		addEntity := func(e *Entity) {
-			typeRef := e.TypeRef()
-			typeName := builder.Pckg.GetRealTypeName(typeRef.Type)
-			typeLookup := cg.generateTypeLookupStatement(typeName, false).Assert(jen.Op("*").Qual(gqlPackage, "Object"))
+			//typeRef := e.TypeRef()
+			//typeName := builder.Pckg.GetRealTypeName(typeRef.Type)
+			typeLookup := cg.generateTypeLookupStatement(e.FS(GQLFeatures, GQLFTypeTag), false).Assert(jen.Op("*").Qual(gqlPackage, "Object"))
 			types = append(types, typeLookup)
 			resolves = append(resolves, jen.Case(builder.Pckg.TypeStmt(e)).Block(jen.Return(typeLookup)))
 		}
@@ -1512,7 +1605,7 @@ func (cg *GQLGenerator) getUnionGeneratorFunc(builder *Builder) FeatureFunc {
 					addEntity(e)
 				}
 			} else {
-				return errors.New("GQLGenerateUnionType feature: parameters from idx 1 should be *Entity")
+				return nil, errors.New("GQLGenerateUnionType feature: parameters from idx 1 should be *Entity")
 			}
 		}
 		fname := fmt.Sprintf("%sTypeGenerator", name)
@@ -1533,6 +1626,6 @@ func (cg *GQLGenerator) getUnionGeneratorFunc(builder *Builder) FeatureFunc {
 
 		builder.Functions.Add(f)
 		builder.Generator.Id(gqlDescriptorVarName).Dot("AddTypeGenerator").Params(jen.Lit(name), jen.Id(EngineVar).Dot(fname)).Line()
-		return nil
+		return nil, nil
 	}
 }

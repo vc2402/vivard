@@ -15,6 +15,7 @@ import (
 )
 
 type File struct {
+	Pos      lexer.Position
 	Name     string
 	FileName string
 	Package  string    `("package" @Ident ";")?`

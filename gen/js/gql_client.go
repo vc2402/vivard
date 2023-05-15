@@ -40,8 +40,10 @@ const (
 	FIDType            = "id_type"
 	FFilePath          = "filepath"
 	FInstanceGenerator = "instance_generator"
-	//FForceLoadForField - force load field when its parent is included in other object (usually only id and title are loaded)
+	// FForceLoadForField - force load field when its parent is included in other object (usually only id and title are loaded)
 	FForceLoadForField = "field_force_load"
+	// FFunctionName returns function that returns name of GQL operation function for Entity (arg - GQLOperationKind)
+	FFunctionName = "gql_function_name"
 	// JSFTitle = "title"
 )
 const apolloClientInclude = "import { ApolloClient } from 'apollo-client';\n"
@@ -260,6 +262,26 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	return cg.GenerateVivard()
 }
 
+func (cg *GQLCLientGenerator) ProvideFeature(kind gen.FeatureKind, name string, obj interface{}) (feature interface{}, ok gen.ProvideFeatureResult) {
+	switch kind {
+	case Features:
+		switch name {
+		case FFunctionName:
+			if e, isEntity := obj.(*gen.Entity); isEntity {
+				return gen.FeatureFunc(func(args ...interface{}) (any, error) {
+						if len(args) > 0 {
+							if tip, ok := args[0].(gen.GQLOperationKind); ok {
+								return cg.getOperationFunctionName(tip, e), nil
+							}
+						}
+						return "", fmt.Errorf("feature %s:%s expects GQLOperationKind arg", Features, FFunctionName)
+					}),
+					gen.FeatureProvided
+			}
+		}
+	}
+	return nil, gen.FeatureNotProvided
+}
 func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeRef, forInput bool) (string, *gen.Entity) {
 	if ref.Array != nil {
 		return cg.getTypeForImport(pckg, ref.Array, forInput)
@@ -305,11 +327,23 @@ type ArgDef struct {
 type QueryDef struct {
 	Request   string
 	QueryName string
+	FuncName  string
 	VarName   string
 	JSArgType string
 	JSRetType string
 	Args      []ArgDef
 	Fields    []string
+}
+
+var gqlFunctionsNamesTemplates = [...]string{
+	"get%s",
+	"set%s",
+	"create%s",
+	"list%s",
+	"lookup%s",
+	"delete%s",
+	"find%s",
+	"create%ss",
 }
 
 func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (err error) {
@@ -447,6 +481,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 				params := QueryDef{
 					Request:   req,
 					QueryName: qn,
+					FuncName:  cg.getOperationFunctionName(i, e),
 					JSArgType: jsarg,
 					VarName:   qn + "Request",
 					JSRetType: rt,
@@ -563,6 +598,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 		params := QueryDef{
 			Request:   req,
 			QueryName: qn,
+			FuncName:  qn,
 			JSArgType: jsarg,
 			VarName:   qn + "Request",
 			JSRetType: rt,
@@ -646,7 +682,9 @@ func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef, asRef bool) (ret s
 			case gen.TipAny:
 				ret = "any"
 			default:
+				//if t, ok := cg.desc.FindType(ref.Type); ok {
 				ret = cg.GetJSEntityTypeName(ref.Type)
+				//}
 			}
 		}
 	}
@@ -770,6 +808,9 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 		t = f.Type
 	}
 	if tt, ok := f.Parent().Pckg.FindType(t.Type); ok || !t.Complex {
+		if !t.Complex {
+			return
+		}
 		id := ""
 		title := ""
 		if isConfig && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
@@ -842,6 +883,10 @@ func (cfc CodeFragmentContext) AddImport(file string, tip string) {
 	cfc.Imports.addImport(file, tip)
 }
 
+func (cg *GQLCLientGenerator) getOperationFunctionName(operation gen.GQLOperationKind, e *gen.Entity) string {
+	return fmt.Sprintf(gqlFunctionsNamesTemplates[operation], e.Name[:1]+e.Name[1:])
+}
+
 func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 	return template.FuncMap{
 		"TypeName": func(e *gen.Entity) string {
@@ -868,6 +913,8 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 			if f.HasModifier(gen.AttrModifierEmbedded) {
 				if f.Type.Array != nil || f.Type.Map != nil {
 					return "[]"
+				} else if !f.Type.NonNullable {
+					return "undefined"
 				}
 				t, ok := cg.desc.FindType(f.Type.Type)
 				if ok {
@@ -949,7 +996,7 @@ const queryTemplate = `
 `
 const queryFunctionTemplate = `
 {{define "FUNCTION"}}
-export async function {{.QueryName}}(apollo: ApolloClient<any>, {{if .JSArgType}}arg: {{.JSArgType}}{{else}}{{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}{{$arg.Name}}{{if $arg.Optional}}?{{end}}:{{$arg.JSType}}{{end}}{{end}}): Promise<{{.JSRetType}}> {
+export async function {{.FuncName}}(apollo: ApolloClient<any>, {{if .JSArgType}}arg: {{.JSArgType}}{{else}}{{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}{{$arg.Name}}{{if $arg.Optional}}?{{end}}:{{$arg.JSType}}{{end}}{{end}}): Promise<{{.JSRetType}}> {
   let res = await apollo.query({
       query: {{.VarName}},
       fetchPolicy: "no-cache",

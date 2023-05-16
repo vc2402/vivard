@@ -153,7 +153,7 @@ func (cg *MongoGenerator) ProvideFeature(kind FeatureKind, name string, obj inte
 
 					}).Line()
 					if idField.HasModifier(AttrModifierIDAuto) {
-						if f := cg.desc.GetFeature(t, SequenceFeatures, SFSetValue); f != nil {
+						if f := cg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
 							fun, ok := f.(func(args ...interface{}) jen.Code)
 							if ok {
 								//stmt.Id("maxId").Op("++")

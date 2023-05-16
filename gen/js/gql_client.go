@@ -502,7 +502,8 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 								if f.Type.Array != nil {
 									if i == gen.GQLOperationGet ||
 										(i == gen.GQLOperationFind &&
-											f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForceForFind, false)) {
+											f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForceForFind, false)) ||
+										f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) {
 										n, err = cg.getQueryForEmbeddedType(n, f, e)
 										if err != nil {
 											cg.desc.AddWarning(fmt.Sprintf("at %v: %v", f.Pos, err))
@@ -809,6 +810,7 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 	}
 	if tt, ok := f.Parent().Pckg.FindType(t.Type); ok || !t.Complex {
 		if !t.Complex {
+			ret = field
 			return
 		}
 		id := ""
@@ -925,9 +927,10 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 				if f.Type.Array != nil || f.Type.Map != nil {
 					return "[]"
 				}
-				t := f.Parent()
-				if idfld := t.GetIdField(); idfld != nil {
-					return cg.GetJSEmptyVal(idfld.Type)
+				if t, ok := cg.desc.FindType(f.Type.Type); ok {
+					if idfld := t.Entity().GetIdField(); idfld != nil {
+						return cg.GetJSEmptyVal(idfld.Type)
+					}
 				}
 			}
 			return cg.GetJSEmptyVal(f.Type)

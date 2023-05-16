@@ -38,8 +38,14 @@ var variants = map[string]loggerDescriptor{
 const (
 	loggerGeneratorName             = "Logger"
 	loggerAttr                      = "log"
-	logFeatureKind      FeatureKind = "logger-feature"
+	LogFeatureKind      FeatureKind = "logger-feature"
 	lfInited                        = "inited"
+	// LFWarn returns code for warn (params: message and pairs key/value)
+	LFWarn = "warn"
+	// LFDebug returns code for debug (params: message and pairs key/value)
+	LFDebug = "debug"
+	// LFError returns code for error (params: message and pairs key/value)
+	LFError = "error"
 
 	OptionLoggerGenerator = "logger-generator"
 	OptionsVariant        = "variant"
@@ -90,13 +96,78 @@ func (cg *LoggerGenerator) Prepare(desc *Package) error {
 func (cg *LoggerGenerator) Generate(b *Builder) (err error) {
 	cg.desc = b.Descriptor
 	ld, _ := variants[cg.variant]
-	if !cg.desc.Features.Bool(logFeatureKind, lfInited) {
+	if !cg.desc.Features.Bool(LogFeatureKind, lfInited) {
 		cg.desc.Engine.Initializator.Add(jen.Id(EngineVar).Dot(loggerAttr).Op("=").Id("v").Dot("GetService").Params(jen.Lit(ld.service)).Assert(jen.Op("*").Qual(VivardPackage, ld.tip)).Dot("Log").Params().Line())
-		cg.desc.Features.Set(logFeatureKind, lfInited, true)
+		cg.desc.Features.Set(LogFeatureKind, lfInited, true)
 	}
 	return nil
 }
 
+type loggerField struct {
+	name string
+	val  jen.Code
+}
+
 func (cg *LoggerGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+	switch kind {
+	case LogFeatureKind:
+		switch name {
+		case LFDebug, LFWarn, LFError:
+			if cg.variant == "zap" {
+				var fun CodeHelperFunc
+				fun = func(args ...interface{}) jen.Code {
+					if len(args) < 1 {
+						panic(fmt.Sprintf("logger feature: %s: at least one param expected", name))
+					}
+					msg, ok := args[0].(jen.Code)
+					if !ok {
+						if m, ok := args[0].(string); ok {
+							msg = jen.Lit(m)
+						} else {
+							panic(fmt.Sprintf("logger feature: %s: first param should be jen.Code or string", name))
+						}
+					}
+					var fields []loggerField
+					for i := 1; i+1 < len(args); i += 2 {
+						fn, ok := args[i].(string)
+						if !ok {
+							panic(fmt.Sprintf("logger feature: %s: first param of field should be string", name))
+						}
+						fv, ok := args[i+1].(jen.Code)
+						if !ok {
+							panic(fmt.Sprintf("logger feature: %s: second param of field should be jen.Code", name))
+						}
+						fields = append(fields, loggerField{fn, fv})
+					}
+
+					return cg.generateLoggerCall(name, msg, fields)
+				}
+				return fun, FeatureProvided
+			}
+			return nil, FeatureNotProvided
+		}
+	}
 	return
+}
+
+func (cg *LoggerGenerator) generateLoggerCall(kind string, msg jen.Code, fields []loggerField) *jen.Statement {
+	var funcName string
+	switch kind {
+	case LFDebug:
+		funcName = "Debug"
+	case LFWarn:
+		funcName = "Warn"
+	case LFError:
+		funcName = "Error"
+	}
+	//zap only so far
+	return jen.Id(EngineVar).Dot(loggerAttr).Dot(funcName).ParamsFunc(func(g *jen.Group) {
+		g.Add(msg)
+		for _, field := range fields {
+			g.Qual(variants[cg.variant].pkg, "Any").Params(
+				jen.Lit(field.name),
+				field.val,
+			)
+		}
+	})
 }

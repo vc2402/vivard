@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"fmt"
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard"
 )
@@ -13,8 +14,11 @@ const (
 	sequenceGeneratorName             = "Sequence"
 	SequenceFeatures      FeatureKind = "seq-id"
 
-	sfInited   = "inited"
-	SFSetValue = "set-value"
+	sfInited          = "inited"
+	SFSetCurrentValue = "set-current-value"
+	// SFGenerateSequenceCall code feature returns function tah generates code for getting next value from sequence
+	//  function params: sequenceName string, receiver jen.Code
+	SFGenerateSequenceCall = "seq-call"
 )
 
 type SequnceIDGenerator struct {
@@ -82,7 +86,7 @@ func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj 
 	switch kind {
 	case SequenceFeatures:
 		switch name {
-		case SFSetValue:
+		case SFSetCurrentValue:
 			if t, ok := obj.(*Entity); ok {
 				idField := t.GetIdField()
 				if idField.HasModifier(AttrModifierIDAuto) {
@@ -102,7 +106,31 @@ func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj 
 					}, FeatureProvided
 				}
 			}
+		case SFGenerateSequenceCall:
+			var fun CodeHelperFunc
+			fun = func(args ...interface{}) jen.Code {
+				if len(args) != 2 {
+					panic(fmt.Sprintf("sequence: generate next: 2 params expected: string and jen.Code"))
+				}
+				name, ok := args[0].(string)
+				if !ok {
+					panic(fmt.Sprintf("sequence: generate next: first param should be string"))
+				}
+				rec, ok := args[1].(jen.Code)
+				if !ok {
+					panic(fmt.Sprintf("sequence: generate next: second param should be jen.Code"))
+				}
+
+				return cg.generateSequencesCall(name, rec)
+			}
+			return fun, FeatureProvided
 		}
 	}
 	return nil, FeatureNotProvided
+}
+
+func (cg *SequnceIDGenerator) generateSequencesCall(seqName string, receiver jen.Code) *jen.Statement {
+	return jen.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(seqName)).Line().
+		Add(returnIfErr()).Line().
+		List(receiver, jen.Id("err")).Op("=").Id("seq").Dot("Next").Params(jen.Id("ctx"))
 }

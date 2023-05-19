@@ -35,12 +35,14 @@ const (
 
 	//KVStringString - name for special type for Key and Value pair
 	KVStringString = "__kv_string_string"
-	//KVStringString - name for special input type for Key and Value pair
+	//KVStringStringInput - name for special input type for Key and Value pair
 	KVStringStringInput = "__kv_string_string"
 	//KVStringInt - name for special type for Key and Value pair
 	KVStringInt = "__kv_string_int"
-	//KVStringString - name for special input type for Key and Value pair
-	KVStringIntInput = "__kv_string_int"
+	//KVStringIntInput - name for special input type for Key and Value pair
+	KVStringIntInput        = "__kv_string_int"
+	KVStringStringInputName = "__kv_string_string" //"StringStringKVInput"
+	KVStringIntInputName    = "__kv_string_int"    //"StringIntKVInput"
 )
 
 // func NewGQLService() *GQLEngine {
@@ -231,7 +233,7 @@ func (gqld *GQLDescriptor) AddMutationGenerator(name string, g GQLQueryGenerator
 func (gqld *GQLDescriptor) getKVStringStringType() *graphql.Object {
 	return graphql.NewObject(
 		graphql.ObjectConfig{
-			Name: "SSKeyValue",
+			Name: KVStringString,
 			Fields: graphql.Fields{
 				"key": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.String),
@@ -255,7 +257,7 @@ func (gqld *GQLDescriptor) getKVStringStringType() *graphql.Object {
 func (gqld *GQLDescriptor) getKVStringStringInputType() *graphql.InputObject {
 	return graphql.NewInputObject(
 		graphql.InputObjectConfig{
-			Name: "StringStringKVInput",
+			Name: KVStringStringInputName,
 			Fields: graphql.InputObjectConfigFieldMap{
 				"key": &graphql.InputObjectFieldConfig{
 					Type: graphql.String,
@@ -321,7 +323,7 @@ func GQLArgToMapStringString(arg []interface{}) (ret map[string]string, err erro
 func (gqld *GQLDescriptor) getKVStringIntType() *graphql.Object {
 	return graphql.NewObject(
 		graphql.ObjectConfig{
-			Name: "SIKeyValue",
+			Name: KVStringInt,
 			Fields: graphql.Fields{
 				"key": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.String),
@@ -345,7 +347,7 @@ func (gqld *GQLDescriptor) getKVStringIntType() *graphql.Object {
 func (gqld *GQLDescriptor) getKVStringIntInputType() *graphql.InputObject {
 	return graphql.NewInputObject(
 		graphql.InputObjectConfig{
-			Name: "StringIntKVInput",
+			Name: KVStringIntInputName,
 			Fields: graphql.InputObjectConfigFieldMap{
 				"key": &graphql.InputObjectFieldConfig{
 					Type: graphql.String,

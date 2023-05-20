@@ -36,11 +36,11 @@ const (
 	//KVStringString - name for special type for Key and Value pair
 	KVStringString = "__kv_string_string"
 	//KVStringStringInput - name for special input type for Key and Value pair
-	KVStringStringInput = "__kv_string_string"
+	KVStringStringInput = "__kv_string_string_input"
 	//KVStringInt - name for special type for Key and Value pair
 	KVStringInt = "__kv_string_int"
 	//KVStringIntInput - name for special input type for Key and Value pair
-	KVStringIntInput        = "__kv_string_int"
+	KVStringIntInput        = "__kv_string_int_input"
 	KVStringIntName         = "__kv_string_int"
 	KVStringStringName      = "__kv_string_string"
 	KVStringStringInputName = "__kv_string_string_input" //"StringStringKVInput"

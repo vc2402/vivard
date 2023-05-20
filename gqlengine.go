@@ -41,8 +41,10 @@ const (
 	KVStringInt = "__kv_string_int"
 	//KVStringIntInput - name for special input type for Key and Value pair
 	KVStringIntInput        = "__kv_string_int"
-	KVStringStringInputName = "__kv_string_string" //"StringStringKVInput"
-	KVStringIntInputName    = "__kv_string_int"    //"StringIntKVInput"
+	KVStringIntName         = "__kv_string_int"
+	KVStringStringName      = "__kv_string_string"
+	KVStringStringInputName = "__kv_string_string_input" //"StringStringKVInput"
+	KVStringIntInputName    = "__kv_string_int_input"    //"StringIntKVInput"
 )
 
 // func NewGQLService() *GQLEngine {
@@ -233,7 +235,7 @@ func (gqld *GQLDescriptor) AddMutationGenerator(name string, g GQLQueryGenerator
 func (gqld *GQLDescriptor) getKVStringStringType() *graphql.Object {
 	return graphql.NewObject(
 		graphql.ObjectConfig{
-			Name: KVStringString,
+			Name: KVStringStringName,
 			Fields: graphql.Fields{
 				"key": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.String),
@@ -323,7 +325,7 @@ func GQLArgToMapStringString(arg []interface{}) (ret map[string]string, err erro
 func (gqld *GQLDescriptor) getKVStringIntType() *graphql.Object {
 	return graphql.NewObject(
 		graphql.ObjectConfig{
-			Name: KVStringInt,
+			Name: KVStringIntName,
 			Fields: graphql.Fields{
 				"key": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.String),

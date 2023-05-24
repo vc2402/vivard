@@ -34,17 +34,17 @@ const (
 	//Special types
 
 	//KVStringString - name for special type for Key and Value pair
-	KVStringString = "__kv_string_string"
+	KVStringString = "_kv_string_string_"
 	//KVStringStringInput - name for special input type for Key and Value pair
-	KVStringStringInput = "__kv_string_string_input"
+	KVStringStringInput = "_kv_string_string_input_"
 	//KVStringInt - name for special type for Key and Value pair
-	KVStringInt = "__kv_string_int"
+	KVStringInt = "_kv_string_int_"
 	//KVStringIntInput - name for special input type for Key and Value pair
-	KVStringIntInput        = "__kv_string_int_input"
-	KVStringIntName         = "__kv_string_int"
-	KVStringStringName      = "__kv_string_string"
-	KVStringStringInputName = "__kv_string_string_input" //"StringStringKVInput"
-	KVStringIntInputName    = "__kv_string_int_input"    //"StringIntKVInput"
+	KVStringIntInput        = "_kv_string_int_input_"
+	KVStringIntName         = "_kv_string_int_"
+	KVStringStringName      = "_kv_string_string_"
+	KVStringStringInputName = "_kv_string_string_input_" //"StringStringKVInput"
+	KVStringIntInputName    = "_kv_string_int_input_"    //"StringIntKVInput"
 )
 
 // func NewGQLService() *GQLEngine {

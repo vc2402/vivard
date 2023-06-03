@@ -401,9 +401,14 @@ const (
 	TypeHookCreate = "create"
 	//TypeHookChange creates hook to call before object change; default name: "OnChange";
 	// params: ctx Context.context, eng *Engine, oldValue *Type, newValue *Type
-	//  oldValue may ne nil for Create operation; newValue may be nil for Delete operation
+	//  oldValue is nil for Create operation; newValue is nil for Delete operation
 	//  should return error, if return not nil changes will not be saved
 	TypeHookChange = "change"
+	//TypeHookChanged creates hook to call after object was changed; default name: "OnSaved";
+	// params: ctx Context.context, eng *Engine, oldValue *Type, newValue *Type
+	//  oldValue is nil for Create operation; newValue is nil for Delete operation
+	//  should return error, if return not nil changes will not be saved
+	TypeHookChanged = "changed"
 	//TypeHookStart creates hook to call on singleton after all the objects created; default name: "OnStart";
 	TypeHookStart = "start"
 	//TypeHookMethod is used for Methods calls
@@ -437,6 +442,7 @@ const (
 var hookFuncsTemmplates = map[string]string{
 	TypeHookCreate:    "OnCreate",
 	TypeHookChange:    "OnChange",
+	TypeHookChanged:   "OnSaved",
 	TypeHookStart:     "OnStart",
 	AttrHookSet:       "On%s%sSet",
 	AttrHookCalculate: "%sResolve%s",

@@ -105,10 +105,27 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 					}
 				}
 			}
+			if ent.GetField(fieldName) != nil {
+				return true, fmt.Errorf("at %v: version: type '%s' already has field '%s'", ent.Pos, ent.Name, fieldName)
+			}
 			ent.Features.Set(VersionFeatureKind, VFField, fieldName)
 			ent.Features.Set(VersionFeatureKind, VFBehaviour, beh)
 			ent.Features.Set(VersionFeatureKind, VFTryMerge, tryMerge)
 			ent.Features.Set(VersionFeatureKind, VFScope, scope)
+			versionField := &Field{
+				Name:        fieldName,
+				parent:      ent,
+				Pos:         ent.Pos,
+				Annotations: Annotations{},
+				Features:    Features{},
+				Modifiers:   []*EntryModifier{},
+				Tags:        map[string]string{},
+				Type:        &TypeRef{Type: TipInt, NonNullable: true},
+			}
+			ent.Fields = append(ent.Fields, versionField)
+			ent.FieldsIndex[versionField.Name] = versionField
+			versionField.Features.Set(FeatGoKind, FCGAttrType, jen.Int())
+			versionField.Features.Set(FeatGoKind, FCGName, fieldName)
 		} else {
 			return true, fmt.Errorf("at %v: annotation '%s' can be used for entity only", ann.Pos, versionAnnotation)
 		}
@@ -118,29 +135,13 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 }
 
 func (cg *VersionGenerator) Prepare(desc *Package) error {
-	for _, file := range desc.Files {
-		for _, e := range file.Entries {
-			if fn := e.FS(VersionFeatureKind, VFField); fn != "" {
-				if e.GetField(fn) != nil {
-					return fmt.Errorf("at %v: version: type '%s' already has field '%s'", e.Pos, e.Name, fn)
-				}
-				versionField := &Field{
-					Name:        fn,
-					parent:      e,
-					Pos:         e.Pos,
-					Annotations: Annotations{},
-					Features:    Features{},
-					Modifiers:   []*EntryModifier{{AttrModifier: string(AttrModifierAuxiliary)}},
-					Tags:        map[string]string{},
-					Type:        &TypeRef{Type: TipInt, NonNullable: true},
-				}
-				e.Fields = append(e.Fields, versionField)
-				e.FieldsIndex[versionField.Name] = versionField
-				versionField.Features.Set(FeatGoKind, FCGAttrType, jen.Int())
-				versionField.Features.Set(FeatGoKind, FCGName, fn)
-			}
-		}
-	}
+	//for _, file := range desc.Files {
+	//	for _, e := range file.Entries {
+	//		if fn := e.FS(VersionFeatureKind, VFField); fn != "" {
+	//
+	//		}
+	//	}
+	//}
 	return nil
 }
 

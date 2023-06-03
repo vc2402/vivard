@@ -68,6 +68,13 @@ func (ncg *NoCacheGenerator) Prepare(desc *Package) error {
 					ErrVar: "err",
 				})
 			}
+			if _, hok := t.HaveHook(TypeHookChanged); hok {
+				desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+					Str:    desc.GetHookName(TypeHookChanged, nil),
+					Obj:    "o",
+					ErrVar: "err",
+				})
+			}
 			if _, hok := t.HaveHook(TypeHookDelete); hok {
 				desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookDelete, HookArgsDescriptor{
 					Str:    desc.GetHookName(TypeHookDelete, nil),
@@ -221,6 +228,17 @@ func (b *Builder) generateSetter(t *Entity) error {
 			//cf.Add(returnIfErrValue(jen.Nil()))
 		}
 		cf.Exit(true)
+		if _, hok := t.HaveHook(TypeHookChanged); hok {
+			g.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+				Obj: "obj",
+				Params: []HookArgParam{
+					{"newValue", jen.Id("o")},
+				},
+				ErrVar: "err",
+			}))
+			cf.AddCheckError()
+		}
 		cf.Exit(false)
 		g.Return()
 		cf.Pop()
@@ -286,6 +304,17 @@ func (b *Builder) generateNew(t *Entity) error {
 			cf.AddCheckError()
 		}
 		cf.Exit(true)
+		if _, hok := t.HaveHook(TypeHookChanged); hok {
+			cf.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+				Obj: jen.Id("ret"),
+				Params: []HookArgParam{
+					{"newValue", jen.Id("o")},
+				},
+				ErrVar: "err",
+			}))
+			cf.AddCheckError()
+		}
 		cf.Exit(false)
 		c.Return()
 		cf.Pop()
@@ -386,6 +415,18 @@ func (b *Builder) generateDelete(t *Entity) error {
 			cf.AddCheckError()
 		}
 		cf.Exit(true)
+		if _, hok := t.HaveHook(TypeHookChanged); hok {
+			cf.Add(
+				b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+					Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+					Obj: "o",
+					Params: []HookArgParam{
+						{"newValue", jen.Nil()},
+					},
+				}),
+			)
+		}
+
 		cf.Exit(false)
 		g.Return()
 		cf.Pop()

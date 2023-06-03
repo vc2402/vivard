@@ -228,7 +228,7 @@ const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}}
   :error-messages="validator && validator.errors.{{FieldName .}} || []"
   {{LookupAttrs .}} 
   :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if ByRefField .}}
-  :returnId="true"{{end}}{{if HideAddForLookup .}}
+  :returnObject="false"{{end}}{{if HideAddForLookup .}}
   :hideAdd="true"{{end}}>{{if FieldWithAppend .}}
     <template v-slot:append>{{range AppendToField .}}
       {{.}}{{end}}

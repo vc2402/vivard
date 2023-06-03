@@ -3,6 +3,7 @@ package gen
 import (
 	"errors"
 	"fmt"
+	"github.com/alecthomas/participle/lexer"
 	"strings"
 	"unicode"
 
@@ -217,6 +218,7 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 					for _, p := range m.Params {
 						tip := cg.GetGQLTypeName(p.Type, true)
 						p.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+						p.Features.Set(GQLFeatures, GQLFInputTypeName, tip)
 					}
 				}
 			} else {
@@ -661,7 +663,7 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 						if f.Type.Array != nil {
 							g.Id("attr").Op(":=").Make(cg.b.GoType(f.Type), jen.Len(jen.Id("val")), jen.Len(jen.Id("val")))
 							g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
-								jen.Id("attr").Index(jen.Id("i")).Op("=").Id("v").Assert(jen.Int()),
+								jen.Id("attr").Index(jen.Id("i")).Op("=").Id("v").Assert(cg.b.GoType(f.Type.Array)),
 							)
 							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode, "obj", "attr"))
 						} else {
@@ -1164,7 +1166,7 @@ func (cg *GQLGenerator) generateGQLMethodMutation(m *Method) (err error) {
 				jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).BlockFunc(func(g *jen.Group) {
 					for _, p := range m.Params {
 						g.Var().Id(p.Name + "_Arg").Add(cg.b.GoType(p.Type))
-						g.Add(cg.inputParserCodeGenerator(p.Type, p.Name, jen.Id(p.Name+"_Arg")))
+						g.Add(cg.inputParserCodeGenerator(p.Type, p.Name, jen.Id(p.Name+"_Arg"), p.Pos))
 					}
 					id := jen.Nil()
 					if idField != nil {
@@ -1317,7 +1319,7 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 				var typeName string
 				isInput := len(skipNotNull) > 2 && skipNotNull[2]
 				if ref.Map != nil {
-					typeName, err = cg.getMapTypeName(ref)
+					typeName, err = cg.getMapTypeName(ref, isInput)
 					if err != nil {
 						return
 					}
@@ -1355,16 +1357,24 @@ func (cg *GQLGenerator) generateTypeLookupStatement(typeName string, isInput boo
 	}
 	return jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(jen.Op("*").Qual(VivardPackage, "GQLEngine")).Dot("Descriptor").Params().Dot(typeLookuper).Call(jen.Lit(typeName))
 }
-func (cg *GQLGenerator) getMapTypeName(ref *TypeRef) (string, error) {
+func (cg *GQLGenerator) getMapTypeName(ref *TypeRef, forInput bool) (string, error) {
 	if ref.Map != nil {
 		if ref.Map.KeyType != TipString {
 			return "", fmt.Errorf("map type: only string keys may be used for GQL at the moment, but found: %s ", ref.Map.KeyType)
 		}
 		switch ref.Map.ValueType.Type {
 		case TipString:
-			return vivard.KVStringString, nil
+			if forInput {
+				return vivard.KVStringStringInputName, nil
+			} else {
+				return vivard.KVStringString, nil
+			}
 		case TipInt:
-			return vivard.KVStringInt, nil
+			if forInput {
+				return vivard.KVStringIntInputName, nil
+			} else {
+				return vivard.KVStringInt, nil
+			}
 		default:
 			return "", fmt.Errorf("map type: only string and int values may be used for GQL at the moment, but found: %s ", ref.Map.ValueType.Type)
 		}
@@ -1373,7 +1383,7 @@ func (cg *GQLGenerator) getMapTypeName(ref *TypeRef) (string, error) {
 }
 
 // inputParserGenerator returns function that returns code for parsing input;
-func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assignTo jen.Code) jen.Code {
+func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assignTo jen.Code, pos lexer.Position) jen.Code {
 	ret := jen.If(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Op("==").Nil()).Block(
 		jen.Add(assignTo).Op("=").Add(cg.b.goEmptyValue(t)),
 	).Else().BlockFunc(func(g *jen.Group) {
@@ -1398,6 +1408,24 @@ func (cg *GQLGenerator) inputParserCodeGenerator(t *TypeRef, name string, assign
 					jen.Qual("errors", "New").Params(jen.Lit("invalid type for array")),
 				),
 			)
+		} else if t.Map != nil {
+			if t.Map.KeyType != TipString {
+				cg.desc.AddError(fmt.Errorf("at %v: GQL: only string can be used as Key for Maps", pos))
+				return
+			}
+			var fn string
+			switch t.Map.ValueType.Type {
+			case TipString:
+				fn = "GQLArgToMapStringString"
+			case TipInt:
+				fn = "GQLArgToMapStringInt"
+			default:
+				cg.desc.AddError(fmt.Errorf("at %v: GQL: only string and int can be used as Maps value currently", pos))
+				return
+			}
+			g.List(jen.Id("values"), jen.Err()).Op(":=").Qual(VivardPackage, fn).Params(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Assert(cg.GetInputGoType(t)))
+			g.Add(returnIfErrValue(jen.Nil()))
+			g.Add(assignTo).Op("=").Id("values")
 		} else {
 			if !t.Complex {
 				g.Add(assignTo).Op("=").Id("p").Dot("Args").Index(jen.Lit(name)).Assert(cg.GetInputGoType(t))
@@ -1436,10 +1464,11 @@ func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef, forInput ...bool) (ret stri
 		ret = fmt.Sprintf("[%s]", params)
 	} else if ref.Map != nil {
 		var err error
-		ret, err = cg.getMapTypeName(ref)
+		ret, err = cg.getMapTypeName(ref, len(forInput) > 0 && forInput[0])
 		if err != nil {
 			cg.desc.AddError(err)
 		}
+		ret = fmt.Sprintf("[%s]", ret)
 		return
 	} else {
 		switch ref.Type {

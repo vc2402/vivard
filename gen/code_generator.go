@@ -369,7 +369,7 @@ func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj inter
 					found = true
 				}
 			}
-		} else if name == TypeHookChange || name == TypeHookCreate || name == TypeHookStart || name == TypeHookDelete {
+		} else if name == TypeHookChange || name == TypeHookChanged || name == TypeHookCreate || name == TypeHookStart || name == TypeHookDelete {
 			if t, ok := obj.(*Entity); ok {
 				if hook, hok := t.HaveHook(name); hok {
 					value = hook.Value

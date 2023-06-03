@@ -572,8 +572,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 					cg.desc.AddWarning(fmt.Sprintf("at %v: type %s not found for parameter; skipping", a.Pos, a.Type.Type))
 				}
 			} else {
-				gqlType = a.Features.String(gen.GQLFeatures, gen.GQLFTypeTag)
-
+				gqlType = a.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
 			}
 			ad = append(ad,
 				ArgDef{Name: a.Name,
@@ -1005,7 +1004,7 @@ export async function {{.FuncName}}(apollo: ApolloClient<any>, {{if .JSArgType}}
       fetchPolicy: "no-cache",
       variables: {{if .JSArgType}}arg{{else}} { {{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}{{$arg.Name}}:cleanInput({{$arg.Name}}){{end}} } {{end}}
     });
-  if(res.data.{{.QueryName}})
+  if(res.data.{{.QueryName}} !== undefined)
     return res.data.{{.QueryName}};
   else
     throw res.errors;

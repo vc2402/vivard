@@ -21,6 +21,7 @@ const (
 	mongoAnnotationDeleteMethod           = "deleteMethod"
 	madmUpdate                            = "update"
 	madmDelete                            = "delete"
+	madmCustomQueryGenerator              = "customQueryGenerator"
 
 	mongoGoTagBSON = "bson"
 )
@@ -42,12 +43,13 @@ const (
 )
 
 const (
-	mongoFeatures     FeatureKind = "mongo"
-	mfInited                      = "inited"
-	mfDelete                      = "delete"
-	mfSortField                   = "sort-field"
-	mfSortDesc                    = "sort-desc"
-	mfCollectionConst             = "collection-const"
+	mongoFeatures        FeatureKind = "mongo"
+	mfInited                         = "inited"
+	mfDelete                         = "delete"
+	mfSortField                      = "sort-field"
+	mfSortDesc                       = "sort-desc"
+	mfCollectionConst                = "collection-const"
+	mfSkipQueryGenerator             = "skip-q-gen"
 )
 
 const (
@@ -78,7 +80,7 @@ func (cg *MongoGenerator) Name() string {
 
 func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	f, fld := item.(*Field)
-	_, ent := item.(*Entity)
+	e, ent := item.(*Entity)
 	cg.init()
 	if ann.Name == mongoAnnotation || ann.Name == dbAnnotation {
 		if !fld && !ent {
@@ -97,6 +99,16 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 			case mongoAnnotationOrder:
 				if fld {
 					f.parent.Features.Set(mongoFeatures, mfSortField, item)
+				}
+			case madmCustomQueryGenerator:
+				if ent && e.Annotations[AnnotationFind] != nil {
+					if val, ok := v.GetBool(); ok {
+						e.Features.Set(mongoFeatures, mfSkipQueryGenerator, val)
+					} else {
+						return true, fmt.Errorf("at %v: mongo annotation parameter '%s' should be true or false", ann.Pos, v.Key)
+					}
+				} else {
+					return true, fmt.Errorf("at %v: mongo annotation parameter '%s' can be used for find annotated type only", ann.Pos, v.Key)
 				}
 			default:
 				return true, fmt.Errorf("at %v: unknown mongo annotation parameter: %s", ann.Pos, v.Key)
@@ -763,186 +775,196 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 		generatorFuncName := fmt.Sprintf("generateQueryFrom%s", it.Name)
 		fname := cg.desc.GetMethodName(MethodFind, name)
 		deletedFound := false
-		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(generatorFuncName).Params(
-			jen.Id("query").Op("*").Id(it.Name),
-		).Parens(jen.List(jen.Interface(), jen.Error())).BlockFunc(func(g *jen.Group) {
-			addSkipDeletedToQuery := func() *jen.Statement {
-				return jen.Id("q").Index(jen.Lit(mdDeletedFieldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$exists"): jen.Lit(0)})
-			}
-			g.Id("q").Op(":=").Qual(bsonPackage, "M").Values()
-			possiblyFilledFields := map[string]struct{}{}
-			for _, f := range it.Fields {
-				searchField, ok := f.Features.GetField(FeaturesAPIKind, FAPIFindFor)
-				op := f.FS(FeaturesAPIKind, FAPIFindParam)
-				var mngFldName string
-				var elseStmt *jen.Statement = jen.Empty()
-				if ok {
-					if fields, ok := f.Features.Get(FeaturesAPIKind, FAPIFindForEmbedded); ok {
-						for i, field := range fields.([]*Field) {
-							if i > 0 {
-								mngFldName += "."
-							}
-							mngFldName += cg.fieldName(field)
-						}
-					} else {
-						//TODO save mongo name in feature...
-						if searchField.IsIdField() {
-							mngFldName = "_id"
-						} else {
-							mngFldName = cg.fieldName(searchField)
-						}
-					}
-				} else {
-					if n := f.FS(FeaturesAPIKind, FAPIFindForName); n == AFFDeleted {
-						mngFldName = mdDeletedFieldName
-						deletedFound = true
-						elseStmt = jen.Else().BlockFunc(func(g *jen.Group) {
-							if mngFldName == mdDeletedFieldName {
-								g.Add(addSkipDeletedToQuery())
-							}
-						})
-					}
+		if !it.FB(mongoFeatures, mfSkipQueryGenerator) {
+			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(generatorFuncName).Params(
+				jen.Id("query").Op("*").Id(it.Name),
+			).Parens(jen.List(jen.Interface(), jen.Error())).BlockFunc(func(g *jen.Group) {
+				addSkipDeletedToQuery := func() *jen.Statement {
+					return jen.Id("q").Index(jen.Lit(mdDeletedFieldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit("$exists"): jen.Lit(0)})
 				}
-
-				g.IfFunc(func(g *jen.Group) {
-					if f.Type.Array == nil {
-						//TODO add option to compare with empty string
-						if f.Type.Type == TipString {
-							if f.Type.NonNullable {
-								g.Id("query").Dot(f.Name).Op("!=").Lit("")
-							} else {
-								g.Id("query").Dot(f.Name).Op("!=").Nil().Op("&&").Op("*").Id("query").Dot(f.Name).Op("!=").Lit("")
+				g.Id("q").Op(":=").Qual(bsonPackage, "M").Values()
+				possiblyFilledFields := map[string]struct{}{}
+				for _, f := range it.Fields {
+					searchField, ok := f.Features.GetField(FeaturesAPIKind, FAPIFindFor)
+					op := f.FS(FeaturesAPIKind, FAPIFindParam)
+					var mngFldName string
+					var elseStmt *jen.Statement = jen.Empty()
+					if ok {
+						if fields, ok := f.Features.Get(FeaturesAPIKind, FAPIFindForEmbedded); ok {
+							for i, field := range fields.([]*Field) {
+								if i > 0 {
+									mngFldName += "."
+								}
+								mngFldName += cg.fieldName(field)
 							}
 						} else {
-							g.Id("query").Dot(f.Name).Op("!=").Nil()
+							//TODO save mongo name in feature...
+							if searchField.IsIdField() {
+								mngFldName = "_id"
+							} else {
+								mngFldName = cg.fieldName(searchField)
+							}
 						}
 					} else {
-						g.Len(jen.Id("query").Dot(f.Name)).Op("!=").Lit(0)
-					}
-				}).BlockFunc(func(g *jen.Group) {
-					if f.Type.Array != nil {
-						g.Id("q").Index(jen.Lit(mngFldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-							jen.Lit("$in"): jen.Id("query").Dot(f.Name),
-						})
-					} else if f.Type.Map != nil {
-						g.Id("arr").Op(":=").Make(jen.Qual(bsonPackage, "A"), jen.Len(jen.Id("query").Dot(f.Name)))
-						g.Id("i").Op(":=").Lit(0)
-						g.For(jen.List(jen.Id("k"), jen.Id("val")).Op(":=").Range().Id("query").Dot(f.Name)).Block(
-							jen.Id("arr").Index(jen.Id("i")).Op("=").Qual(bsonPackage, "M").Values(
-								jen.Dict{jen.Lit(mngFldName).Op("+").Lit(".").Op("+").Id("k"): jen.Id("val")},
-							),
-						)
-						g.Id("q").Index(jen.Lit("$and")).Op("=").Id("arr")
-					} else {
-						pref := jen.Id("q").Index(jen.Lit(mngFldName))
-						addToExisting := false
-						if _, ok := possiblyFilledFields[mngFldName]; ok {
-							g.Var().Id("op").Qual(bsonPackage, "M")
-							g.If(
-								jen.List(jen.Id("o"), jen.Id("ok")).Op(":=").Id("q").Index(jen.Lit(mngFldName)).Assert(jen.Qual(bsonPackage, "M")),
-								jen.Id("ok"),
-							).Block(jen.Id("op").Op("=").Id("o")).Else().Block(
-								jen.Id("op").Op("=").Qual(bsonPackage, "M").Values(),
-								jen.Id("q").Index(jen.Lit(mngFldName)).Op("=").Id("op"),
-							)
-							pref = jen.Id("op")
-							addToExisting = true
-						}
-						switch op {
-						case AFTEqual:
-							g.Add(pref).Op("=").Id("query").Dot(f.Name)
-						case AFTNotEqual:
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Lit("$ne"): jen.Id("query").Dot(f.Name),
-							})
-						case AFTGreaterThan:
-							if addToExisting {
-								g.Add(pref).Index(jen.Lit("$gt")).Op("=").Id("query").Dot(f.Name)
-							} else {
-								g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-									jen.Lit("$gt"): jen.Id("query").Dot(f.Name),
-								})
-							}
-						case AFTGreaterThanOrEqual:
-							if addToExisting {
-								g.Add(pref).Index(jen.Lit("$gte")).Op("=").Id("query").Dot(f.Name)
-							} else {
-								g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-									jen.Lit("$gte"): jen.Id("query").Dot(f.Name),
-								})
-							}
-						case AFTLessThan:
-							if addToExisting {
-								g.Add(pref).Index(jen.Lit("$lt")).Op("=").Id("query").Dot(f.Name)
-							} else {
-								g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-									jen.Lit("$lt"): jen.Id("query").Dot(f.Name),
-								})
-							}
-						case AFTLessThanOrEqual:
-							if addToExisting {
-								g.Add(pref).Index(jen.Lit("$lte")).Op("=").Id("query").Dot(f.Name)
-							} else {
-								g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-									jen.Lit("$lte"): jen.Id("query").Dot(f.Name),
-								})
-							}
-						case AFTStartsWith:
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
-							})
-						case AFTStartsWithIgnoreCase:
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Lit("$regex"):   jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
-								jen.Lit("$options"): jen.Lit("i"),
-							})
-						case AFTContains:
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
-							})
-						case AFTContainsIgnoreCase:
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
-								jen.Lit("$options"): jen.Lit("i"),
-							})
-						case AFTIsNull:
-							g.Id("nullOp").Op(":=").Lit("$ne")
-							g.If(jen.Op("*").Id("query").Dot(f.Name)).Block(jen.Id("nullOp").Op("=").Lit("$eq"))
-							g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-								jen.Id("nullOp"): jen.Nil(),
-							})
-						case AFTIgnore:
-							if mngFldName == mdDeletedFieldName && f.Type.Type == TipBool {
-								arg := jen.Id("query").Dot(f.Name)
-								if !f.Type.NonNullable {
-									arg = jen.Op("*").Id("query").Dot(f.Name)
+						if n := f.FS(FeaturesAPIKind, FAPIFindForName); n == AFFDeleted {
+							mngFldName = mdDeletedFieldName
+							deletedFound = true
+							elseStmt = jen.Else().BlockFunc(func(g *jen.Group) {
+								if mngFldName == mdDeletedFieldName {
+									g.Add(addSkipDeletedToQuery())
 								}
-								g.If(jen.Op("!").Add(arg)).Block(addSkipDeletedToQuery())
-							} else {
-								cg.desc.AddError(fmt.Errorf("at %v: comparision type %s can be used only with bool type for _deleted_ field", f.Pos, op))
-								return
-							}
-						default:
-							cg.desc.AddError(fmt.Errorf("at %v: undefined comparision type: %s", f.Pos, op))
-							return
+							})
 						}
-						possiblyFilledFields[mngFldName] = struct{}{}
 					}
-				}).Add(elseStmt)
-			}
-			if e.BaseTypeName != "" {
-				g.Add(cg.addDescendantsToQuery(e, "q"))
-			}
-			if !deletedFound {
-				g.Add(addSkipDeletedToQuery())
-			}
-			g.Return(
-				jen.List(jen.Id("q"), jen.Nil()),
-			)
-		}).Line()
 
-		cg.b.Functions.Add(f)
-		f = jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+					g.IfFunc(func(g *jen.Group) {
+						if f.Type.Array == nil {
+							//TODO add option to compare with empty string
+							if f.Type.Type == TipString {
+								if f.Type.NonNullable {
+									g.Id("query").Dot(f.Name).Op("!=").Lit("")
+								} else {
+									g.Id("query").Dot(f.Name).Op("!=").Nil().Op("&&").Op("*").Id("query").Dot(f.Name).Op("!=").Lit("")
+								}
+							} else {
+								g.Id("query").Dot(f.Name).Op("!=").Nil()
+							}
+						} else {
+							g.Len(jen.Id("query").Dot(f.Name)).Op("!=").Lit(0)
+						}
+					}).BlockFunc(func(g *jen.Group) {
+						if f.Type.Array != nil {
+							g.Id("q").Index(jen.Lit(mngFldName)).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+								jen.Lit("$in"): jen.Id("query").Dot(f.Name),
+							})
+						} else if f.Type.Map != nil {
+							g.Id("arr").Op(":=").Make(jen.Qual(bsonPackage, "A"), jen.Len(jen.Id("query").Dot(f.Name)))
+							g.Id("i").Op(":=").Lit(0)
+							g.For(jen.List(jen.Id("k"), jen.Id("val")).Op(":=").Range().Id("query").Dot(f.Name)).Block(
+								jen.Id("arr").Index(jen.Id("i")).Op("=").Qual(bsonPackage, "M").Values(
+									jen.Dict{jen.Lit(mngFldName).Op("+").Lit(".").Op("+").Id("k"): jen.Id("val")},
+								),
+							)
+							g.Id("q").Index(jen.Lit("$and")).Op("=").Id("arr")
+						} else {
+							pref := jen.Id("q").Index(jen.Lit(mngFldName))
+							if td, ok := cg.desc.FindType(f.Type.Type); ok && td.entry != nil {
+								for _, field := range td.entry.GetFields(true, true) {
+									if !field.HasModifier(AttrModifierCalculated) {
+										g.Id("q").Index(jen.Lit(fmt.Sprintf("%s.%s", mngFldName, cg.fieldName(field)))).Op("=").Id("query").Dot(f.Name).Dot(field.Name)
+									}
+								}
+							} else {
+								addToExisting := false
+								if _, ok := possiblyFilledFields[mngFldName]; ok {
+									g.Var().Id("op").Qual(bsonPackage, "M")
+									g.If(
+										jen.List(jen.Id("o"), jen.Id("ok")).Op(":=").Id("q").Index(jen.Lit(mngFldName)).Assert(jen.Qual(bsonPackage, "M")),
+										jen.Id("ok"),
+									).Block(jen.Id("op").Op("=").Id("o")).Else().Block(
+										jen.Id("op").Op("=").Qual(bsonPackage, "M").Values(),
+										jen.Id("q").Index(jen.Lit(mngFldName)).Op("=").Id("op"),
+									)
+									pref = jen.Id("op")
+									addToExisting = true
+								}
+								switch op {
+								case AFTEqual:
+									g.Add(pref).Op("=").Id("query").Dot(f.Name)
+								case AFTNotEqual:
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Lit("$ne"): jen.Id("query").Dot(f.Name),
+									})
+								case AFTGreaterThan:
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$gt")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$gt"): jen.Id("query").Dot(f.Name),
+										})
+									}
+								case AFTGreaterThanOrEqual:
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$gte")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$gte"): jen.Id("query").Dot(f.Name),
+										})
+									}
+								case AFTLessThan:
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$lt")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$lt"): jen.Id("query").Dot(f.Name),
+										})
+									}
+								case AFTLessThanOrEqual:
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$lte")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$lte"): jen.Id("query").Dot(f.Name),
+										})
+									}
+								case AFTStartsWith:
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
+									})
+								case AFTStartsWithIgnoreCase:
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Lit("$regex"):   jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
+										jen.Lit("$options"): jen.Lit("i"),
+									})
+								case AFTContains:
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
+									})
+								case AFTContainsIgnoreCase:
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
+										jen.Lit("$options"): jen.Lit("i"),
+									})
+								case AFTIsNull:
+									g.Id("nullOp").Op(":=").Lit("$ne")
+									g.If(jen.Op("*").Id("query").Dot(f.Name)).Block(jen.Id("nullOp").Op("=").Lit("$eq"))
+									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+										jen.Id("nullOp"): jen.Nil(),
+									})
+								case AFTIgnore:
+									if mngFldName == mdDeletedFieldName && f.Type.Type == TipBool {
+										arg := jen.Id("query").Dot(f.Name)
+										if !f.Type.NonNullable {
+											arg = jen.Op("*").Id("query").Dot(f.Name)
+										}
+										g.If(jen.Op("!").Add(arg)).Block(addSkipDeletedToQuery())
+									} else {
+										cg.desc.AddError(fmt.Errorf("at %v: comparision type %s can be used only with bool type for _deleted_ field", f.Pos, op))
+										return
+									}
+								default:
+									cg.desc.AddError(fmt.Errorf("at %v: undefined comparision type: %s", f.Pos, op))
+									return
+								}
+								possiblyFilledFields[mngFldName] = struct{}{}
+							}
+						}
+					}).Add(elseStmt)
+				}
+				if e.BaseTypeName != "" {
+					g.Add(cg.addDescendantsToQuery(e, "q"))
+				}
+				if !deletedFound {
+					g.Add(addSkipDeletedToQuery())
+				}
+				g.Return(
+					jen.List(jen.Id("q"), jen.Nil()),
+				)
+			}).Line()
+
+			cg.b.Functions.Add(f)
+		}
+		f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
 			jen.Id("ctx").Qual("context", "Context"),
 			jen.Id("query").Op("*").Id(it.Name),
 		).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {

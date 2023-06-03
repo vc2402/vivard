@@ -1155,11 +1155,10 @@ import { {{TypeName .}}, {{ListQuery}} } from '{{TypesFilePath .}}';
   }
 })
 export default class {{TypeName}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}};
+  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}};
   @Prop() hint!: string;
   @Prop() label!: string;
-  @Prop() readonly!: boolean;
-  @Prop({default:false}) returnId!: boolean;{{if CanBeMultiple}}
+  @Prop() readonly!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
   @Prop({default:true}) returnObject!: boolean
   @Prop({default:undefined}) hideAdd: boolean|undefined
@@ -1170,23 +1169,20 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop() filter!: (value: {{TypeName .}}) => boolean;
   @Prop() autoSelect!: ((value: {{TypeName .}}) => boolean)|string|number|boolean;
 
-  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
+  private selected: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";
   
   @Watch('value') onValueChange() {
-    if(this.returnId) {
-      this.selected = this.items.find(it=>it.{{IDField}} == this.value as {{IDType .}}) || null;
-    } else {
-      this.selected = this.value as {{TypeName .}};
-    }
+    this.selected = this.value;
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null {
     //delete (this.selected as any).__typename;
     this.emitChanged();
-    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField}} : this.selected;
+    return this.selected;
   }
+
   @Emit('change') emitChanged() {
     
   }
@@ -1271,7 +1267,7 @@ import {{DialogComponent .}} from './{{DialogComponent .}}.vue';
   }
 })
 export default class {{TypeName}}LookupComponent extends Vue {
-  @Prop() value!: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|{{IDType .}};
+  @Prop() value!: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}};
   @Prop() hint!: string;
   @Prop() label!: string;
   @Prop() readonly!: boolean;
@@ -1279,10 +1275,9 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:undefined}) hideAdd: string|undefined
   @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
-  @Prop({default:false}) returnId!: boolean;
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
   @Prop({default:()=>[]}) errorMessages!: string|string[];
-  private selected: {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|null = null;
+  private selected: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
   private problem = "";
@@ -1291,25 +1286,15 @@ export default class {{TypeName}}LookupComponent extends Vue {
   private timer: any = null;
   
   @Watch('value') onValueChange() {
-    if(this.returnId && this.value) {
-        this.fillSelectedFromId(this.value as {{IDType .}});
-    } else { {{if CanBeMultiple}}
-      if(Array.isArray(this.value)) {
-        this.selected = this.value as {{TypeName .}}[];
-        //if(this.selected) {
-          //this.items = this.selected;
-        //}
-        return;
-      }{{end}}
-      this.selected = this.value as {{TypeName .}};
-      if(this.selected) {
-        this.items = [this.selected];
-      }
+    this.selected = this.value;
+    if(this.selected && !this.items.length) {
+      if(this.returnObject)
+      this.items = {{if CanBeMultiple}}this.multiple ? this.selected as {{TypeName .}}[] : {{end}}[this.selected as {{TypeName .}}];
     }
+    
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}{{if CanBeMultiple}}|{{TypeName .}}[]{{end}}|{{IDType .}}|null {
-    //delete (this.selected as any).__typename;
-    return this.returnId && this.selected? (this.selected as {{TypeName .}}).{{IDField}} : this.selected;
+  @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|{{IDType .}}|null {
+    return this.selected;
   }
   @Watch('selected') onSelectedChanged() {
     this.selectedChanged();
@@ -1356,7 +1341,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    if(this.searchString == event || this.selected && this.selected.{{ItemText}} && this.selected.{{ItemText}}.toString() == event)
+    if(this.searchString == event || this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}}.toString() == event)
       return
     if(this.timer)
       clearTimeout(this.timer);

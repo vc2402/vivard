@@ -41,7 +41,7 @@ ANNOTATIONTAG = "$" {ANNOTATIONNAME} (":" {ANNOTATIONNAME})?
 ANNOTATIONNAME = [a-zA-Z_][a-zA-Z0-9_-]*
 //HOOKTAG = "@"[a-zA-Z_][a-zA-Z0-9_-]*
 HOOKTAG = "@" {HOOKNAME} (":" {IDENTIFIER})?
-HOOKNAME = "create" | "change" | "start" | "resolve" | "set" | {time_hook}
+HOOKNAME = "create" | "change" | "changed" | "start" | "resolve" | "set" | {time_hook}
 time_hook = "time="{STRING_VALUE}
 STRING_VALUE = "\"" ([^\"\\] | "\\" {any} )* "\""
 NUMBER_VALUE = ("." | {digit}) ("." | {digit})*

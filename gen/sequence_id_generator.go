@@ -54,7 +54,7 @@ func (cg *SequnceIDGenerator) Generate(bldr *Builder) (err error) {
 	}
 	for _, t := range bldr.File.Entries {
 		idfld := t.GetIdField()
-		if idfld != nil && idfld.HasModifier(AttrModifierIDAuto) && idfld.Type.Type == TipInt {
+		if idfld != nil && idfld.HasModifier(AttrModifierIDAuto) && (idfld.Type.Type == TipInt || idfld.Type.Type == TipString) {
 			err = cg.generateIDGeneratorFunc(t)
 			if err != nil {
 				return
@@ -70,13 +70,21 @@ func (cg *SequnceIDGenerator) generateIDGeneratorFunc(e *Entity) error {
 	if err != nil {
 		return err
 	}
+	idfld := e.GetIdField()
+
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Parens(
 		jen.List(ret, jen.Id("err").Error()),
-	).Block(
-		jen.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(e.Name)),
-		returnIfErr(),
-		jen.Return(jen.Id("seq").Dot("Next").Params(jen.Id("ctx"))),
+	).BlockFunc(func(g *jen.Group) {
+		if idfld.Type.Type == TipInt {
+			g.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(e.Name))
+			g.Add(returnIfErr())
+			g.Return(jen.Id("seq").Dot("Next").Params(jen.Id("ctx")))
+		} else {
+			g.Return(jen.List(jen.Qual("github.com/google/uuid", "New").Params().Dot("String").Params(), jen.Nil()))
+		}
+	},
 	).Line()
+
 	cg.b.Functions.Add(f)
 	return nil
 }

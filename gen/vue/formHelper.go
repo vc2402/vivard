@@ -670,6 +670,9 @@ import {RoundNumber} from '@/filters/numberFilter';
 				f.fld.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationIcon, false) {
 				return "icon"
 			}
+			if f.fld.Annotations.GetBoolAnnotationDef(js.Annotation, js.AnnotationColor, false) {
+				return "color"
+			}
 			if !f.fld.Type.Complex {
 				return fromAnnotations(f.fld.Annotations, f.fld.Type.Type)
 			}

@@ -36,6 +36,7 @@ const (
 	Features           = "js"
 	FType              = "type"
 	FInputType         = "input-type"
+	FFillInputFuncName = "fill-inp-func"
 	FFile              = "file"
 	FIDType            = "id_type"
 	FFilePath          = "filepath"
@@ -141,6 +142,9 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 				if _, ok := an.GetStringTag(AnnotationInputName); !ok /*&& !t.FB(gen.FeaturesCommonKind, gen.FCReadonly)*/ {
 					t.Annotations.AddTag(Annotation, AnnotationInputName, cg.GetJSEntityInputTypeName(t.Name))
 				}
+				jsInputType := t.Annotations.GetStringAnnotationDef(Annotation, AnnotationInputName, cg.GetJSEntityInputTypeName(t.Name))
+				t.Features.Set(Features, FFillInputFuncName, "fill"+strings.ToUpper(jsInputType[:1])+jsInputType[1:])
+
 				for i := gen.GQLOperationGet; i < gen.GQLOperationLast; i++ {
 					if skip, ok := an.GetBoolTag(gen.GQLOperationsAnnotationsTags[i]); !ok && !skip {
 						if op, ok := an.GetStringTag(gen.GQLOperationsAnnotationsTags[i]); ok {
@@ -325,14 +329,15 @@ type ArgDef struct {
 }
 
 type QueryDef struct {
-	Request   string
-	QueryName string
-	FuncName  string
-	VarName   string
-	JSArgType string
-	JSRetType string
-	Args      []ArgDef
-	Fields    []string
+	Request       string
+	QueryName     string
+	FuncName      string
+	VarName       string
+	JSArgType     string
+	JSRetType     string
+	Args          []ArgDef
+	Fields        []string
+	FillInputName string
 }
 
 var gqlFunctionsNamesTemplates = [...]string{
@@ -368,8 +373,15 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 		if err != nil {
 			return err
 		}
+		tip, err = tip.Parse(fillInputFuncTemplate)
+		if err != nil {
+			return err
+		}
+		err = tip.Execute(wr, e)
+		if err != nil {
+			return err
+		}
 	}
-
 	if !e.HasModifier(gen.TypeModifierTransient) && !e.HasModifier(gen.TypeModifierEmbeddable) &&
 		!e.HasModifier(gen.TypeModifierSingleton) && !e.HasModifier(gen.TypeModifierExternal) {
 		isCfg := e.HasModifier(gen.TypeModifierConfig)
@@ -383,6 +395,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 				ad := []ArgDef{}
 				req := "query"
 				jsarg := ""
+				inputInit := ""
 				rt := e.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "")
 				switch i {
 				case gen.GQLOperationGet:
@@ -405,6 +418,7 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						jstype := cg.GetJSEntityTypeName(e.Name)
 						if i == gen.GQLOperationSet {
 							jstype = cg.GetJSEntityInputTypeName(e.Name)
+							inputInit = e.FS(Features, FFillInputFuncName)
 						}
 						ad = []ArgDef{{
 							Name:    "val",
@@ -412,7 +426,6 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 							JSType:  jstype,
 							NotNull: true,
 						}}
-
 					}
 				case gen.GQLOperationList:
 					if !isCfg {
@@ -479,14 +492,15 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					}
 				}
 				params := QueryDef{
-					Request:   req,
-					QueryName: qn,
-					FuncName:  cg.getOperationFunctionName(i, e),
-					JSArgType: jsarg,
-					VarName:   qn + "Request",
-					JSRetType: rt,
-					Args:      ad,
-					Fields:    make([]string, len(fields)),
+					Request:       req,
+					QueryName:     qn,
+					FuncName:      cg.getOperationFunctionName(i, e),
+					JSArgType:     jsarg,
+					VarName:       qn + "Request",
+					JSRetType:     rt,
+					Args:          ad,
+					Fields:        make([]string, len(fields)),
+					FillInputName: inputInit,
 				}
 				if i == gen.GQLOperationDelete {
 					params.Fields = []string{}
@@ -538,10 +552,12 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					parse(queryFunctionTemplate).
 					parse(queryTemplateVar)
 				if th.err != nil {
-					fmt.Printf("Error while parsing template: %v\n", th.err)
-					return nil
+					return fmt.Errorf("while parsing template for %s: %v", params.FuncName, th.err)
 				}
 				err = th.templ.Execute(wr, params)
+				if err != nil {
+					return fmt.Errorf("while executing template for %s: %v\n", params.FuncName, err)
+				}
 			}
 		}
 	}
@@ -896,6 +912,9 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 		"InstanceGenerator": func(e *gen.Entity) string {
 			return e.FS(Features, FInstanceGenerator)
 		},
+		"FillInputName": func(e *gen.Entity) string {
+			return e.FS(Features, FFillInputFuncName)
+		},
 		"FieldName": func(f *gen.Field) string {
 			return f.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "")
 		},
@@ -909,6 +928,12 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 			return !f.Annotations.GetBoolAnnotationDef(gen.GQLAnnotation, gen.GQLAnnotationSkipTag, false) &&
 				(f.Type.NonNullable && f.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "") != "" ||
 					f.HasModifier(gen.AttrModifierEmbedded))
+		},
+		"NeedFill": func(f *gen.Field) bool {
+			return !f.Annotations.GetBoolAnnotationDef(gen.GQLAnnotation, gen.GQLAnnotationSkipTag, false) &&
+				!f.HasModifier(gen.AttrModifierAuxiliary) &&
+				!f.HasModifier(gen.AttrModifierCalculated) &&
+				!f.FB(gen.FeaturesCommonKind, gen.FCReadonly)
 		},
 		"Init": func(f *gen.Field) string {
 			if f.HasModifier(gen.AttrModifierEmbedded) {
@@ -955,6 +980,15 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 		"InputFieldType": func(f *gen.Field) string {
 			return f.FS(Features, FInputType)
 		},
+		"CallFill": func(f *gen.Field) bool {
+			return false
+		},
+		"GetFillName": func(f *gen.Field) string {
+			if t, ok := cg.desc.FindType(f.Type.Type); ok {
+				return t.Entity().FS(Features, FFillInputFuncName)
+			}
+			return ""
+		},
 		"SetNullFields": func(e *gen.Entity) []string {
 			var ret []string
 			for _, field := range e.GetFields(true, false) {
@@ -968,7 +1002,7 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 }
 
 const cleanInputFunc = `
-function cleanInput(inp: any): any {
+export function cleanInput(inp: any): any {
   if(!inp)
     return inp;
   if(Array.isArray(inp)) {
@@ -987,6 +1021,16 @@ function cleanInput(inp: any): any {
 }
 `
 
+// TODO do not use cleanInput but call fill for complex fields and arrays
+const fillInputFuncTemplate = `
+export function {{FillInputName .}}(arg: {{InputTypeName .}}): {{InputTypeName .}} {
+  return {
+    {{range GetFields .}}{{if NeedFill . }}{{FieldName .}}: {{if CallFill .}}{{GetFillName .}}(arg.{{FieldName .}}){{else}}cleanInput(arg.{{FieldName .}}){{end}},
+		{{end}}{{end}}
+  }
+}
+`
+
 const queryTemplate = `
 {{define "QUERY"}}
   {{.Request}} {{.QueryName}}{{if gt (len .Args) 0}}({{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}${{$arg.Name}}:{{$arg.Type}}{{end}}){{end}} {
@@ -1002,7 +1046,7 @@ export async function {{.FuncName}}(apollo: ApolloClient<any>, {{if .JSArgType}}
   let res = await apollo.query({
       query: {{.VarName}},
       fetchPolicy: "no-cache",
-      variables: {{if .JSArgType}}arg{{else}} { {{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}{{$arg.Name}}:cleanInput({{$arg.Name}}){{end}} } {{end}}
+      variables: {{if .JSArgType}}arg{{else}} { {{range $idx, $arg := .Args}}{{if gt $idx 0}}, {{end}}{{$arg.Name}}:{{if ne $.FillInputName ""}} {{$.FillInputName}}({{$arg.Name}}){{else}}cleanInput({{$arg.Name}}){{end}}{{end}} } {{end}}
     });
   if(res.data.{{.QueryName}} !== undefined)
     return res.data.{{.QueryName}};

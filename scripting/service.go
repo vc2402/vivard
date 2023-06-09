@@ -35,7 +35,7 @@ func (s *Service) Prepare(eng *vivard.Engine, prov dep.Provider) (err error) {
 			s.prefix = sf.(string)
 		}
 	}
-	s.modules["@logger"] = map[string]interface{}{"log": s.log}
+	s.modules["@logger"] = map[string]interface{}{"log": s.log.Sugar()}
 	return
 }
 

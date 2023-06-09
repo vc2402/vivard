@@ -221,6 +221,9 @@ func (b *Builder) generateSetter(t *Entity) error {
 		}
 		cf.Enter(false)
 
+		if _, hok := t.HaveHook(TypeHookChanged); hok {
+			cf.Add(jen.Id("oldValue").Op(":=").Add(cf.GetObjVar()))
+		}
 		provided := cf.MainAction()
 		if !provided {
 			cf.Add(jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodSave, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))))
@@ -231,7 +234,7 @@ func (b *Builder) generateSetter(t *Entity) error {
 		if _, hok := t.HaveHook(TypeHookChanged); hok {
 			g.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
 				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
-				Obj: "obj",
+				Obj: "oldValue",
 				Params: []HookArgParam{
 					{"newValue", jen.Id("o")},
 				},
@@ -307,7 +310,7 @@ func (b *Builder) generateNew(t *Entity) error {
 		if _, hok := t.HaveHook(TypeHookChanged); hok {
 			cf.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
 				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
-				Obj: jen.Id("ret"),
+				Obj: jen.Parens(jen.Op("*").Id(name)).Parens(jen.Nil()), //jen.Id("ret"),
 				Params: []HookArgParam{
 					{"newValue", jen.Id("o")},
 				},

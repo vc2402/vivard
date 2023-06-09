@@ -393,7 +393,14 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"FormComponentType": func(f fieldDescriptor) string {
 			if _, ok := f.fld.Parent().Annotations[gen.AnnotationFind]; ok {
-				fld, _ := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
+				var fld *gen.Field
+				if f, ok := f.fld.Features.Get(gen.FeaturesAPIKind, gen.FAPIFindForEmbedded); ok {
+					fields := f.([]*gen.Field)
+					fld = fields[len(fields)-1]
+				}
+				if fld == nil {
+					fld, _ = f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
+				}
 				if fld != nil {
 					return fld.Type.Type
 				}
@@ -486,7 +493,14 @@ import {RoundNumber} from '@/filters/numberFilter';
 
 			tip := f.fld.Type
 			if _, ok := f.fld.Parent().Annotations[gen.AnnotationFind]; ok {
-				fld, _ := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
+				var fld *gen.Field
+				if f, ok := f.fld.Features.Get(gen.FeaturesAPIKind, gen.FAPIFindForEmbedded); ok {
+					fields := f.([]*gen.Field)
+					fld = fields[len(fields)-1]
+				}
+				if fld == nil {
+					fld, _ = f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor)
+				}
 				tip = fld.Type
 			}
 			for tip.Array != nil {
@@ -723,6 +737,8 @@ import {RoundNumber} from '@/filters/numberFilter';
 				if f.fld.Type.Array != nil {
 					ret += " multiple"
 				}
+			} else if f.fld.Type.Array != nil {
+				ret = "multiple"
 			}
 			if qf, ok := f.fld.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy); ok {
 				ret += fmt.Sprintf(" :qualifier=\"value.%s\"", qf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))

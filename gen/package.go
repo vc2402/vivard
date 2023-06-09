@@ -803,14 +803,20 @@ func (desc *Package) findFieldsForParts(e *Entity, parts []string, fields []*Fie
 	if f.Type.Array != nil {
 		typeName = f.Type.Array.Type
 	}
-
-	dt, ok := desc.FindType(typeName)
-	if !ok {
-		return nil, fmt.Errorf("field '%s': type '%s' not found", parts[0], f.Type.Type)
+	if typeName != TipInt && typeName != TipString && typeName != TipBool && typeName != TipDate && typeName != TipFloat {
+		dt, ok := desc.FindType(typeName)
+		if !ok {
+			return nil, fmt.Errorf("field '%s': type '%s' not found", parts[0], f.Type.Type)
+		}
+		if dt.external || dt.entry == nil {
+			return nil, fmt.Errorf("field '%s': external types are not supported", parts[0])
+		}
+		fields = append(fields, f)
+		return desc.findFieldsForParts(dt.entry, parts[1:], fields)
 	}
-	if dt.external || dt.entry == nil {
-		return nil, fmt.Errorf("field '%s': external types are not supported", parts[0])
+	if len(parts) != 1 {
+		return nil, fmt.Errorf("field '%s': type %s is not complex", parts[0], typeName)
 	}
 	fields = append(fields, f)
-	return desc.findFieldsForParts(dt.entry, parts[1:], fields)
+	return fields, nil
 }

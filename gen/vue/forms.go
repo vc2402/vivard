@@ -217,7 +217,7 @@ const htmlFormMapInputTemplate = `{{define "MAP_INPUT"}}<{{CustomComponent "map"
     :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"
     {{ConponentAddAttrs .}}
   ></{{CustomComponent "map"}}>{{end}}`
-const htmlFormArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}} :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if HideAddForLookup .}} :hideAdd="true"{{end}}/>{{else if ArrayAsList .}}{{template "ARRAY_AS_LIST" .}}{{else if ArrayAsChips .}}{{template "ARRAY_AS_CHIPS" .}}{{end}}{{end}}`
+const htmlFormArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}}{{if ByRefField .}} :returnObject="false"{{end}} :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}"{{if HideAddForLookup .}} :hideAdd="true"{{end}}/>{{else if ArrayAsList .}}{{template "ARRAY_AS_LIST" .}}{{else if ArrayAsChips .}}{{template "ARRAY_AS_CHIPS" .}}{{end}}{{end}}`
 
 const htmlFormLookupInputTemplate = `{{define "LOOKUP_INPUT"}} 
 <{{LookupComponent . true}}  

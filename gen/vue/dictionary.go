@@ -68,7 +68,7 @@ const vueDictHTMLTemplate = `{{define "HTML"}}
         <template v-slot:item="{item}">
           <tr>
             {{range GetFields .}}{{if ShowInTable .}}<td class="table-cell">
-              {{if NeedIconForTable .}}<v-icon>{{"{{"}}item.{{TableIconName .}}{{"}}"}}</v-icon>{{else if eq (GUITableType .) "color"}}<span style="display: block; border-radius: 8px; min-width: 16px; min-height: 16px; max-width: 16px; max-height: 16px" :style="{'background-color': item.{{TableAttrName .}} }"></span>{{else if eq (GUITableType .) "custom"}}<{{GUITableComponent .}} :item="item" :header="{value: '{{TableAttrName .}}'}" :value="item.{{TableAttrName .}}" />{{else if ne (TableAttrName .) ""}}{{"{{"}}{{if IsNullable .}}item.{{FieldName .}} && {{end}}item.{{TableAttrName .}}{{"}}"}}{{end}}
+              {{if NeedIconForTable .}}<v-icon>{{"{{"}}item.{{TableIconName .}}{{"}}"}}</v-icon>{{else if eq (GUITableType .) "color"}}<span style="display: block; border-radius: 8px; min-width: 16px; min-height: 16px; max-width: 16px; max-height: 16px" :style="{'background-color': item.{{TableAttrName .}} }"></span>{{else if eq (GUITableType .) "custom"}}<{{GUITableComponent .}} :item="item" :header="{value: '{{TableAttrName .}}'}" :value="item.{{TableAttrName .}}" />{{else if eq (GUITableType .) "bool"}}<v-icon>{{"{{"}}item.{{TableAttrName .}} ? 'mdi-checkbox-outline' : 'mdi-checkbox-blank-outline'{{"}}"}}</v-icon>{{else if ne (TableAttrName .) ""}}{{"{{"}}{{if IsNullable .}}item.{{FieldName .}} && {{end}}item.{{TableAttrName .}}{{"}}"}}{{end}}
             </td>{{end}}{{end}}
             <td>
               <div class="d-flex flex-row">

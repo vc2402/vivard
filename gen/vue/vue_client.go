@@ -527,7 +527,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			defer f.Close()
 			th.parse(typeDescriptorTSTemplate)
 			if th.err != nil {
-				return fmt.Errorf("Error while parsing template: %v", th.err)
+				return fmt.Errorf("while parsing template: %v", th.err)
 			}
 			err = th.templ.Execute(f, th)
 			if err != nil {
@@ -678,7 +678,13 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 		annName = js.AnnotationIcon
 	}
 	ret := f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-	if f.Type.Complex {
+	_, custom := f.Annotations.GetStringAnnotation(vueAnnotation, vueATCustom)
+	if forTable {
+		if _, ok := f.Annotations.GetStringAnnotation(vueTableAnnotation, vueATCustom); ok {
+			custom = true
+		}
+	}
+	if f.Type.Complex && !custom {
 		if f.Type.Array != nil || f.Type.Map != nil {
 			return ""
 		} else if t, ok := cg.desc.FindType(f.Type.Type); ok {
@@ -1252,6 +1258,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
 {{end}}
 `
 
+// TODO onChange: use toString() if necessary
 const vueEntityLookupTSTemplate = `
 {{define "TS"}}
 <script lang="ts">
@@ -1341,7 +1348,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    if(this.searchString == event || this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}}.toString() == event)
+    if(this.searchString == event || this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}} == event)
       return
     if(this.timer)
       clearTimeout(this.timer);

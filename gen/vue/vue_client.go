@@ -700,7 +700,7 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 					break
 				}
 			}
-			if !found {
+			if !found && !f.Parent().HasModifier(gen.TypeModifierEmbeddable) {
 				if forTable {
 					cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find attr for table in type %s for %s", f.Pos, f.Type.Type, f.Name))
 				} else {
@@ -1169,7 +1169,9 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:true}) returnObject!: boolean
   @Prop({default:undefined}) hideAdd: boolean|undefined
   @Prop({default:false}) disabled!: boolean;{{if DictWithQualifier .}}
-  @Prop() qualifier: any;{{end}}
+  @Prop() qualifier: any;
+  @Prop({default: true}) qualifiedByObject!: boolean; 
+  @Prop() allowEmptyQualifier!: boolean;{{end}} 
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
   @Prop({default:()=>[]}) errorMessages!: string|string[];
   @Prop() filter!: (value: {{TypeName .}}) => boolean;
@@ -1207,7 +1209,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
       this.onValueChange();
   }
   async load() {
-    {{if DictWithQualifier .}}if(!({{IsQualifierFilled}}))
+    {{if DictWithQualifier .}}if(!({{IsQualifierFilled}}) && !this.allowEmptyQualifier)
       return;{{end}}
     this.loading = true;
     this.items = [];

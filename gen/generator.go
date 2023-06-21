@@ -134,14 +134,15 @@ func New(files []*File, o *Opts) *Project {
 		o.DefaultPackage = "generated"
 	}
 	return &Project{
-		Files:            files,
-		packages:         map[string]*Package{},
-		extPackages:      map[string]string{},
-		extTypes:         map[string]*DefinedType{},
-		Options:          o,
-		generators:       []Generator{cg},
-		featureProviders: []FeatureProvider{cg},
-		metaProcs:        []MetaProcessor{cg},
+		Files:             files,
+		packages:          map[string]*Package{},
+		extPackages:       map[string]string{},
+		extTypes:          map[string]*DefinedType{},
+		Options:           o,
+		generators:        []Generator{cg},
+		featureProviders:  []FeatureProvider{cg},
+		metaProcs:         []MetaProcessor{cg},
+		fragmentProviders: []CodeFragmentProvider{cg},
 	}
 
 }
@@ -912,23 +913,20 @@ func (desc *Package) processMeta(m *Meta) error {
 META_LOOP:
 	for m.Next() {
 		ok, err := desc.ParseAnnotationMeta(m)
+		if err != nil {
+			return err
+		}
 		if ok {
 			continue
 		}
 		for _, mp := range desc.Project.metaProcs {
 			ok, e := mp.ProcessMeta(desc, m)
+			if e != nil {
+				return e
+			}
 			if ok {
 				continue META_LOOP
 			}
-			if e != nil {
-				if err != nil {
-					desc.AddWarning(err.Error())
-				}
-				err = e
-			}
-		}
-		if err != nil {
-			return err
 		}
 		return fmt.Errorf("at %s: %d: meta slice not understandable", m.Pos.Filename, m.Pos.Line+m.start)
 	}

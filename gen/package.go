@@ -85,6 +85,13 @@ func (desc *Package) initEngine() {
 }
 
 func (desc *Package) beforePrepare() error {
+	var codeGenerator *CodeGenerator
+	for _, b := range desc.generators {
+		if g, ok := b.(*CodeGenerator); ok {
+			codeGenerator = g
+			break
+		}
+	}
 	for _, f := range desc.Files {
 		for _, e := range f.Entries {
 			if e.BaseTypeName != "" {
@@ -137,6 +144,9 @@ func (desc *Package) beforePrepare() error {
 			err = desc.processStandardTypeAnnotations(e)
 			if err != nil {
 				return err
+			}
+			if codeGenerator != nil {
+				err = codeGenerator.createAdditionalFields(e)
 			}
 			if e.HasModifier(TypeModifierSingleton) {
 				e.Features.Set(FeaturesAPIKind, FAPILevel, FAPILIgnore)
@@ -313,21 +323,12 @@ func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 					}
 					if dfn != "" {
 						e.Features.Set(FeatGoKind, FCGDeletedFieldName, dfn)
-						deletedField := &Field{
-							Pos:         e.Pos,
-							Name:        dfn,
-							Type:        &TypeRef{Type: TipDate},
-							Features:    Features{},
-							Annotations: Annotations{},
-							parent:      e,
-						}
-						deletedField.Features.Set(FeaturesDBKind, FCGName, mdDeletedFieldName)
-						deletedField.Features.Set(FeaturesCommonKind, FCGDeletedField, true)
-						e.Fields = append(e.Fields, deletedField)
-						e.FieldsIndex[dfn] = deletedField
 					}
 				}
 			}
+		case AnnotationAccess:
+			e.Features.Set(FeatGoKind, FCGLogCreated, a.GetBool(accessCreated, true))
+			e.Features.Set(FeatGoKind, FCGLogModified, a.GetBool(accessModified, true))
 		}
 	}
 	return

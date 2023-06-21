@@ -280,7 +280,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				idfld := qt.GetIdField()
-				return fmt.Sprintf("this.qualifier && [this.qualifier.%s]", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+				return fmt.Sprintf("this.qualifier && (this.qualifiedByObject ? [this.qualifier.%s] : [this.qualifier])", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
 			}
 			return ""
 		},
@@ -288,7 +288,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				idfld := qt.GetIdField()
-				return fmt.Sprintf("this.qualifier && this.qualifier.%s", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+				return fmt.Sprintf("this.qualifier && (!this.qualifiedByObject || this.qualifier.%s)", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
 			}
 			return ""
 
@@ -561,7 +561,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 			return nil
 		},
 		"ItemText": func() string {
-			return getTitleFieldName(e)
+			return cg.getTitleFieldName(e)
 		},
 		"ItemValue": func() string { return idf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "") },
 		"FieldWithAppend": func(f fieldDescriptor) bool {
@@ -736,6 +736,11 @@ import {RoundNumber} from '@/filters/numberFilter';
 				ret = ":returnObject='false' hideAdd"
 				if f.fld.Type.Array != nil {
 					ret += " multiple"
+				}
+				if origField, ok := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor); ok {
+					if origField, ok := origField.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy); ok {
+						ret += fmt.Sprintf(" :qualifiedByObject='false' :allowEmptyQualifier='true' :qualifier='value.%s'", origField.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+					}
 				}
 			} else if f.fld.Type.Array != nil {
 				ret = "multiple"

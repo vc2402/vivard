@@ -14,6 +14,8 @@ import (
 	_ "github.com/vc2402/vivard/gen/vue"
 )
 
+const version = "0.1.0"
+
 func main() {
 	pflag.String("package", "test", "default package name")
 	pflag.String("in", ".", "Input directory")
@@ -24,6 +26,7 @@ func main() {
 	pflag.String("cfg", ".vivgen", "Config file name")
 	pflag.String("pkgPrefix", "", "Package prefix")
 	pflag.Bool("v", false, "verbose")
+	pflag.Bool("version", false, "Show version")
 
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -32,6 +35,10 @@ func main() {
 	viper.AddConfigPath(viper.GetString("in"))
 	viper.AddConfigPath(viper.GetString("cfgPath"))
 	verbose := viper.GetBool("v")
+	if viper.GetBool("version") {
+		fmt.Printf("vivgen v%s\n", version)
+		return
+	}
 
 	viper.AutomaticEnv()
 	err := viper.ReadInConfig()

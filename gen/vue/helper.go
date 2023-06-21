@@ -661,13 +661,33 @@ func (th *helper) addComponent(cmp string, p string, entity *gen.Entity) {
 	}
 }
 
-func getTitleFieldName(e *gen.Entity) string {
-	f := getTitleField(e)
-	if f != nil {
-		return f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-	} else {
-		return ""
+func (cg *VueCLientGenerator) getTitleFieldName(e *gen.Entity) string {
+	fn := ""
+	for {
+		f := getTitleField(e)
+		if f == nil {
+			return ""
+		}
+		if fn != "" {
+			fn += "."
+		}
+		fn += f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
+		if !f.Type.Complex {
+			break
+		}
+
+		dt, ok := cg.desc.FindType(f.Type.Type)
+		if !ok {
+			cg.b.AddError(fmt.Errorf("at %v: type not found: '%s'", f.Pos, f.Type.Type))
+			return ""
+		}
+		e = dt.Entity()
+		if e == nil {
+			cg.b.AddError(fmt.Errorf("at %v: external type is not supported for title: '%s'", f.Pos, f.Type.Type))
+			return ""
+		}
 	}
+	return fn
 }
 
 func getTitleField(e *gen.Entity) *gen.Field {

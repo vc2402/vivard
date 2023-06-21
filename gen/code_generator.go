@@ -13,6 +13,8 @@ const (
 	codeGeneratorAnnotation     = "go"
 	codeGeneratorAnnotationTags = "gotags"
 	AnnotationDeletable         = "deletable"
+	// AnnotationAccess - log access (currently only createdOn and modifiedOn)
+	AnnotationAccess = "access"
 
 	//cgaNameTag may be used to set go name of field or type
 	cgaNameTag                     = "name"
@@ -20,10 +22,13 @@ const (
 
 	CodeGeneratorOptionsName = "go"
 
-	//deletableAnnotationWithField - generate Deleted field for entity that can be deleted
+	// deletableAnnotationWithField - generate Deleted field for entity that can be deleted
 	deletableAnnotationWithField = "field"
 	// deletableAnnotationIgnore - do not generate Delete operation (overwrites default generation)
 	deletableAnnotationIgnore = "ignore"
+
+	accessCreated  = "created"
+	accessModified = "modified"
 
 	AnnotationBulk    = "bulk" // special annotation for bulk operations
 	AnnotationBulkNew = "new"
@@ -60,12 +65,28 @@ const (
 	FCGExtEngineVar = "ext-engine-var"
 	// FCGDeletable - the entity is deletable
 	FCGDeletable = "deletable"
+	// FCGLogCreated - createdOn field and its filling is required
+	FCGLogCreated = "created"
+	// FCGLogModified - modifiedOn field and its filling is required
+	FCGLogModified = "modified"
 	// FCGDeletedFieldName - for entity; name of the deleted field (empty if not needed)
-	FCGDeletedFieldName = "del-fld"
+	FCGDeletedFieldName = "del-fld-name"
 	// FCGDeletedField - for field; set to true for DeletedOn field
 	FCGDeletedField = "del-fld"
+	// FCGLogCreatedField - createdOn field
+	FCGLogCreatedField = "created-fld"
+	// FCGLogModifiedField - modifiedOn field
+	FCGLogModifiedField = "modified-fld"
 	// FCGBulkNew - for Entity; true if should be generated bulk New operations
 	FCGBulkNew = "bulk-new"
+)
+
+type EntityTypeSelector string
+
+const (
+	EntityTypeAll           EntityTypeSelector = "all"
+	EntityTypeNone          EntityTypeSelector = "none"
+	EntityTypeNonDictionary EntityTypeSelector = "non-dictionary"
 )
 
 // CodeGeneratorOptions describes possible options for CodeGenerator
@@ -78,8 +99,10 @@ type CodeGeneratorOptions struct {
 	GenerateFieldsEnums bool
 	// GenerateRemoveOperation - generate Remove and Delete operations for each entity
 	GenerateRemoveOperation bool
-	// GenerateDeletedField - generate field Deleted *time.Time for every entity that can be deleted
+	// GenerateDeletedField - generate field DeletedOn *time.Time for every entity that can be deleted
 	GenerateDeletedField bool
+	// GenerateAccessField - generate fields CreatedOn and ModifiedOn (time.Time) for entities
+	GenerateAccessField EntityTypeSelector
 	// AllowEmbeddedArraysForDictionary - allow arrays of embedded types for dictionary
 	AllowEmbeddedArraysForDictionary bool
 	// GenerateBulkNew - generate bulk new operations for every type (default false)
@@ -133,7 +156,9 @@ const (
 	extendableTypeDescriptorType = "V_%sType"
 	extendedTypeTypeName         = "V_%s_%s"
 
-	deletedFieldName = "DeletedOn"
+	deletedFieldName  = "DeletedOn"
+	createdFieldName  = "CreatedOn"
+	modifiedFieldName = "ModifiedOn"
 )
 
 var cgComplexMethodsTemplates = [cgLastComplexMethod]string{
@@ -1142,4 +1167,76 @@ func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statemen
 		}
 	}
 	return
+}
+
+func (cg *CodeGenerator) createAdditionalFields(e *Entity) (err error) {
+	createTimeField := func(name string, nonNullable bool) *Field {
+		field := &Field{
+			Pos:         e.Pos,
+			Name:        name,
+			Type:        &TypeRef{Type: TipDate, NonNullable: nonNullable},
+			Features:    Features{},
+			Annotations: Annotations{},
+			parent:      e,
+		}
+		e.Fields = append(e.Fields, field)
+		e.FieldsIndex[name] = field
+		return field
+	}
+	if e.FB(FeatGoKind, FCGDeletable) {
+		if dfn := e.FS(FeatGoKind, FCGDeletedFieldName); dfn != "" ||
+			cg.options.GenerateDeletedField {
+			if dfn == "" {
+				dfn = deletedFieldName
+			}
+			deletedField := createTimeField(dfn, false)
+			deletedField.Features.Set(FeaturesDBKind, FCGName, mdDeletedFieldName)
+			deletedField.Features.Set(FeaturesCommonKind, FCGDeletedField, true)
+		}
+	}
+	isDictionary := e.HasModifier(TypeModifierDictionary)
+	generateAccessFields := cg.options.GenerateAccessField == EntityTypeAll ||
+		cg.options.GenerateAccessField == EntityTypeNonDictionary && !isDictionary
+
+	generateCreated, set := e.Features.GetBool(FeatGoKind, FCGLogCreated)
+	if !set {
+		generateCreated = generateAccessFields
+	}
+	if generateCreated {
+		e.Features.Set(FeatGoKind, FCGLogCreated, true)
+		cf := createTimeField(createdFieldName, true)
+		e.Features.Set(FeatGoKind, FCGLogCreatedField, cf)
+	}
+
+	generateModified, set := e.Features.GetBool(FeatGoKind, FCGLogModified)
+	if !set {
+		generateModified = generateAccessFields
+	}
+	if generateModified {
+		e.Features.Set(FeatGoKind, FCGLogModified, true)
+		mf := createTimeField(modifiedFieldName, true)
+		e.Features.Set(FeatGoKind, FCGLogModifiedField, mf)
+	}
+	return nil
+}
+
+func (cg *CodeGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+	if module == CodeFragmentModuleGeneral {
+		if cf, ok := ctx.(*CodeFragmentContext); ok {
+			if point == CFGPointEnterAfterHooks && cf.Entity != nil {
+				if action == MethodNew && (cf.Entity.FB(FeatGoKind, FCGLogCreated) || cf.Entity.FB(FeatGoKind, FCGLogModified)) ||
+					action == MethodSet && cf.Entity.FB(FeatGoKind, FCGLogModified) {
+					if mf, ok := cf.Entity.Features.GetField(FeatGoKind, FCGLogModifiedField); ok {
+						cf.Add(cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(jen.Qual("time", "Now").Params()))
+					}
+					if action == MethodNew {
+						if mf, ok := cf.Entity.Features.GetField(FeatGoKind, FCGLogCreatedField); ok {
+							cf.Add(cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(jen.Qual("time", "Now").Params()))
+						}
+					}
+				}
+			}
+		}
+	}
+	return nil
 }

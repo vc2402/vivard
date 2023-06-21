@@ -1365,13 +1365,13 @@ func (cg *GQLGenerator) getMapTypeName(ref *TypeRef, forInput bool) (string, err
 		switch ref.Map.ValueType.Type {
 		case TipString:
 			if forInput {
-				return vivard.KVStringStringInputName, nil
+				return vivard.KVStringStringInput, nil
 			} else {
 				return vivard.KVStringString, nil
 			}
 		case TipInt:
 			if forInput {
-				return vivard.KVStringIntInputName, nil
+				return vivard.KVStringIntInput, nil
 			} else {
 				return vivard.KVStringInt, nil
 			}

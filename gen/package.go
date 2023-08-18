@@ -1,7 +1,9 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
+	"github.com/alecthomas/participle/lexer"
 	"github.com/vc2402/vivard/utils"
 	"strings"
 
@@ -29,19 +31,43 @@ type Package struct {
 	//extEngines - map package -> engineVar
 	extEngines  map[string]string
 	fullPackage string
+	pos         lexer.Position
+	engineless  bool
 }
 
 func (desc *Package) postParsed() error {
 	desc.types = map[string]*DefinedType{}
+	checkName := func(name string) error {
+		if name == "" {
+			return errors.New("name can not be empty")
+		}
+		if dt, ok := desc.types[name]; ok {
+			return fmt.Errorf("name duplicate (first occurance at %v)", dt.pos)
+		}
+		return nil
+	}
 	for _, f := range desc.Files {
 		f.Pckg = desc
+		desc.prepareFileFields(f)
+		for _, e := range f.Enums {
+			e.File = f
+			e.Pckg = desc
+			err := e.postParsed()
+			if err != nil {
+				return err
+			}
+			for _, field := range e.Fields {
+				field.Parent = e
+			}
+		}
 		for _, e := range f.Entries {
 			e.File = f
 			e.Pckg = desc
 			desc.prepareModifiersFields(e)
 			typename := e.Name
-			if typename == "" {
-				return fmt.Errorf("undefined entity found")
+			err := checkName(typename)
+			if err != nil {
+				return fmt.Errorf("at %v: %v", e.Pos, err)
 			}
 			if !e.HasModifier(TypeModifierExternal) {
 				if dt, ok := desc.types[typename]; ok {
@@ -67,7 +93,15 @@ func (desc *Package) postParsed() error {
 					etdf.Features.Set(FeaturesCommonKind, FCReadonly, true)
 				}
 			}
-			desc.types[typename] = &DefinedType{name: typename, external: false, pckg: desc.Name, entry: e, packagePath: desc.fullPackage}
+			desc.types[typename] = &DefinedType{name: typename, external: false, pckg: desc.Name, entry: e, packagePath: desc.fullPackage, pos: e.Pos}
+		}
+		for _, enum := range f.Enums {
+			err := checkName(enum.Name)
+			if err != nil {
+				return fmt.Errorf("at %v: %v", enum.Pos, err)
+			}
+
+			desc.types[enum.Name] = &DefinedType{name: enum.Name, external: false, pckg: desc.Name, enum: enum, packagePath: desc.fullPackage, pos: enum.Pos}
 		}
 	}
 	return nil
@@ -93,6 +127,10 @@ func (desc *Package) beforePrepare() error {
 		}
 	}
 	for _, f := range desc.Files {
+		err := desc.processModifiers(f)
+		if err != nil {
+			return fmt.Errorf("at %v: %w", f.Pos, err)
+		}
 		for _, e := range f.Entries {
 			if e.BaseTypeName != "" {
 				bt := e.GetBaseType()
@@ -109,6 +147,7 @@ func (desc *Package) beforePrepare() error {
 				return fmt.Errorf("at %v: %w", e.Pos, err)
 			}
 			for _, f := range e.Fields {
+				f.PostProcess()
 				err = desc.processModifiers(f)
 				if err != nil {
 					return fmt.Errorf("at %v: %w", f.Pos, err)
@@ -124,7 +163,7 @@ func (desc *Package) beforePrepare() error {
 				}
 			}
 			if e.HasModifier(TypeModifierExternal) {
-				err := desc.Project.addExternal(e)
+				err := desc.Project.addExternal(e, desc)
 				if err != nil {
 					return err
 				}
@@ -132,6 +171,10 @@ func (desc *Package) beforePrepare() error {
 		}
 	}
 	for _, f := range desc.Files {
+		err := desc.processStandardFileAnnotations(f)
+		if err != nil {
+			return err
+		}
 		for _, e := range f.Entries {
 			err := desc.checkType(e)
 			if err != nil {
@@ -168,6 +211,10 @@ func (desc *Package) prepare() error {
 	return nil
 }
 
+func (desc *Package) prepareFileFields(f *File) {
+	f.Annotations = Annotations{}
+}
+
 func (desc *Package) prepareModifiersFields(t *Entity) {
 	t.Annotations = Annotations{}
 	for _, f := range t.Fields {
@@ -187,6 +234,16 @@ func (desc *Package) processModifiers(item interface{}) error {
 					return err
 				}
 				t.Annotations[m.Annotation.Name] = m.Annotation
+			}
+		}
+	} else if f, ok := item.(*File); ok {
+		for _, m := range f.Modifiers {
+			if m.Annotation != nil {
+				err := desc.checkAnnotation(m.Annotation, item)
+				if err != nil {
+					return err
+				}
+				f.Annotations[m.Annotation.Name] = m.Annotation
 			}
 		}
 	} else {
@@ -249,6 +306,10 @@ func (desc *Package) checkStandardAnnotation(ann *Annotation, item interface{}) 
 	switch ann.Name {
 	case AnnotationFind:
 		ok = true
+	case AnnotationRefPackage, AnnotationEngineless:
+		if _, isFile := item.(*File); isFile {
+			ok = true
+		}
 	default:
 		gopref := fmt.Sprintf("%s:", AnnotationGo)
 		if ann.Name == AnnotationGo || (len(ann.Name) > len(gopref) && ann.Name[:len(gopref)] == gopref) {
@@ -258,6 +319,26 @@ func (desc *Package) checkStandardAnnotation(ann *Annotation, item interface{}) 
 	return
 }
 
+func (desc *Package) processStandardFileAnnotations(f *File) (err error) {
+	for _, a := range f.Annotations {
+		switch a.Name {
+		case AnnotationRefPackage:
+			packageName, ok := a.GetNameTag(ARFPackageName)
+			if !ok {
+				return fmt.Errorf("at %v: package name should be given for annotation %s", a.Pos, AnnotationRefPackage)
+			}
+			desc.GetExtEngineRef(packageName)
+		case AnnotationEngineless:
+			if len(a.Values) == 0 || a.Values[0].Key == "false" {
+				desc.engineless = true
+				desc.pos = a.Pos
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 	for _, a := range e.Annotations {
 		switch a.Name {
@@ -265,7 +346,7 @@ func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 			for _, at := range a.Values {
 				if at.Value == nil {
 					t, ok := desc.FindType(at.Key)
-					if !ok {
+					if !ok || t.entry == nil {
 						return fmt.Errorf("at %v: type %s not found for %s annotation", at.Pos, at.Key, AnnotationFind)
 					}
 					if _, ok := t.entry.Features.GetEntity(FeaturesAPIKind, FAPIFindParamType); ok {
@@ -371,7 +452,7 @@ func (desc *Package) checkTypeRelations(t *Entity) error {
 			if !f.Type.Complex || f.Type.Array == nil {
 				return fmt.Errorf("one-to-many modifier can't be used with type %s", f.Type.Type)
 			}
-			if tt, ok := desc.FindType(f.Type.Array.Type); ok {
+			if tt, ok := desc.FindType(f.Type.Array.Type); ok && tt.entry != nil {
 				//TODO make possible to change foreign-key field
 				fldname := t.Name + "ID"
 				var fkField *Field
@@ -404,7 +485,7 @@ func (desc *Package) checkTypeRelations(t *Entity) error {
 				return fmt.Errorf("undefined type %s for foreign-key field ", f.Type.Array.Type)
 			}
 		} else if f.Type.Array != nil {
-			if refT, ok := desc.FindType(f.Type.Array.Type); ok && !f.HasModifier(AttrModifierEmbeddedRef) {
+			if refT, ok := desc.FindType(f.Type.Array.Type); ok && !f.HasModifier(AttrModifierEmbeddedRef) && refT.entry != nil {
 				f.Features.Set(FeaturesCommonKind, FCManyToManyType, refT.entry)
 				f.Features.Set(FeaturesCommonKind, FCManyToManyIDField, refT.entry.GetIdField())
 				refT.entry.Features.Set(FeaturesCommonKind, FCRefsAsManyToMany, true)
@@ -427,6 +508,14 @@ func (desc *Package) doGenerate(bldr *Builder) error {
 }
 
 func (desc *Package) generateEngine() error {
+
+	if desc.engineless {
+		if len(desc.extEngines) > 0 {
+			return fmt.Errorf("at %v: engineless can not be used: there are references to another packages", desc.pos)
+		}
+		//TODO check another requirements for Engine
+		return nil
+	}
 	extInit := &jen.Statement{}
 	utils.WalkMap(
 		desc.extEngines,
@@ -441,15 +530,6 @@ func (desc *Package) generateEngine() error {
 			return nil
 		},
 	)
-	//for pckg, varname := range desc.extEngines {
-	//	pn := desc.Project.GetFullPackage(pckg)
-	//	desc.Engine.Fields.Add(
-	//		jen.Id(varname).Op("*").Qual(pn, "Engine").Line(),
-	//	)
-	//	extInit.Add(
-	//		jen.Id(EngineVar).Dot(varname).Op("=").Id("v").Dot("Engine").Params(jen.Lit(pckg)).Assert(jen.Op("*").Qual(pn, "Engine")).Line(),
-	//	)
-	//}
 	cf := CodeFragmentContext{
 		Package:    desc,
 		MethodKind: EngineNotAMethod,
@@ -639,9 +719,30 @@ func (desc *Package) RegisterType(e *Entity) {
 	desc.types[e.Name] = &DefinedType{name: e.Name, external: false, pckg: desc.Name, entry: e, packagePath: desc.fullPackage}
 }
 
-// Entity returnsunderlaying type
+// Entity returns underlying type
 func (dt *DefinedType) Entity() *Entity {
 	return dt.entry
+}
+
+// Enum returns underlying type
+func (dt *DefinedType) Enum() *Enum {
+	return dt.enum
+}
+
+func (dt *DefinedType) IdType() (string, error) {
+	if dt.entry != nil {
+		if idField := dt.entry.GetIdField(); idField != nil {
+			return idField.Type.Type, nil
+		}
+		return "", errors.New("id field is not defined")
+	} else if dt.enum != nil {
+		return dt.enum.AliasForType, nil
+	}
+	return "", errors.New("type is not defined")
+}
+
+func (dt *DefinedType) Position() lexer.Position {
+	return dt.pos
 }
 
 // GetName returns name of entity
@@ -712,7 +813,7 @@ func (desc *Package) GetHookName(hookKind string, f *Field) string {
 // HasModifier checks whether type that given TypeRef refers to has modifier
 func (desc *Package) HasModifier(tr *TypeRef, modifier TypeModifier) bool {
 	if t, ok := desc.FindType(tr.Type); ok {
-		return t.Entity().HasModifier(modifier)
+		return t.Entity() != nil && t.Entity().HasModifier(modifier)
 	}
 	return false
 }

@@ -33,6 +33,7 @@ public interface Types {
   IElementType PARAM = new ElementType("PARAM");
   IElementType PARAMS = new ElementType("PARAMS");
   IElementType SIMPLE_TYPE = new ElementType("SIMPLE_TYPE");
+  IElementType ST_AUTO = new ElementType("ST_AUTO");
   IElementType ST_BOOL = new ElementType("ST_BOOL");
   IElementType ST_DATE = new ElementType("ST_DATE");
   IElementType ST_FLOAT = new ElementType("ST_FLOAT");
@@ -45,6 +46,7 @@ public interface Types {
 
   IElementType ANNOTATIONTAG = new TokenType("ANNOTATIONTAG");
   IElementType ATTRMODIFIER = new TokenType("ATTRMODIFIER");
+  IElementType AUTO = new TokenType("AUTO");
   IElementType BOOL = new TokenType("BOOL");
   IElementType BOOL_VALUE = new TokenType("BOOL_VALUE");
   IElementType BRACESCLOSE = new TokenType("BRACESCLOSE");
@@ -157,6 +159,9 @@ public interface Types {
       }
       else if (type == SIMPLE_TYPE) {
         return new SDFSimpleTypeImpl(node);
+      }
+      else if (type == ST_AUTO) {
+        return new SDFStAutoImpl(node);
       }
       else if (type == ST_BOOL) {
         return new SDFStBoolImpl(node);

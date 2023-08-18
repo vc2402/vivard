@@ -147,7 +147,7 @@ func (ms *Service) registerNewDB(ctx context.Context, alias string) (*mongo.Data
 		if db, ok := cf["dbname"].(string); ok {
 			conf.DBName = db
 		} else if db, ok := cf["db-name"].(string); ok {
-			conf.ConnectString = db
+			conf.DBName = db
 		}
 	}
 	if !confFound && ms.config != nil {

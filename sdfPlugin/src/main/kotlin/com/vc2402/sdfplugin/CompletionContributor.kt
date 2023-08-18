@@ -179,8 +179,8 @@ class SDFCompletionContributor : CompletionContributor(), DumbAware {
                     @NotNull context: ProcessingContext,
                     @NotNull resultSet: CompletionResultSet
                 ) {
-                    var t = parameters.position
-                    if(t.parent is PsiFile) {
+                    var t: PsiElement? = parameters.position
+                    if(t!!.parent is PsiFile) {
                         t = t.prevSibling
                         var canBeTypeDeclaration = true
                         var canBeType = true

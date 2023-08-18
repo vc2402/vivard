@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+	"github.com/vc2402/vivard/utils"
 	"strings"
 
 	"github.com/dave/jennifer/jen"
@@ -654,6 +655,11 @@ func (cg *MongoGenerator) generateRemoveFKFunc(e *Entity) error {
 func (cg *MongoGenerator) generateReplaceFKFunc(e *Entity) error {
 	name := e.Name
 	fname := cg.desc.GetMethodName(MethodReplaceFK, name)
+	foreignKeyField, ok := e.Features.GetField(FeaturesCommonKind, FCForeignKeyField)
+	if !ok {
+		return fmt.Errorf("at %v: no foreign key field found")
+	}
+	foreignKeyFieldName := foreignKeyField.Name
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
 		jen.Id("ctx").Qual("context", "Context"), jen.Id("parentID").Int(), jen.Id("vals").Index().Op("*").Id(e.Name)).
 		Parens(jen.Id("err").Error()).Block(
@@ -661,7 +667,7 @@ func (cg *MongoGenerator) generateReplaceFKFunc(e *Entity) error {
 		returnIfErr(),
 		jen.Id("items").Op(":=").Make(jen.Index().Interface(), jen.Len(jen.Id("vals"))),
 		jen.For(jen.List(jen.Id("i"), jen.Id("v").Op(":=").Range().Id("vals"))).Block(
-			//TODO fill the parent reference field
+			jen.Id("v").Dot(foreignKeyFieldName).Op("=").Id("parentID"),
 			jen.Id("items").Index(jen.Id("i")).Op("=").Id("v"),
 		),
 		jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("InsertMany").Params(
@@ -735,22 +741,45 @@ func (cg *MongoGenerator) generateLookupFunc(e *Entity) error {
 			}
 			if len(searchFields) > 0 {
 				var or []jen.Code
-				for name, fn := range searchFields {
-					if len(searchFields) == 1 {
-						g.Id("q").Index(jen.Lit(name)).Op("=").Add(makeRegexp(fn))
-					} else {
-						or = append(or, jen.Line().Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit(name): makeRegexp(fn)}))
-					}
-				}
+				utils.WalkMap(
+					searchFields,
+					func(val string, key string) error {
+						if len(searchFields) == 1 {
+							g.Id("q").Index(jen.Lit(key)).Op("=").Add(makeRegexp(val))
+						} else {
+							or = append(or, jen.Line().Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit(key): makeRegexp(val)}))
+						}
+						return nil
+					},
+				)
 				if len(searchFields) > 1 {
 					g.Id("q").Index(jen.Lit("$or")).Op("=").Qual(bsonPackage, "A").Values(or...)
 				}
+				//for name, fn := range searchFields {
+				//	if len(searchFields) == 1 {
+				//		g.Id("q").Index(jen.Lit(name)).Op("=").Add(makeRegexp(fn))
+				//	} else {
+				//		or = append(or, jen.Line().Qual(bsonPackage, "M").Values(jen.Dict{jen.Lit(name): makeRegexp(fn)}))
+				//	}
+				//}
+				//if len(searchFields) > 1 {
+				//	g.Id("q").Index(jen.Lit("$or")).Op("=").Qual(bsonPackage, "A").Values(or...)
+				//}
 			}
-			for name, fld := range otherFields {
-				g.Id("q").Index(jen.Lit(name)).Op("=").Add(fld)
+			if len(otherFields) > 0 {
+				utils.WalkMap(
+					otherFields,
+					func(val jen.Code, key string) error {
+						g.Id("q").Index(jen.Lit(key)).Op("=").Add(val)
+						return nil
+					},
+				)
 			}
+			//for name, fld := range otherFields {
+			//	g.Id("q").Index(jen.Lit(name)).Op("=").Add(fld)
+			//}
 		} else {
-			// allow send query as json
+			// allow to send query as json
 			g.Qual("encoding/json", "Unmarshal").Params(jen.Op("[]").Byte().Parens(jen.Id("query")), jen.Op("&").Id("q"))
 		}
 		g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
@@ -844,6 +873,7 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 								jen.Id("arr").Index(jen.Id("i")).Op("=").Qual(bsonPackage, "M").Values(
 									jen.Dict{jen.Lit(mngFldName).Op("+").Lit(".").Op("+").Id("k"): jen.Id("val")},
 								),
+								jen.Id("i").Op("++"),
 							)
 							g.Id("q").Index(jen.Lit("$and")).Op("=").Id("arr")
 						} else {
@@ -870,11 +900,19 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 								}
 								switch op {
 								case AFTEqual:
-									g.Add(pref).Op("=").Id("query").Dot(f.Name)
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$eq")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Id("query").Dot(f.Name)
+									}
 								case AFTNotEqual:
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Lit("$ne"): jen.Id("query").Dot(f.Name),
-									})
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$ne")).Op("=").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$ne"): jen.Id("query").Dot(f.Name),
+										})
+									}
 								case AFTGreaterThan:
 									if addToExisting {
 										g.Add(pref).Index(jen.Lit("$gt")).Op("=").Id("query").Dot(f.Name)
@@ -925,9 +963,16 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 										jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
 										jen.Lit("$options"): jen.Lit("i"),
 									})
-								case AFTIsNull:
-									g.Id("nullOp").Op(":=").Lit("$ne")
-									g.If(jen.Op("*").Id("query").Dot(f.Name)).Block(jen.Id("nullOp").Op("=").Lit("$eq"))
+								case AFTIsNull, AFTIsNotNull:
+									ops := [...]string{"$eq", "$ne"}
+									idx := 0
+									if op == AFTIsNotNull {
+										idx = 1
+									}
+									g.Var().Id("nullOp").String()
+									g.If(jen.Op("*").Id("query").Dot(f.Name)).
+										Block(jen.Id("nullOp").Op("=").Lit(ops[idx])).
+										Else().Block(jen.Id("nullOp").Op("=").Lit(ops[1-idx]))
 									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
 										jen.Id("nullOp"): jen.Nil(),
 									})
@@ -970,9 +1015,29 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 		).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
 			g.Id("ret").Op(":=").Index().Op("*").Id(name).Values(jen.Dict{})
 			g.List(jen.Id("q"), jen.Id("_")).Op(":=").Id(EngineVar).Dot(generatorFuncName).Params(jen.Id("query"))
+			if f, ok := e.Features.Get(mongoFeatures, mfSortField); ok {
+				fld, ok := f.(*Field)
+				if !ok {
+					cg.desc.AddError(fmt.Errorf("at %v: internal error in mongo:listAll: sort feature is not a field: %T", e.Pos, f))
+					return
+				}
+				order := 1
+				if fld.FB(mongoFeatures, mfSortDesc) {
+					order = -1
+				}
+
+				g.Id("op").Op(":=").Qual(optionsPackage, "Find").Call().Dot("SetSort").Params(
+					jen.Qual(bsonPackage, "M").Values(jen.Dict{
+						jen.Lit(cg.fieldName(fld)): jen.Lit(order),
+					}),
+				)
+			} else {
+				g.Id("op").Op(":=").Qual(optionsPackage, "Find").Call()
+			}
 			g.List(jen.Id("curr"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineMongo).Dot("Collection").Params(jen.Id(e.FS(mongoFeatures, mfCollectionConst))).Dot("Find").Params(
 				jen.Id("ctx"),
 				jen.Id("q"),
+				jen.Id("op"),
 			)
 			g.Add(returnIfErrValue(jen.Nil()))
 			g.Defer().Id("curr").Dot("Close").Params(jen.Id("ctx"))
@@ -1026,11 +1091,16 @@ func (cg *MongoGenerator) generateCongifLoadFunc(e *Entity) error {
 						g.Id("curr").Dot("Current").Dot("Lookup").Call(jen.Lit("value")).Dot("Unmarshal").Call(jen.Op("&").Id("ret").Dot(f.Name))
 						if /*isPointer &&*/ complex {
 							engVar := cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCEngineVar)
-							g.If(jen.Id("ret").Dot(f.Name).Op("==").Nil()).Block(
-								jen.List(jen.Id("ret").Dot(f.Name), jen.Id("_")).Op("=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(
-									jen.Id("ctx"),
-								),
-							)
+							ent := ft.Entity()
+							if ent == nil {
+								cg.desc.AddError(fmt.Errorf("at %v: only Entity can be used here", ft.pos))
+							} else {
+								g.If(jen.Id("ret").Dot(f.Name).Op("==").Nil()).Block(
+									jen.List(jen.Id("ret").Dot(f.Name), jen.Id("_")).Op("=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ent.Name)).Params(
+										jen.Id("ctx"),
+									),
+								)
+							}
 						}
 					})
 				}

@@ -31,6 +31,7 @@ STRING = "string"
 BOOL = "bool"
 DATE = "date"
 MAP = "map"
+AUTO = "auto"
 BOOL_VALUE = "true" | "false"
 MORE = "..."
 STATEMENT_END = ";"
@@ -41,8 +42,8 @@ ANNOTATIONTAG = "$" {ANNOTATIONNAME} (":" {ANNOTATIONNAME})?
 ANNOTATIONNAME = [a-zA-Z_][a-zA-Z0-9_-]*
 //HOOKTAG = "@"[a-zA-Z_][a-zA-Z0-9_-]*
 HOOKTAG = "@" {HOOKNAME} (":" {IDENTIFIER})?
-HOOKNAME = "create" | "change" | "changed" | "start" | "resolve" | "set" | {time_hook}
-time_hook = "time="{STRING_VALUE}
+HOOKNAME = "create" | "change" | "changed" | "start" | "resolve" | "set" | "time"
+//time_hook = "time="{STRING_VALUE}
 STRING_VALUE = "\"" ([^\"\\] | "\\" {any} )* "\""
 NUMBER_VALUE = ("." | {digit}) ("." | {digit})*
 //PUNCT = "!"…"/" | ":"…"@" | "["…` + "\"`\"" + ` | "{"…"~" .
@@ -66,14 +67,15 @@ any = "\u0000"…"\uffff"
 alpha = [a-zA-Z]
 digit = [0-9]
 
-//%state WAITING_ID
+%state WAITING_TYPE
+
+%state WAITING_ATTR_MODIFIER
+
 %%
 
 <YYINITIAL> {COMMENT_LINE}                           { yybegin(YYINITIAL); return Types.COMMENT_LINE; }
 
-<YYINITIAL> {DUMMYIDENTIFIER}                           { yybegin(YYINITIAL); return Types.DUMMYIDENTIFIER; }
-
-<YYINITIAL> {STATEMENT_END}                           { yybegin(YYINITIAL); return Types.STATEMENT_END; }
+<YYINITIAL, WAITING_TYPE> {STATEMENT_END}                           { yybegin(YYINITIAL); return Types.STATEMENT_END; }
 
 <YYINITIAL> {PACKAGE}                           { yybegin(YYINITIAL); return Types.PACKAGE; }
 
@@ -83,29 +85,69 @@ digit = [0-9]
 
 <YYINITIAL> {META}                                { yybegin(YYINITIAL); return Types.META; }
 
-<YYINITIAL> {MAP}                                { yybegin(YYINITIAL); return Types.MAP; }
+<WAITING_TYPE> {
+        {MAP}                                {return Types.MAP; }
 
-<YYINITIAL> {INT}                                { yybegin(YYINITIAL); return Types.INT; }
+        {STRING}                                { return Types.STRING; }
 
-<YYINITIAL> {STRING}                                { yybegin(YYINITIAL); return Types.STRING; }
+        {FLOAT}                                { return Types.FLOAT; }
 
-<YYINITIAL> {FLOAT}                                { yybegin(YYINITIAL); return Types.FLOAT; }
+        {BOOL}                                {  return Types.BOOL; }
 
-<YYINITIAL> {BOOL}                                { yybegin(YYINITIAL); return Types.BOOL; }
+        {AUTO}                                { return Types.AUTO; }
 
-<YYINITIAL> {DATE}                                { yybegin(YYINITIAL); return Types.DATE; }
+        {DATE}                                {  return Types.DATE; }
+
+        {INT}                                {  return Types.INT; }
+
+        {IDENTIFIER}                          {  return Types.IDENTIFIER; }
+
+        {BRACKETOPEN}                        { return Types.BRACKETOPEN; }
+
+        {BRACKETCLOSE}                        { return Types.BRACKETCLOSE; }
+
+      {NOTNULL}                                     { return Types.NOTNULL; }
+}
+
+
+
+<WAITING_ATTR_MODIFIER> {
+     {ATTRMODIFIER}                  { return Types.ATTRMODIFIER; }
+
+     {DUMMYIDENTIFIER}              { return Types.DUMMYIDENTIFIER; }
+
+     {ANNOTATIONTAG}                  { return Types.ANNOTATIONTAG; }
+
+     {STRING_VALUE}                  { return Types.STRING_VALUE; }
+
+     {BR_OPEN}                       {return Types.BR_OPEN; }
+
+     {BR_CLOSE}                      { return Types.BR_CLOSE; }
+
+      {EQUAL}                                     { return Types.EQUAL; }
+
+      {NUMBER_VALUE}                                     {return Types.NUMBER_VALUE; }
+
+      {BOOL_VALUE}                                     {return Types.BOOL_VALUE; }
+
+     {MODIFIERCLOSE}                 { yybegin(YYINITIAL); return Types.MODIFIERCLOSE; }
+
+     {IDENTIFIER}                  { return Types.IDENTIFIER; }
+
+      {HOOKTAG}                                     {return Types.HOOKTAG; }
+}
 
 <YYINITIAL> {META_LINE}                                { yybegin(YYINITIAL); return Types.META_LINE; }
 
 <YYINITIAL> {TYPEMODIFIER}                                     { yybegin(YYINITIAL); return Types.TYPEMODIFIER; }
 
-<YYINITIAL> {ATTRMODIFIER}                                     { yybegin(YYINITIAL); return Types.ATTRMODIFIER; }
+//<YYINITIAL> {ATTRMODIFIER}                                     { yybegin(YYINITIAL); return Types.ATTRMODIFIER; }
 
-<YYINITIAL> {MORE}                                     { yybegin(YYINITIAL); return Types.MORE; }
+<YYINITIAL> {MORE}                                     {return Types.MORE; }
 
-<YYINITIAL> {NOTNULL}                                     { yybegin(YYINITIAL); return Types.NOTNULL; }
+<YYINITIAL> {NOTNULL}                                     { return Types.NOTNULL; }
 
-<YYINITIAL> {QUALIFIEDNAME}                                     { yybegin(YYINITIAL); return Types.QUALIFIEDNAME; }
+<YYINITIAL, WAITING_TYPE> {QUALIFIEDNAME}                                     { return Types.QUALIFIEDNAME; }
 
 //<WAITING_ID> {IDENTIFIER}                                     { yybegin(YYINITIAL); return Types.IDENTIFIER; }
 
@@ -129,7 +171,7 @@ digit = [0-9]
 
 <YYINITIAL> {BR_OPEN}                                     { yybegin(YYINITIAL); return Types.BR_OPEN; }
 
-<YYINITIAL> {BR_CLOSE}                                     { yybegin(YYINITIAL); return Types.BR_CLOSE; }
+<YYINITIAL, WAITING_TYPE> {BR_CLOSE}                                     { yybegin(YYINITIAL); return Types.BR_CLOSE; }
 
 <YYINITIAL> {BRACKETOPEN}                                     { yybegin(YYINITIAL); return Types.BRACKETOPEN; }
 
@@ -139,16 +181,18 @@ digit = [0-9]
 
 <YYINITIAL> {BRACESCLOSE}                                     { yybegin(YYINITIAL); return Types.BRACESCLOSE; }
 
-<YYINITIAL> {SEMI}                                     { yybegin(YYINITIAL); return Types.SEMI; }
+<YYINITIAL> {SEMI}                                     { yybegin(WAITING_TYPE); return Types.SEMI; }
 
-<YYINITIAL> {EQUAL}                                     { yybegin(YYINITIAL); return Types.EQUAL; }
+<YYINITIAL> {EQUAL}                                     { return Types.EQUAL; }
 
-<YYINITIAL> {COMMA}                                     { yybegin(YYINITIAL); return Types.COMMA; }
+{COMMA}                                     { yybegin(YYINITIAL); return Types.COMMA; }
 
-<YYINITIAL> {MODIFIEROPEN}                                     { yybegin(YYINITIAL); return Types.MODIFIEROPEN; }
+<YYINITIAL, WAITING_TYPE> {MODIFIEROPEN}                                     { yybegin(WAITING_ATTR_MODIFIER); return Types.MODIFIEROPEN; }
 
-<YYINITIAL> {MODIFIERCLOSE}                                     { yybegin(YYINITIAL); return Types.MODIFIERCLOSE; }
+//<YYINITIAL> {MODIFIERCLOSE}                                     { yybegin(YYINITIAL); return Types.MODIFIERCLOSE; }
 
-({CRLF}|{WHITE_SPACE})+                                     { yybegin(YYINITIAL); return TokenType.WHITE_SPACE; }
+({CRLF}|{WHITE_SPACE})+                                     { return TokenType.WHITE_SPACE; }
 
 [^]                                                         { return TokenType.BAD_CHARACTER; }
+
+{DUMMYIDENTIFIER}                           { return Types.DUMMYIDENTIFIER; }

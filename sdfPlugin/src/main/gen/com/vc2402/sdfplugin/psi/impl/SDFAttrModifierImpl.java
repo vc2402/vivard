@@ -33,4 +33,10 @@ public class SDFAttrModifierImpl extends ASTWrapperPsiElement implements SDFAttr
     return findChildByClass(SDFAnnotation.class);
   }
 
+  @Override
+  @Nullable
+  public SDFHookTag getHookTag() {
+    return findChildByClass(SDFHookTag.class);
+  }
+
 }

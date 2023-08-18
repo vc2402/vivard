@@ -29,6 +29,12 @@ public class SDFSimpleTypeImpl extends ASTWrapperPsiElement implements SDFSimple
 
   @Override
   @Nullable
+  public SDFStAuto getStAuto() {
+    return findChildByClass(SDFStAuto.class);
+  }
+
+  @Override
+  @Nullable
   public SDFStBool getStBool() {
     return findChildByClass(SDFStBool.class);
   }

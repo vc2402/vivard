@@ -100,6 +100,7 @@ func (ncg *DictionariesGenerator) ProvideFeature(kind FeatureKind, name string, 
 }
 
 func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
+	ncg.desc = desc
 	if fld, ok := item.(*Field); ok {
 		switch ann.Name {
 		case AnnQual:
@@ -115,7 +116,7 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 				if !ok {
 					return true, fmt.Errorf("at %v: not found type %s for qualifier", fld.Pos, qt)
 				}
-				if !qr.Entity().HasModifier(TypeModifierDictionary) {
+				if qr.Entity() == nil || !qr.Entity().HasModifier(TypeModifierDictionary) {
 					return true, fmt.Errorf("at %v: only dictionary can be used for qualifier", fld.Pos)
 				}
 				fld.Parent().Features.Set(FeatureDictKind, FDQualifierType, qr.Entity())
@@ -127,7 +128,7 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 		case AnnQualBy:
 			if t, ok := desc.FindType(fld.Type.Type); ok {
 				dict := t.Entity()
-				if dict.HasModifier(TypeModifierDictionary) {
+				if dict != nil && dict.HasModifier(TypeModifierDictionary) {
 					if ann.Values == nil {
 						return true, fmt.Errorf("at %v: qualified-by should reference to field", fld.Pos)
 					}
@@ -159,6 +160,7 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 }
 
 func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
+	ncg.desc = desc
 	for _, file := range desc.Files {
 		for _, t := range file.Entries {
 			if t.HasModifier(TypeModifierDictionary) {
@@ -187,16 +189,18 @@ func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
 				if qb, ok := f.Features.GetField(FeatureDictKind, FDQualifiedBy); ok {
 					dt, _ := desc.FindType(f.Type.Type)
 					dict := dt.Entity()
-					qual, ok := dict.Features.GetField(FeatureDictKind, FDQualifier)
-					if !ok {
-						return fmt.Errorf("at %v: qualified-by for not qualified dictionary", f.Pos)
-					}
-					dqt := qual.Type.Type
-					if qual.Type.Array != nil {
-						dqt = qual.Type.Array.Type
-					}
-					if qb.Type.Type != dqt {
-						return fmt.Errorf("at %v: qualified-by should reference to type '%s' but refs to '%s'", f.Pos, dqt, qb.Type.Type)
+					if dict != nil {
+						qual, ok := dict.Features.GetField(FeatureDictKind, FDQualifier)
+						if !ok {
+							return fmt.Errorf("at %v: qualified-by for not qualified dictionary", f.Pos)
+						}
+						dqt := qual.Type.Type
+						if qual.Type.Array != nil {
+							dqt = qual.Type.Array.Type
+						}
+						if qb.Type.Type != dqt {
+							return fmt.Errorf("at %v: qualified-by should reference to type '%s' but refs to '%s'", f.Pos, dqt, qb.Type.Type)
+						}
 					}
 				}
 
@@ -744,9 +748,11 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 					}
 					if dt, ok := ncg.desc.FindType(name); ok {
 						ft = dt.Entity()
-						ca := ft.Annotations[AnnotationConfig]
-						if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
-							continue
+						if ft != nil {
+							ca := ft.Annotations[AnnotationConfig]
+							if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+								continue
+							}
 						}
 					} else {
 						continue
@@ -791,9 +797,11 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 					}
 					if dt, ok := ncg.desc.FindType(name); ok {
 						ft = dt.Entity()
-						ca := ft.Annotations[AnnotationConfig]
-						if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
-							continue
+						if ft != nil {
+							ca := ft.Annotations[AnnotationConfig]
+							if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+								continue
+							}
 						}
 					} else {
 						continue
@@ -940,17 +948,40 @@ func (ncg *DictionariesGenerator) addIndexDescriptor(t *Entity, f *Field, unique
 		idfld := qt.GetIdField()
 		tip = idfld.Type.Type
 	}
-	var keyType *jen.Statement
-	switch tip {
-	case TipInt:
-		keyType = jen.Int()
-	case TipString:
-		keyType = jen.String()
-	default:
+	var getKeyType func(tip string) *jen.Statement
+	getKeyType = func(tip string) *jen.Statement {
+		switch tip {
+		case TipInt:
+			return jen.Int()
+		case TipString:
+			return jen.String()
+		default:
+			if refType, ok := ncg.desc.FindType(tip); ok && refType.enum != nil {
+				return jen.Id(refType.enum.Name)
+			}
+		}
+		return nil
+	}
+	keyType := getKeyType(tip)
+	if keyType == nil {
 		if f.FB(FeatureDictKind, FDQualifier) {
 			return "", fmt.Errorf("at %s: only dicts with id field of type int and string may be used as qualifier", f.Pos)
 		}
-		return "", fmt.Errorf("at %s: only int and string fields may be used for indexes", f.Pos)
+		if f.Type.Array == nil && f.Type.Map == nil {
+			if refType, ok := ncg.desc.FindType(f.Type.Type); ok {
+				if refType.entry != nil {
+					idFld := refType.entry.GetIdField()
+					if idFld != nil {
+						keyType = getKeyType(idFld.Type.Type)
+					}
+				} else if refType.enum != nil {
+					keyType = getKeyType(refType.enum.AliasForType)
+				}
+			}
+		}
+		if keyType == nil {
+			return "", fmt.Errorf("at %s: only int and string fields may be used for indexes", f.Pos)
+		}
 	}
 	descriptors[f.Name] = indexDescriptor{
 		field:        f,

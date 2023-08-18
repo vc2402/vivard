@@ -33,15 +33,18 @@ const (
 	vaTryMerge           = "tryMerge"
 	vaObjectWise         = "object"
 	vaTypeWise           = "type"
+	// to set name of sequence; bu default it is <typeName>Version
+	vaSequenceName = "sequence"
 
 	VersionFeatureKind FeatureKind = "f-ver"
 	// VFField if set for Entity version should be tracked in field with name as feature value
 	VFField = "field"
 	// VFBehaviour is string (one of  vaBehaviourWarning, vaBehaviourError or vaBehaviourNothing)
 	//  means what to do if version of saving object is not the same as current
-	VFBehaviour = "beh"
-	VFTryMerge  = "mer"
-	VFScope     = "scope"
+	VFBehaviour    = "beh"
+	VFTryMerge     = "mer"
+	VFScope        = "scope"
+	VFSequenceName = "seq-name"
 
 	VersionDefaultFieldName = "Version"
 )
@@ -74,6 +77,7 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 			tryMerge := cg.o.TryMerge
 			fieldName := cg.o.DefaultFieldName
 			scope := cg.o.Scope
+			sequenceName := fmt.Sprintf("%sVersion", ent.Name)
 			for _, value := range ann.Values {
 				switch value.Key {
 				case vaField:
@@ -103,6 +107,11 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 					} else {
 						return true, fmt.Errorf("at %v: annotation '%s:%s' should be bool", ann.Pos, versionAnnotation, value.Key)
 					}
+				case vaSequenceName:
+					if value.Value == nil || value.Value.String == nil {
+						return true, fmt.Errorf("at %v: annotation '%s:%s' should be a string", ann.Pos, versionAnnotation, vaSequenceName)
+					}
+					sequenceName = *value.Value.String
 				}
 			}
 			if ent.GetField(fieldName) != nil {
@@ -112,6 +121,7 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 			ent.Features.Set(VersionFeatureKind, VFBehaviour, beh)
 			ent.Features.Set(VersionFeatureKind, VFTryMerge, tryMerge)
 			ent.Features.Set(VersionFeatureKind, VFScope, scope)
+			ent.Features.Set(VersionFeatureKind, VFSequenceName, sequenceName)
 			versionField := &Field{
 				Name:        fieldName,
 				parent:      ent,
@@ -174,7 +184,7 @@ func (ncg *VersionGenerator) ProvideCodeFragment(module interface{}, action inte
 							).Line()
 						}
 						if cf.Entity.FS(VersionFeatureKind, VFScope) == vaTypeWise {
-							seqName := fmt.Sprintf("%sVersion", cf.Entity.Name)
+							seqName := cf.Entity.FS(VersionFeatureKind, VFSequenceName)
 							stmt.Add(ncg.proj.CallCodeFeatureFunc(cf.Entity, SequenceFeatures, SFGenerateSequenceCall, seqName, jen.Id("o").Dot(fn)))
 						} else {
 							stmt.Add(jen.Id("o").Dot(fn).Op("++"))

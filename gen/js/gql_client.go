@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -34,6 +35,7 @@ const (
 
 const (
 	Features           = "js"
+	FName              = "name"
 	FType              = "type"
 	FInputType         = "input-type"
 	FFillInputFuncName = "fill-inp-func"
@@ -126,7 +128,9 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 	}
 
 	for _, file := range desc.Files {
+		p := cg.getFilePathForName(file.Name)
 		for _, t := range file.Entries {
+			t.Features.Set(Features, FFilePath, p)
 			tname := cg.GetJSEntityTypeName(t.Name)
 			an, ok := t.Annotations[Annotation]
 			t.Features.Set(Features, FFile, file.Name)
@@ -191,6 +195,11 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 				// }
 			}
 		}
+		for _, enum := range file.Enums {
+			tname := cg.GetJSEntityTypeName(enum.Name)
+			enum.Features.Set(Features, FName, tname)
+			enum.Features.Set(Features, FFilePath, p)
+		}
 	}
 	return nil
 }
@@ -198,8 +207,7 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	cg.desc = b.Descriptor
 	fileName := b.File.Name + ".ts"
-	p := path.Join(cg.getOutputDir(), fileName)
-	outFile, err := os.Create(p)
+	outFile, err := os.Create(cg.getFilePathForName(b.File.Name))
 	if err != nil {
 		return
 	}
@@ -215,29 +223,35 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 		Imports:  imports,
 	}
 	b.Project.ProvideCodeFragment(CodeFragmentModule, CodeFragmentActionImport, nil, cfc, false)
+	for _, e := range b.File.Enums {
+		err = cg.generateEnum(outFile, e)
+		if err != nil {
+			return err
+		}
+	}
 	for _, t := range b.File.Entries {
 		for _, f := range t.GetFields(true, true) {
-			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, false); tt != nil && tt.File != b.File {
-				imports.addImport(tt.File.Name, t)
+			if t, tf := cg.getTypeForImport(f.Parent().Pckg, f.Type, false); tf != nil && tf != b.File {
+				imports.addImport(tf.Name, t)
 				if f.Type.NonNullable && f.Type.Type != "" {
 					ft, ok := cg.desc.FindType(f.Type.Type)
-					if ok {
-						imports.addImport(tt.File.Name, ft.Entity().FS(Features, FInstanceGenerator))
+					if ok && ft.Entity() != nil {
+						imports.addImport(tf.Name, ft.Entity().FS(Features, FInstanceGenerator))
 					}
 				}
 			}
-			if t, tt := cg.getTypeForImport(f.Parent().Pckg, f.Type, true); tt != nil && tt.File != b.File {
-				imports.addImport(tt.File.Name, t)
+			if t, tf := cg.getTypeForImport(f.Parent().Pckg, f.Type, true); tf != nil && tf != b.File {
+				imports.addImport(tf.Name, t)
 			}
 		}
 		for _, m := range t.Methods {
 			for _, p := range m.Params {
-				if t, tt := cg.getTypeForImport(t.Pckg, p.Type, true); tt != nil && tt.File != b.File {
-					imports.addImport(tt.File.Name, t)
+				if t, tf := cg.getTypeForImport(t.Pckg, p.Type, true); tf != nil && tf != b.File {
+					imports.addImport(tf.Name, t)
 				}
 			}
-			if t, tt := cg.getTypeForImport(t.Pckg, m.RetValue, false); tt != nil && tt.File != b.File {
-				imports.addImport(tt.File.Name, t)
+			if t, tf := cg.getTypeForImport(t.Pckg, m.RetValue, false); tf != nil && tf != b.File {
+				imports.addImport(tf.Name, t)
 			}
 		}
 	}
@@ -252,8 +266,6 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 		if err != nil {
 			return err
 		}
-		//t.Annotations.AddTag(jsAnnotation, jsAnnotationFilePath, p)
-		t.Features.Set(Features, FFilePath, p)
 	}
 	outFile.WriteString(cleanInputFunc)
 	if cg.useNS {
@@ -286,7 +298,8 @@ func (cg *GQLCLientGenerator) ProvideFeature(kind gen.FeatureKind, name string, 
 	}
 	return nil, gen.FeatureNotProvided
 }
-func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeRef, forInput bool) (string, *gen.Entity) {
+
+func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeRef, forInput bool) (string, *gen.File) {
 	if ref.Array != nil {
 		return cg.getTypeForImport(pckg, ref.Array, forInput)
 	} else if ref.Map != nil {
@@ -302,14 +315,25 @@ func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeR
 				return "", nil
 			}
 			e := dt.Entity()
-			if e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
+			if e != nil {
+				if e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
+					return "", nil
+				}
+
+				if forInput {
+					return cg.GetJSEntityInputTypeName(ref.Type), e.File
+				}
+				return cg.GetJSEntityTypeName(ref.Type), e.File
+			} else if e := dt.Enum(); e != nil {
+				if forInput {
+					return cg.GetJSEntityInputTypeName(ref.Type), e.File
+				}
+				return cg.GetJSEntityTypeName(ref.Type), e.File
+			} else {
+				cg.desc.AddError(fmt.Errorf("at %v: type is not an Entity", dt.Position()))
 				return "", nil
 			}
-
-			if forInput {
-				return cg.GetJSEntityInputTypeName(ref.Type), dt.Entity()
-			}
-			return cg.GetJSEntityTypeName(ref.Type), dt.Entity()
+			return "", nil
 		}
 	}
 }
@@ -490,6 +514,11 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					} else {
 						continue
 					}
+				case gen.GQLOperationBulkCreate:
+					if !e.FB(gen.FeatGoKind, gen.FCGBulkNew) {
+						continue
+					}
+					req = "mutation"
 				}
 				params := QueryDef{
 					Request:       req,
@@ -581,15 +610,18 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 		}
 		for _, a := range m.Params {
 			var gqlType string
-			if a.Type.Complex {
-				if t, ok := cg.desc.FindType(a.Type.Type); ok {
-					gqlType = t.Entity().Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
-				} else {
-					cg.desc.AddWarning(fmt.Sprintf("at %v: type %s not found for parameter; skipping", a.Pos, a.Type.Type))
-				}
-			} else {
-				gqlType = a.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
-			}
+			//if a.Type.Complex {
+			//  if t, ok := cg.desc.FindType(a.Type.Type); ok {
+			//    gqlType = t.Entity().Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
+			//  } else {
+			//    cg.desc.AddWarning(fmt.Sprintf("at %v: type %s not found for parameter; skipping", a.Pos, a.Type.Type))
+			//  }
+			//} else {
+			gqlType = a.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName)
+			//}
+			//if a.Type.NonNullable {
+			//  gqlType += "!"
+			//}
 			ad = append(ad,
 				ArgDef{Name: a.Name,
 					Type:    gqlType,
@@ -597,20 +629,7 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 					NotNull: a.Type.NonNullable})
 		}
 		qn := m.FS(gen.GQLFeatures, gen.GQLFMethodName)
-		var retval string
-		fields := []*gen.Field{}
-		if m.RetValue != nil && m.RetValue.Complex {
-			//TODO process ret value of array of arrays
-			retval = m.RetValue.Type
-			if m.RetValue.Array != nil {
-				retval = m.RetValue.Array.Type
-			}
-			rettype, ok := cg.desc.FindType(retval)
-			if !ok {
-				return fmt.Errorf("at %v: type '%s' not found", m.Pos, retval)
-			}
-			fields = rettype.Entity().GetFields(true, true)
-		}
+
 		params := QueryDef{
 			Request:   req,
 			QueryName: qn,
@@ -619,10 +638,29 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 			VarName:   qn + "Request",
 			JSRetType: rt,
 			Args:      ad,
-			Fields:    make([]string, len(fields)),
 		}
 		j := 0
 		if m.RetValue != nil && m.RetValue.Complex {
+			var retval string
+			fields := []*gen.Field{}
+			ret := m.RetValue
+			for ret.Array != nil {
+				ret = ret.Array
+			}
+			if !ret.Embedded {
+				retval = ret.Type
+				if m.RetValue.Array != nil {
+					retval = m.RetValue.Array.Type
+				}
+				rettype, ok := cg.desc.FindType(retval)
+				if !ok || rettype.Entity() == nil && rettype.Enum() == nil {
+					return fmt.Errorf("at %v: type '%s' not found or is not an Entity", m.Pos, retval)
+				}
+				if rettype.Entity() != nil {
+					fields = rettype.Entity().GetFields(true, true)
+					params.Fields = make([]string, len(fields))
+				}
+			}
 			for _, f := range fields {
 				if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
 					continue
@@ -680,9 +718,18 @@ func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef, asRef bool) (ret s
 	} else {
 		if asRef {
 			if t, ok := cg.desc.FindType(ref.Type); ok {
-				if idfld := t.Entity().GetIdField(); idfld != nil {
-					ref = idfld.Type
+				tip, err := t.IdType()
+				if err != nil {
+					return "any"
 				}
+				ref = &gen.TypeRef{Type: tip}
+				//if t.Entity() != nil {
+				//	if idfld := t.Entity().GetIdField(); idfld != nil {
+				//		ref = idfld.Type
+				//	}
+				//} else if t.Enum() != nil {
+				//
+				//}
 			}
 		}
 		if ret == "" {
@@ -719,7 +766,7 @@ func (cg *GQLCLientGenerator) GetJSInputTypeName(ref *gen.TypeRef, asRef bool) (
 		ret = fmt.Sprintf("{key: string, val: %s}[]", valtype)
 	} else {
 		if asRef {
-			if t, ok := cg.desc.FindType(ref.Type); ok {
+			if t, ok := cg.desc.FindType(ref.Type); ok && t.Entity() != nil {
 				if idfld := t.Entity().GetIdField(); idfld != nil {
 					ref = idfld.Type
 				}
@@ -751,18 +798,9 @@ func (cg *GQLCLientGenerator) GetJSEmptyVal(ref *gen.TypeRef) (ret string) {
 			initType := ref.Type
 			if ref.Complex {
 				t, ok := cg.desc.FindType(initType)
-				if ok {
+				if ok && t.Entity() != nil {
 					return t.Entity().FS(Features, FInstanceGenerator) + "()"
 				}
-				// in case of only id will send to client:
-				// t, ok := cg.desc.FindType(initType)
-				// if ok {
-				// 	fld := t.Entity().GetIdField()
-				// 	if fld != nil {
-				// 		initType = fld.Type.Type
-				// 	}
-
-				// }
 			}
 			switch initType {
 			case gen.TipBool:
@@ -774,6 +812,14 @@ func (cg *GQLCLientGenerator) GetJSEmptyVal(ref *gen.TypeRef) (ret string) {
 			case gen.TipDate:
 				ret = "new Date().toISOString()" //"\"1970-01-01 00:00:00\""
 			default:
+				t, ok := cg.desc.FindType(initType)
+				if ok && t.Enum() != nil {
+					if len(t.Enum().Fields) > 0 {
+						return cg.GetEnumFieldJSValue(t.Enum().Fields[0])
+					}
+					return "null"
+				}
+
 				ret = "null"
 			}
 		} else {
@@ -781,6 +827,24 @@ func (cg *GQLCLientGenerator) GetJSEmptyVal(ref *gen.TypeRef) (ret string) {
 		}
 	}
 	return ret
+}
+
+func (cg *GQLCLientGenerator) GetEnumFieldJSValue(ef *gen.EnumField) string {
+	if ef.IntVal != nil {
+		return strconv.Itoa(*ef.IntVal)
+	} else if ef.FloatVal != nil {
+		return strconv.FormatFloat(*ef.FloatVal, 'G', -1, 32)
+	} else if ef.StringVal != nil {
+		return `"` + *ef.StringVal + `"`
+	} else {
+		// ordinal from 0
+		for i, field := range ef.Parent.Fields {
+			if field == ef {
+				return strconv.Itoa(i)
+			}
+		}
+	}
+	return "0"
 }
 
 func (cg *GQLCLientGenerator) GetJSEntityTypeName(name string) string {
@@ -797,6 +861,11 @@ func (cg *GQLCLientGenerator) GetJSEntityInputTypeName(name string) string {
 		name = parts[1]
 	}
 	return name + "__InputType"
+}
+
+func (cg *GQLCLientGenerator) getFilePathForName(name string) string {
+	fileName := name + ".ts"
+	return path.Join(cg.getOutputDir(), fileName)
 }
 
 func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
@@ -817,6 +886,9 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 	isConfig := baseType.HasModifier(gen.TypeModifierConfig)
 	if f.Type.Array != nil {
 		t = f.Type.Array
+		for t.Array != nil {
+			t = t.Array
+		}
 	} else if f.Type.Map != nil {
 		//TODO: add val specs for complex types
 		return fmt.Sprintf("%s { key val }", field), nil
@@ -830,7 +902,7 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 		}
 		id := ""
 		title := ""
-		if isConfig && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
+		if isConfig && tt.Entity() != nil && tt.Entity().HasModifier(gen.TypeModifierDictionary) {
 			return
 		}
 		if f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly) {
@@ -838,7 +910,7 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 			return
 		}
 		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
-		if ok {
+		if ok && tt.Entity() != nil {
 			for _, ff := range tt.Entity().GetFields(true, true) {
 				if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
 					continue
@@ -943,7 +1015,7 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 					return "undefined"
 				}
 				t, ok := cg.desc.FindType(f.Type.Type)
-				if ok {
+				if ok && t.Entity() != nil {
 					return t.Entity().FS(Features, FInstanceGenerator) + "()"
 				}
 				return "null"
@@ -951,7 +1023,7 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 				if f.Type.Array != nil || f.Type.Map != nil {
 					return "[]"
 				}
-				if t, ok := cg.desc.FindType(f.Type.Type); ok {
+				if t, ok := cg.desc.FindType(f.Type.Type); ok && t.Entity() != nil {
 					if idfld := t.Entity().GetIdField(); idfld != nil {
 						return cg.GetJSEmptyVal(idfld.Type)
 					}
@@ -984,7 +1056,7 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 			return false
 		},
 		"GetFillName": func(f *gen.Field) string {
-			if t, ok := cg.desc.FindType(f.Type.Type); ok {
+			if t, ok := cg.desc.FindType(f.Type.Type); ok && t.Entity() != nil {
 				return t.Entity().FS(Features, FFillInputFuncName)
 			}
 			return ""
@@ -997,6 +1069,36 @@ func (cg *GQLCLientGenerator) getFuncsMap() template.FuncMap {
 				}
 			}
 			return ret
+		},
+		"EnumName": func(e *gen.Enum) string {
+			return cg.GetJSEntityTypeName(e.Name)
+		},
+		"EnumInputName": func(e *gen.Enum) string {
+			return cg.GetJSEntityInputTypeName(e.Name)
+		},
+		"EnumType": func(e *gen.Enum) string {
+			return cg.GetJSTypeName(&gen.TypeRef{Type: e.AliasForType}, false)
+		},
+		"EnumFieldName": func(ef *gen.EnumField) string {
+			return ef.Name
+		},
+		"EnumFieldValue": func(ef *gen.EnumField) string {
+			return cg.GetEnumFieldJSValue(ef)
+			//if ef.IntVal != nil {
+			//	return strconv.Itoa(*ef.IntVal)
+			//} else if ef.FloatVal != nil {
+			//	return strconv.FormatFloat(*ef.FloatVal, 'G', -1, 32)
+			//} else if ef.StringVal != nil {
+			//	return `"` + *ef.StringVal + `"`
+			//} else {
+			//	// ordinal from 0
+			//	for i, field := range ef.Parent.Fields {
+			//		if field == ef {
+			//			return strconv.Itoa(i)
+			//		}
+			//	}
+			//}
+			//return "0"
 		},
 	}
 }
@@ -1064,6 +1166,7 @@ export function {{InstanceGenerator .}}(): {{TypeName .}} {
   }
 }
 `
+
 const inputTypeTemplate = `
 {{if RequiresInput .}}
 export type {{InputTypeName .}} = { {{range GetFields .}} {{if RequiresInput . }}{{InputFieldName .}}{{if not .IsIdField}}?{{end}}: {{InputFieldType .}},{{end}}{{end}} {{range SetNullFields .}} {{.}}?: boolean, {{end}}};

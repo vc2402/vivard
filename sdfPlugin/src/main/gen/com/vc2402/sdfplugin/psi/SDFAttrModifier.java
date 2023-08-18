@@ -10,4 +10,7 @@ public interface SDFAttrModifier extends PsiElement {
   @Nullable
   SDFAnnotation getAnnotation();
 
+  @Nullable
+  SDFHookTag getHookTag();
+
 }

@@ -70,7 +70,8 @@ func (cg *Validator) Prepare(desc *Package) error {
 				if f.Type.Complex {
 					refType, ok = desc.FindType(f.Type.Type)
 				}
-				if ok && refType.Entity().HasModifier(TypeModifierDictionary) {
+				//TODO add enums validation
+				if ok && refType.Entity() != nil && refType.Entity().HasModifier(TypeModifierDictionary) {
 					f.Features.Set(FeaturesValidator, FVValidationRequired, true)
 					t.Features.Set(FeaturesValidator, FVValidationRequired, true)
 					t.Features.Set(FeaturesValidator, FVValidateFunc, fmt.Sprintf(ValidatorFuncNameTemplate, t.Name))
@@ -145,14 +146,17 @@ func (cg *Validator) ProvideCodeFragment(module interface{}, action interface{},
 				idField := cf.Entity.GetIdField()
 				if action == MethodNew &&
 					!idField.HasModifier(AttrModifierIDAuto) {
-					cf.Add(
-						jen.If(
-							cf.Builder.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
-						).Block(
-							jen.Add(cf.GetErr()).Op("=").Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("validate: %s: empty", idField.Name))),
-							jen.Return(),
-						),
-					)
+					//do not check enums
+					if df, ok := cf.Entity.Pckg.FindType(idField.Type.Type); !ok || df.Enum() == nil {
+						cf.Add(
+							jen.If(
+								cf.Builder.checkIfEmptyValue(jen.Id("o").Dot(idField.Name), idField.Type, false),
+							).Block(
+								jen.Add(cf.GetErr()).Op("=").Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("validate: %s: empty", idField.Name))),
+								jen.Return(),
+							),
+						)
+					}
 				}
 				if cf.Entity.FB(FeaturesValidator, FVValidationRequired) {
 					if action == MethodSet || action == MethodNew {

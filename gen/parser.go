@@ -14,21 +14,30 @@ import (
 	"github.com/dave/jennifer/jen"
 )
 
-type File struct {
-	Pos      lexer.Position
-	Name     string
-	FileName string
-	Package  string    `("package" @Ident ";")?`
-	Meta     []*Meta   `( @@ `
-	Entries  []*Entity `| @@ )*`
-	Pckg     *Package
-}
-
 type Boolean bool
 
 func (b *Boolean) Capture(values []string) error {
 	*b = values[0] == "true"
 	return nil
+}
+
+type File struct {
+	Pos         lexer.Position
+	Name        string
+	FileName    string
+	Modifiers   []*PackageModifier `( (@@)*`
+	Package     string             `"package" @Ident ";")?`
+	Meta        []*Meta            `( @@ `
+	Entries     []*Entity          `| @@ `
+	Enums       []*Enum            `| @@ )*`
+	Pckg        *Package
+	Annotations Annotations
+}
+
+type PackageModifier struct {
+	Pos        lexer.Position
+	Hook       *Hook       `( @@`
+	Annotation *Annotation `| @@ )`
 }
 
 type Meta struct {
@@ -65,6 +74,26 @@ type Entity struct {
 	BaseField       *Field
 	File            *File
 	FullAnnotations Annotations
+}
+
+type Enum struct {
+	Pos          lexer.Position
+	Modifiers    []*EntityModifier `( (@@)* )? `
+	Name         string            `"enum" @Ident "{"`
+	Fields       []*EnumField      `( @@ )* "}"`
+	Pckg         *Package
+	File         *File
+	AliasForType string
+	Features     Features
+}
+
+type EnumField struct {
+	Pos       lexer.Position
+	Name      string   ` @Ident ( "=" `
+	IntVal    *int     ` ( @Int `
+	FloatVal  *float64 ` | @Number `
+	StringVal *string  ` | @String ) )? ";" `
+	Parent    *Enum
 }
 
 type Entry struct {
@@ -155,7 +184,7 @@ type AnnotationTag struct {
 type AnnotationValue struct {
 	String    *string  ` ( @String `
 	Bool      *Boolean `| @("true" | "false") `
-	Number    *float64 `| @Number )`
+	Number    *float64 `| @Number | @Int)`
 	Interface interface{}
 }
 
@@ -172,6 +201,7 @@ AnnotationTag = "$" AnnotationName [ ":" AnnotationName ] .
 AnnotationName = (alpha | "_") { "_" | alpha | digit | "-"} .
 HookTag = "@" (alpha | "_") { "_" | alpha | digit | "-" } .
 String = "\"" { "\u0000"…"\uffff"-"\""-"\\" | "\\" any } "\"" .
+Int = ["+" | "-"] digit {digit} .
 Number = ("." | digit) {"." | digit} .
 Whitespace = " " | "\t" | "\n" | "\r" .
 Punct = "!"…"/" | ":"…"@" | "["…` + "\"`\"" + ` | "{"…"~" .
@@ -199,6 +229,7 @@ QualifiedName = [[:ascii:]][\w\d]*\.[[:ascii:]][\w\d]*
 AnnotationTag = [$][[:ascii:]][\w\d_-]*
 HookTag = @[[:ascii:]][\w\d_-]*
 String = "[^"]*"
+Int = ([-+])?\d+
 Number = ([-+])?(\d+)|(\d*\.\d+)
 Ident = [[:ascii:]][\w\d]*
 `))
@@ -274,7 +305,7 @@ func (f *File) postProcess() error {
 				te.Field.parent = t
 				t.Fields = append(t.Fields, te.Field)
 				t.FieldsIndex[te.Field.Name] = te.Field
-				te.Field.PostProcess()
+				//te.Field.PostProcess()
 			} else if te.Method != nil {
 				te.Method.Modifiers = te.Modifiers
 				te.Method.Features = Features{}
@@ -291,6 +322,9 @@ func (f *File) postProcess() error {
 				return fmt.Errorf("undefined entry at %v", te.Pos)
 			}
 		}
+	}
+	for _, enum := range f.Enums {
+		enum.Features = Features{}
 	}
 	return nil
 }
@@ -486,12 +520,22 @@ func (f *Field) HasModifier(mod AttrModifier) bool {
 }
 
 func (f *Field) PostProcess() {
-	f.Type.Complex = !IsPrimitiveType(f.Type.Type)
+	isTypeComplex := func(tip string) bool {
+		complex := !IsPrimitiveType(tip)
+		if complex && tip != "" {
+			td, ok := f.Parent().File.Pckg.FindType(tip)
+			if ok && td.enum != nil {
+				complex = false
+			}
+		}
+		return complex
+	}
+	f.Type.Complex = isTypeComplex(f.Type.Type)
 	f.Type.Embedded = f.HasModifier(AttrModifierEmbedded)
 	//trying to fill complex for ref types of arrays...
 	arrType := f.Type.Array
 	for arrType != nil {
-		arrType.Complex = !IsPrimitiveType(arrType.Type)
+		arrType.Complex = isTypeComplex(arrType.Type)
 		arrType = arrType.Array
 	}
 }
@@ -990,4 +1034,45 @@ func processTypeModifiers(t *Entity) {
 		// if len(mod) > 0 {
 		// 	t.Modifiers = mod
 	}
+}
+
+func (e *Enum) GetDefaultValue(forPackage *Package) *jen.Statement {
+	if len(e.Fields) > 0 {
+		if forPackage == e.Pckg {
+			return jen.Id(e.Fields[0].Name)
+		} else {
+			return jen.Qual(e.Pckg.fullPackage, e.Fields[0].Name)
+		}
+	}
+	// we should not be here
+	return jen.Lit(0)
+}
+
+func (e *Enum) postParsed() error {
+	var tip string
+	setTip := func(t string) string {
+		if tip != "" && tip != t {
+			return fmt.Sprintf("type redefinition from '%s' to '%s' is not allowed", tip, t)
+		}
+		tip = t
+		return ""
+	}
+	for _, field := range e.Fields {
+		var problem string
+		if field.FloatVal != nil {
+			problem = setTip(TipFloat)
+		} else if field.IntVal != nil {
+			problem = setTip(TipInt)
+		} else if field.StringVal != nil {
+			problem = setTip(TipString)
+		}
+		if problem != "" {
+			return fmt.Errorf("at %s: %s", field.Pos, problem)
+		}
+	}
+	if tip == "" {
+		tip = TipInt
+	}
+	e.AliasForType = tip
+	return nil
 }

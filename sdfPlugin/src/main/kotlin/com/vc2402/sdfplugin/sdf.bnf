@@ -56,7 +56,7 @@ param ::= IDENTIFIER SEMI DUMMYIDENTIFIER? type
 
 type ::= (simple_type | IDENTIFIER | QUALIFIEDNAME | array_type | map_type) NOTNULL?
 
-simple_type ::= st_int | st_float | st_string | st_bool | st_date
+simple_type ::= st_int | st_float | st_string | st_bool | st_date | st_auto
 
 st_int ::= INT
 
@@ -65,6 +65,8 @@ st_float ::= FLOAT
 st_string ::= STRING
 
 st_bool ::= BOOL
+
+st_auto ::= AUTO
 
 st_date ::= DATE
 
@@ -76,7 +78,7 @@ map_index_type ::= st_int | st_string
 
 attr_modifiers ::= attr_modifier*
 
-attr_modifier ::= DUMMYIDENTIFIER | HOOKTAG | ATTRMODIFIER | annotation
+attr_modifier ::= DUMMYIDENTIFIER | hook_tag | ATTRMODIFIER | annotation
 
 annotation ::= DUMMYIDENTIFIER? ANNOTATIONTAG ( BR_OPEN annotation_values BR_CLOSE )?
 

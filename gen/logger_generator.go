@@ -6,6 +6,11 @@ import (
 	"github.com/vc2402/vivard"
 )
 
+const (
+	VariantZap    = "zap"
+	VariantLogrus = "logrus"
+)
+
 type LoggerGenerator struct {
 	proj    *Project
 	desc    *Package
@@ -21,13 +26,13 @@ type loggerDescriptor struct {
 }
 
 var variants = map[string]loggerDescriptor{
-	"zap": {
+	VariantZap: {
 		pkg:     "go.uber.org/zap",
 		logger:  "Logger",
 		service: vivard.ServiceLoggingZap,
 		tip:     "LoggerService",
 	},
-	"logrus": {
+	VariantLogrus: {
 		pkg:     "github.com/sirupsen/logrus",
 		logger:  "Entry",
 		service: vivard.ServiceLoggingLogrus,
@@ -52,7 +57,7 @@ const (
 )
 
 func init() {
-	RegisterPlugin(&LoggerGenerator{variant: "zap"})
+	RegisterPlugin(&LoggerGenerator{variant: VariantZap})
 }
 
 func (cg *LoggerGenerator) Name() string {
@@ -65,7 +70,7 @@ func (cg *LoggerGenerator) SetOptions(options any) error {
 			cg.variant = variant
 		}
 	} else {
-		cg.variant = "zap"
+		cg.variant = VariantZap
 	}
 	return nil
 }
@@ -76,7 +81,7 @@ func (cg *LoggerGenerator) SetDescriptor(proj *Project) {
 	if opt, ok := proj.Options.Custom[OptionLoggerGenerator]; ok {
 		_ = cg.SetOptions(opt)
 	} else if cg.variant == "" {
-		cg.variant = "zap"
+		cg.variant = VariantZap
 	}
 }
 
@@ -113,7 +118,7 @@ func (cg *LoggerGenerator) ProvideFeature(kind FeatureKind, name string, obj int
 	case LogFeatureKind:
 		switch name {
 		case LFDebug, LFWarn, LFError:
-			if cg.variant == "zap" {
+			if cg.variant == VariantZap || cg.variant == VariantLogrus {
 				var fun CodeHelperFunc
 				fun = func(args ...interface{}) jen.Code {
 					if len(args) < 1 {
@@ -160,14 +165,28 @@ func (cg *LoggerGenerator) generateLoggerCall(kind string, msg jen.Code, fields 
 	case LFError:
 		funcName = "Error"
 	}
-	//zap only so far
-	return jen.Id(EngineVar).Dot(loggerAttr).Dot(funcName).ParamsFunc(func(g *jen.Group) {
-		g.Add(msg)
-		for _, field := range fields {
-			g.Qual(variants[cg.variant].pkg, "Any").Params(
-				jen.Lit(field.name),
-				field.val,
-			)
-		}
-	})
+	switch cg.variant {
+	case VariantZap:
+		return jen.Id(EngineVar).Dot(loggerAttr).Dot(funcName).ParamsFunc(func(g *jen.Group) {
+			g.Add(msg)
+			for _, field := range fields {
+				g.Qual(variants[cg.variant].pkg, "Any").Params(
+					jen.Lit(field.name),
+					field.val,
+				)
+			}
+		})
+	case VariantLogrus:
+		return jen.Id(EngineVar).Dot(loggerAttr).Dot("WithFields").Params(
+			jen.Qual(variants[cg.variant].pkg, "Fields").Values(jen.DictFunc(func(d jen.Dict) {
+				for _, field := range fields {
+					d[jen.Lit(field.name)] = field.val
+				}
+			}),
+			),
+		).Dot(funcName).Params(msg)
+	default:
+		cg.desc.AddWarning("logging si not implemented for selected variant")
+	}
+	return &jen.Statement{}
 }

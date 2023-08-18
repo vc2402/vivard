@@ -170,13 +170,13 @@ public class Parser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // DUMMYIDENTIFIER | HOOKTAG | ATTRMODIFIER | annotation
+  // DUMMYIDENTIFIER | hook_tag | ATTRMODIFIER | annotation
   public static boolean attr_modifier(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "attr_modifier")) return false;
     boolean r;
     Marker m = enter_section_(b, l, _NONE_, ATTR_MODIFIER, "<attr modifier>");
     r = consumeToken(b, DUMMYIDENTIFIER);
-    if (!r) r = consumeToken(b, HOOKTAG);
+    if (!r) r = hook_tag(b, l + 1);
     if (!r) r = consumeToken(b, ATTRMODIFIER);
     if (!r) r = annotation(b, l + 1);
     exit_section_(b, l, m, r, false, null);
@@ -604,7 +604,7 @@ public class Parser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // st_int | st_float | st_string | st_bool | st_date
+  // st_int | st_float | st_string | st_bool | st_date | st_auto
   public static boolean simple_type(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "simple_type")) return false;
     boolean r;
@@ -614,7 +614,20 @@ public class Parser implements PsiParser, LightPsiParser {
     if (!r) r = st_string(b, l + 1);
     if (!r) r = st_bool(b, l + 1);
     if (!r) r = st_date(b, l + 1);
+    if (!r) r = st_auto(b, l + 1);
     exit_section_(b, l, m, r, false, null);
+    return r;
+  }
+
+  /* ********************************************************** */
+  // AUTO
+  public static boolean st_auto(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "st_auto")) return false;
+    if (!nextTokenIs(b, AUTO)) return false;
+    boolean r;
+    Marker m = enter_section_(b);
+    r = consumeToken(b, AUTO);
+    exit_section_(b, m, ST_AUTO, r);
     return r;
   }
 

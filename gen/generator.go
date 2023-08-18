@@ -83,11 +83,13 @@ type Opts struct {
 }
 
 type DefinedType struct {
+	pos         lexer.Position
 	name        string
 	pckg        string
 	packagePath string
 	external    bool
 	entry       *Entity
+	enum        *Enum
 }
 
 type Project struct {
@@ -665,9 +667,11 @@ func (p *Project) WriteToFiles() (err error) {
 				return
 			}
 		}
-		err := desc.Engine.file.Save(path.Join(p.Options.OutputDir, desc.Name, "engine.go"))
-		if err != nil {
-			return err
+		if !desc.engineless {
+			err := desc.Engine.file.Save(path.Join(p.Options.OutputDir, desc.Name, "engine.go"))
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -728,11 +732,11 @@ func (p *Project) GetFullPackage(alias string) string {
 	return alias
 }
 
-func (p *Project) addExternal(e *Entity) error {
+func (p *Project) addExternal(e *Entity, packag *Package) error {
 	ann := e.Annotations.Find(AnnotationGo, AnnGoPackage)
-	if ann == nil || len(ann.Values) == 0 {
-		return fmt.Errorf("at %v: no package for %s type %s", e.Pos, TypeModifierExternal, e.Name)
-	}
+	//if ann == nil || len(ann.Values) == 0 {
+	//	return fmt.Errorf("at %v: no package for %s type %s", e.Pos, TypeModifierExternal, e.Name)
+	//}
 	pckg := ""
 	pckgAlias := ""
 	name := e.Name
@@ -740,14 +744,19 @@ func (p *Project) addExternal(e *Entity) error {
 		pckgAlias = name[:idx]
 		e.Name = name[idx+1:]
 	}
-	if ann.Values[0].Value != nil && ann.Values[0].Value.String != nil {
-		pckgAlias = ann.Values[0].Key
-		pckg = *ann.Values[0].Value.String
-	} else {
-		pckg = ann.Values[0].Key
-		if idx := strings.LastIndex(pckg, "/"); idx != -1 {
-			pckgAlias = pckg[idx+1:]
+	if ann != nil && len(ann.Values) > 0 {
+		if ann.Values[0].Value != nil && ann.Values[0].Value.String != nil {
+			pckgAlias = ann.Values[0].Key
+			pckg = *ann.Values[0].Value.String
+		} else {
+			pckg = ann.Values[0].Key
+			if idx := strings.LastIndex(pckg, "/"); idx != -1 {
+				pckgAlias = pckg[idx+1:]
+			}
 		}
+	} else {
+		pckgAlias = packag.Name
+		pckg = packag.fullPackage
 	}
 	if pckgAlias != "" {
 		p.extPackages[pckgAlias] = pckg
@@ -883,7 +892,7 @@ func FindFieldInStruct(struc reflect.Type, name string) (int, bool) {
 
 func (desc *Package) FindTypes(cb func(*Entity) bool) (ret []*Entity) {
 	for _, t := range desc.types {
-		if cb(t.entry) {
+		if t.entry != nil && cb(t.entry) {
 			ret = append(ret, t.entry)
 		}
 	}

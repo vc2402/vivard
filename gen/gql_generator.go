@@ -188,12 +188,14 @@ func (cg *GQLGenerator) Prepare(desc *Package) error {
 								if !ok {
 									return fmt.Errorf("gql: at %v: undefined type for %s", f.Pos, f.Name)
 								}
-								if idfld := ct.entry.GetIdField(); idfld != nil {
-									tip = cg.GetGQLTypeName(idfld.Type)
-									if ct.entry == t {
-										//TODO check for recursive types
-										f.Features.Set(GQLFeatures, GQLFIDOnly, true)
-										f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+								if ct.entry != nil {
+									if idfld := ct.entry.GetIdField(); idfld != nil {
+										tip = cg.GetGQLTypeName(idfld.Type)
+										if ct.entry == t {
+											//TODO check for recursive types
+											f.Features.Set(GQLFeatures, GQLFIDOnly, true)
+											f.Features.Set(GQLFeatures, GQLFTypeTag, tip)
+										}
 									}
 								}
 							}
@@ -309,6 +311,9 @@ func (cg *GQLGenerator) Generate(b *Builder) (err error) {
 }
 
 func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
+	if e.Pckg.engineless {
+		return fmt.Errorf("at %v: GraphQL requires Engine for types registration; please remove annotation %s", e.Pckg.pos, AnnotationEngineless)
+	}
 	if name, ok := e.Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
 		goTypeName := e.Name
 		fname := fmt.Sprintf("%sTypeGenerator", name)
@@ -366,9 +371,34 @@ func (cg *GQLGenerator) generateGQLTypes(e *Entity) error {
 								jen.Nil(),
 							)
 						} else {
-							g.Return(
-								jen.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true)),
-							)
+							var enum *Enum
+							var enumArray *Enum
+							if f.Type.Array != nil {
+								if dt, ok := cg.desc.FindType(f.Type.Array.Type); ok && dt.enum != nil {
+									enumArray = dt.enum
+								}
+							} else if dt, ok := cg.desc.FindType(f.Type.Type); ok && dt.enum != nil {
+								enum = dt.enum
+							}
+							if enumArray != nil {
+								g.Id("items").Op(":=").Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), false))
+								g.Id("result").Op(":=").Make(jen.Index().Add(cg.b.GoType(&TypeRef{Type: enumArray.AliasForType})), jen.Len(jen.Id("items")))
+								g.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("items")).Block(
+									jen.Id("result").Index(jen.Id("i")).Op("=").Add(cg.b.GoType(&TypeRef{Type: enumArray.AliasForType})).Parens(jen.Id("item")),
+								)
+								g.Return(jen.List(jen.Id("items")), jen.Nil())
+							} else if enum != nil {
+								g.Return(
+									jen.List(
+										cg.b.GoType(&TypeRef{Type: enum.AliasForType}).Parens(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), false)),
+										jen.Nil(),
+									),
+								)
+							} else {
+								g.Return(
+									jen.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCGetterCode, "obj", jen.Id("p").Dot("Context"), true)),
+								)
+							}
 						}
 					}),
 			})
@@ -575,7 +605,14 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 					if f.Type.Array != nil {
 						assertion = jen.Index().Interface()
 					} else {
-						assertion = cg.b.GoType(f.Type)
+						tip := f.Type
+						if f.Type.Type != "" {
+							if tr, ok := cg.desc.FindType(f.Type.Type); ok && tr.Enum() != nil {
+								tip = &TypeRef{Type: tr.Enum().AliasForType}
+							}
+						}
+						assertion = cg.b.GoType(tip)
+
 					}
 				}
 				stmt := jen.If(
@@ -603,18 +640,30 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else if f.Type.Array != nil {
 							artype := f.Features.Stmt(FeatGoKind, FCGType)
+							assertArrayItemType := cg.b.GoType(f.Type.Array)
+							resultArrayItem := jen.Id("v")
+							if f.Type.Array.Type != "" {
+								if tr, ok := cg.desc.FindType(f.Type.Array.Type); ok && tr.Enum() != nil {
+									assertArrayItemType = cg.b.GoType(&TypeRef{Type: tr.Enum().AliasForType})
+									if cg.desc == tr.Enum().Pckg {
+										resultArrayItem = jen.Id(tr.Enum().Name).Parens(resultArrayItem)
+									} else {
+										resultArrayItem = jen.Qual(tr.Enum().Pckg.fullPackage, tr.Enum().Name).Parens(resultArrayItem)
+									}
+								}
+							}
 							g.Id("values").Op(":=").Make(artype, jen.Len(jen.Id("val")))
 							g.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("val")).Block(
 								jen.List(
 									// jen.Id("obj").Dot(f.Name),
 									jen.Id("v"),
 									jen.Id("ok"),
-								).Op(":=").Id("item").Assert(cg.b.GoType(f.Type.Array)),
+								).Op(":=").Id("item").Assert(assertArrayItemType),
 								jen.If(jen.Op("!").Id("ok")).Block(jen.Return(
 									jen.Nil(),
-									jen.Qual("errors", "New").Params(jen.Lit("problem while converting array item")),
+									jen.Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("problem while converting array item of type '%s'", f.Type.Array.Type))),
 								)),
-								jen.Id("values").Index(jen.Id("i")).Op("=").Id("v"),
+								jen.Id("values").Index(jen.Id("i")).Op("=").Add(resultArrayItem),
 							)
 							g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 						} else if f.Type.Map != nil {
@@ -671,7 +720,17 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 								//TODO: may be problem with changes tracking...
 								g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCAttrSetCode))
 							} else {
-								g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode))
+								var val any = "val"
+								if f.Type.Type != "" {
+									if tr, ok := cg.desc.FindType(f.Type.Type); ok && tr.Enum() != nil {
+										if cg.desc == tr.Enum().Pckg {
+											val = jen.Id(tr.Enum().Name).Parens(jen.Id("val"))
+										} else {
+											val = jen.Qual(tr.Enum().Pckg.fullPackage, tr.Enum().Name).Parens(jen.Id("val"))
+										}
+									}
+								}
+								g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", val))
 							}
 						}
 					}
@@ -1306,7 +1365,7 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 			ret = jen.Qual(gqlPackage, "Float")
 		default:
 			if len(skipNotNull) > 1 && skipNotNull[1] {
-				if t, ok := cg.desc.FindType(ref.Type); ok {
+				if t, ok := cg.desc.FindType(ref.Type); ok && t.entry != nil {
 					if idfld := t.entry.GetIdField(); idfld != nil {
 						ret, err = cg.getGQLType(idfld.Type, true)
 						if err != nil {
@@ -1327,6 +1386,13 @@ func (cg *GQLGenerator) getGQLType(ref *TypeRef, skipNotNull ...bool) (ret *jen.
 					e, ok := cg.desc.FindType(ref.Type)
 					if !ok {
 						return nil, fmt.Errorf("type not found: %s", ref.Type)
+					}
+					if e.enum != nil {
+						//TODO create enum type for enums
+						return cg.getGQLType(&TypeRef{Type: e.enum.AliasForType}, skipNotNull...)
+					}
+					if e.entry == nil {
+						return nil, fmt.Errorf("external type can not be used here: %s", ref.Type)
 					}
 					typeName = e.entry.FS(GQLFeatures, GQLFTypeTag)
 					if isInput {
@@ -1446,15 +1512,27 @@ func (cg *GQLGenerator) GetGQLOperationName(e *Entity, tip GQLOperationKind) str
 }
 
 func (cg *GQLGenerator) GetGQLEntityTypeName(name string) (ret string) {
+	names := strings.SplitN(name, ".", 2)
+	packageName := cg.desc.Name
+	if len(names) == 2 {
+		packageName = names[0]
+		name = names[1]
+	}
 	if cg.options.UsePackageNameInTypeNames && name != "" {
-		return fmt.Sprintf("%s%s%s", cg.desc.Name, strings.ToUpper(name[:1]), name[1:])
+		return fmt.Sprintf("%s%s%s", packageName, strings.ToUpper(name[:1]), name[1:])
 	}
 	return name
 }
 
 func (cg *GQLGenerator) GetGQLInputTypeName(name string) (ret string) {
+	names := strings.SplitN(name, ".", 2)
+	packageName := cg.desc.Name
+	if len(names) == 2 {
+		packageName = names[0]
+		name = names[1]
+	}
 	if cg.options.UsePackageNameInTypeNames && name != "" {
-		return fmt.Sprintf("%s%s%sInput", cg.desc.Name, strings.ToUpper(name[:1]), name[1:])
+		return fmt.Sprintf("%s%s%sInput", packageName, strings.ToUpper(name[:1]), name[1:])
 	}
 	return name + "Input"
 }
@@ -1483,10 +1561,27 @@ func (cg *GQLGenerator) GetGQLTypeName(ref *TypeRef, forInput ...bool) (ret stri
 		case TipFloat:
 			ret = "Float"
 		default:
-			if len(forInput) > 0 && forInput[0] {
-				ret = cg.GetGQLInputTypeName(ref.Type)
-			} else {
-				ret = cg.GetGQLEntityTypeName(ref.Type)
+			if dt, ok := cg.desc.FindType(ref.Type); ok {
+				if dt.Entity() != nil {
+					if len(forInput) > 0 && forInput[0] {
+						ret = dt.Entity().FS(GQLFeatures, GQLFInputTypeName)
+					} else {
+						ret = dt.Entity().FS(GQLFeatures, GQLFTypeTag)
+					}
+				} else if dt.Enum() != nil {
+					if len(forInput) > 0 && forInput[0] {
+						ret, _ = dt.Enum().Features.GetString(GQLFeatures, GQLFInputTypeName)
+					} else {
+						ret, _ = dt.Enum().Features.GetString(GQLFeatures, GQLFTypeTag)
+					}
+				}
+			}
+			if ret == "" {
+				if len(forInput) > 0 && forInput[0] {
+					ret = cg.GetGQLInputTypeName(ref.Type)
+				} else {
+					ret = cg.GetGQLEntityTypeName(ref.Type)
+				}
 			}
 		}
 	}

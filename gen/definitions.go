@@ -228,6 +228,17 @@ const (
 	dependenciesPackage = "github.com/vc2402/vivard/dependencies"
 )
 
+// File(package) scope annotations
+const (
+	// AnnotationRefPackage creates reference to engine from given package as Engine's
+	AnnotationRefPackage = "ref"
+	// ARFPackageName name of package to include (may be just the only parameter of annotation)
+	ARFPackageName = "name"
+
+	// AnnotationEngineless tells not to generate Engine class for package
+	AnnotationEngineless = "engineless"
+)
+
 const (
 	//AnnotationFind may be used for defining Find params definition
 	AnnotationFind = "find"
@@ -261,7 +272,8 @@ const (
 	// AFTIgnore - for deleted; if true - include deleted items
 	AFTIgnore = "ignore"
 	// AFTIsNull - null nullable fields (value should be bool)
-	AFTIsNull = "is-null"
+	AFTIsNull    = "is-null"
+	AFTIsNotNull = "is-not-null"
 
 	// AnnotationLookup for lookup function generation
 	AnnotationLookup       = "lookup"
@@ -302,6 +314,9 @@ const (
 	AnnSortAscending = "asc"
 	// AnnSortDescending sort in descending order
 	AnnSortDescending = "desc"
+
+	// AnnotationReadonly may be used for fields that can not be changed via API calls
+	AnnotationReadonly = "readonly"
 )
 
 type FeatureKind string

@@ -392,7 +392,7 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 							}
 							if f.Type.Array == nil || f.Type.Array.Complex {
 								t, ok := desc.FindType(tn)
-								if !ok {
+								if !ok || t.Entity() == nil {
 									f.Annotations.AddTag(vueFormAnnotation, vueAnnotationIgnore, true)
 									desc.AddWarning(fmt.Sprintf("at %v: can not find type '%s' for form generation; ignoring", f.Pos, tn))
 									continue
@@ -436,6 +436,11 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				}
 			}
 		}
+		for _, enum := range file.Enums {
+			n := enum.Name + "LookupComponent"
+			enum.Features.Set(featureVueKind, fVKLookupComponent, n)
+			enum.Features.Set(featureVueKind, fVKLookupComponentPath, n+".vue")
+		}
 	}
 	return nil
 }
@@ -446,6 +451,13 @@ func (cg *VueCLientGenerator) Generate(b *gen.Builder) (err error) {
 	for _, t := range b.File.Entries {
 		outDir := cg.getOutputDirForEntity(t)
 		err := cg.generateFor(outDir, t)
+		if err != nil {
+			return err
+		}
+	}
+	for _, e := range b.File.Enums {
+		outDir := cg.getOutputDirForEnum(e)
+		err := cg.generateEnum(outDir, e)
 		if err != nil {
 			return err
 		}
@@ -651,13 +663,22 @@ func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 }
 
 func (cg *VueCLientGenerator) getOutputDirForEntity(e *gen.Entity) (ret string) {
-	dir := path.Join(cg.getOutputDir(), e.File.Package, e.File.Name)
+	return cg.getOutputDirForFile(e.File.Package, e.File.Name)
+}
+
+func (cg *VueCLientGenerator) getOutputDirForEnum(e *gen.Enum) (ret string) {
+	return cg.getOutputDirForFile(e.File.Package, e.File.Name)
+}
+
+func (cg *VueCLientGenerator) getOutputDirForFile(packageName, fileName string) (ret string) {
+	dir := path.Join(cg.getOutputDir(), packageName, fileName)
 	err := os.MkdirAll(dir, os.ModeDir|os.ModePerm)
 	if err != nil {
 		cg.desc.AddError(err)
 	}
 	return dir
 }
+
 func (cg *VueCLientGenerator) pathToRelative(from, to string) (ret string) {
 	var err error
 	ret, err = filepath.Rel(from, to)
@@ -687,7 +708,7 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 	if f.Type.Complex && !custom {
 		if f.Type.Array != nil || f.Type.Map != nil {
 			return ""
-		} else if t, ok := cg.desc.FindType(f.Type.Type); ok {
+		} else if t, ok := cg.desc.FindType(f.Type.Type); ok && t.Entity() != nil {
 			found := false
 			for _, ff := range t.Entity().GetFields(true, true) {
 				if _, ok := ff.Annotations.GetBoolAnnotation(js.Annotation, annName); ok {
@@ -719,7 +740,7 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 func (cg *VueCLientGenerator) processForConfig(t *gen.Entity) {
 	for _, f := range t.Fields {
 		if f.Type.Array != nil {
-			if at, ok := cg.b.FindType(f.Type.Array.Type); ok {
+			if at, ok := cg.b.FindType(f.Type.Array.Type); ok && at.Entity() != nil {
 				e := at.Entity()
 				if e.Annotations.GetBoolAnnotationDef(gen.AnnotationConfig, gen.AnnCfgValue, false) {
 					e.Features.Set(featureVueKind, fVKFormListRequired, true)
@@ -746,7 +767,7 @@ func (cg *VueCLientGenerator) getJSAttrColorForTable(f *gen.Field) (string, bool
 		found := false
 		if f.Type.Array != nil || f.Type.Map != nil {
 			return "", false
-		} else if t, ok := cg.desc.FindType(f.Type.Type); ok {
+		} else if t, ok := cg.desc.FindType(f.Type.Type); ok && t.Entity() != nil {
 			for _, ff := range t.Entity().GetFields(true, true) {
 				if _, ok := ff.Annotations.GetBoolAnnotation(js.Annotation, js.AnnotationColor); ok {
 					if ff.Type.Complex {
@@ -775,7 +796,7 @@ func (cg *VueCLientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName strin
 	fn := f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 	if f.Type.Complex && fieldName != "" && fn != "" {
 		if f.Type.Array == nil && f.Type.Map == nil {
-			if t, ok := cg.desc.FindType(f.Type.Type); ok {
+			if t, ok := cg.desc.FindType(f.Type.Type); ok && t.Entity() != nil {
 				if ttf := t.Entity().GetField(fieldName); ttf != nil {
 					return fmt.Sprintf("%s.%s", fn, ttf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
 				}
@@ -1350,7 +1371,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
     }
   }
   onChange(event: string) {
-    if(this.searchString == event || this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}} == event)
+    if(this.searchString == event {{if ItemTypeIsString}}|| this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}} == event{{end}})
       return
     if(this.timer)
       clearTimeout(this.timer);

@@ -241,7 +241,7 @@ type leafDescriptor struct {
 func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir string) (*configHelper, error) {
 	fp, ok := e.Features.GetString(js.Features, js.FFilePath)
 	if !ok {
-		return nil, fmt.Errorf("file path not set for %s", e.Name)
+		return nil, fmt.Errorf("vue: at %v: file path not set for %s", e.Pos, e.Name)
 	}
 	tn := path.Base(fp)
 	ext := path.Ext(tn)
@@ -344,7 +344,7 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 			}
 			typename := tip.Type
 			var lc, lcp string
-			if t, ok := e.Pckg.FindType(typename); ok {
+			if t, ok := e.Pckg.FindType(typename); ok && t.Entity() != nil {
 				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
 					lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
@@ -416,7 +416,7 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 			if f.Type.Array != nil {
 				t = f.Type.Array.Type
 			}
-			if e, ok := cg.desc.FindType(t); ok {
+			if e, ok := cg.desc.FindType(t); ok && e.Entity() != nil {
 				if e.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 					if ret := fromAnnotations(e.Entity().Annotations, ""); ret != "" {
 						return ret
@@ -538,9 +538,9 @@ func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs str
 				continue
 			}
 			var tip leafType
-			if t.Entity().HasModifier(gen.TypeModifierDictionary) {
+			if t.Entity() != nil && t.Entity().HasModifier(gen.TypeModifierDictionary) {
 				tip = ltDictionary
-			} else {
+			} else if t.Entity() != nil {
 				tip = ltForm
 				if f.Type.Array != nil {
 					tip = ltList
@@ -548,7 +548,9 @@ func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs str
 			}
 			p := fmt.Sprintf("%s.%s", path, f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
 			children.WriteString(tabs)
-			children.WriteString(cg.getTreeItem(prefix+"_"+f.Name, t.Entity(), tabs+TabAsSpace, leafs, tip, p, f))
+			if t.Entity() != nil {
+				children.WriteString(cg.getTreeItem(prefix+"_"+f.Name, t.Entity(), tabs+TabAsSpace, leafs, tip, p, f))
+			}
 		}
 		return fmt.Sprintf("%s{id:'%s', name: '%s', leaf: false, children: \n%s[\n%s%s]\n%s},", tabs, prefix, name, tabs+TabAsSpace, children.String(), tabs+TabAsSpace, tabs)
 	} else if val {

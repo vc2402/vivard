@@ -22,12 +22,13 @@ type hardcodedAttr struct {
 }
 
 type hcValue struct {
-	Null bool       `( @Nil `
-	Str  *string    `| @String `
-	Num  *float64   `| @Number `
-	Bool *Boolean   `| @("true" | "false")`
-	Map  []*hcMap   `| "{" (@@ ( "," )? )* "}" `
-	Arr  []*hcValue `| "[" (@@)* "]" )`
+	Null  bool       `( @Nil `
+	Str   *string    `| @String `
+	Num   *float64   `| @Number `
+	Bool  *Boolean   `| @("true" | "false")`
+	Map   []*hcMap   `| "{" (@@ ( "," )? )* "}" `
+	Arr   []*hcValue `| "[" (@@)* "]"`
+	Ident *string    `| @Ident )`
 }
 
 type hcMap struct {
@@ -106,13 +107,19 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 		}
 		switch tr.Type {
 		case TipInt:
-			if a.Num == nil {
-				return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipInt, *a)
-			}
 			if notNullable {
+				if a.Num == nil {
+					return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipInt, *a)
+				}
 				val = jen.Lit(int(*a.Num))
 			} else {
-				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(int(*a.Num)))
+				if a.Null {
+					val = jen.Qual(VivardPackage, "Ptr").Params(jen.Nil())
+				} else if a.Num == nil {
+					return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipInt, *a)
+				} else {
+					val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(int(*a.Num)))
+				}
 			}
 		case TipFloat:
 			if a.Num == nil {
@@ -176,8 +183,21 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 				val = cg.goType(tr).Values(values)
 				break
 			} else if t, ok := m.TypeRef.Pckg.FindType(tr.Type); ok {
-				if idfld := t.entry.GetIdField(); idfld != nil {
-					return valueFor(idfld.Type, a, pos, notNullable)
+				if t.entry != nil {
+					if idfld := t.entry.GetIdField(); idfld != nil {
+						return valueFor(idfld.Type, a, pos, notNullable)
+					}
+				} else if t.enum != nil && a.Ident != nil {
+					for _, fld := range t.enum.Fields {
+						if *a.Ident == fld.Name {
+							if cg.desc == t.enum.Pckg {
+								return jen.Id(fld.Name), nil
+							} else {
+								return jen.Qual(t.enum.Pckg.fullPackage, fld.Name), nil
+							}
+						}
+					}
+					return nil, fmt.Errorf("at: %s:%d: value '%s' not found in enum %s", m.Pos.Filename, m.Pos.Line+pos, *a.Ident, t.enum.Name)
 				}
 			}
 			return nil, fmt.Errorf("at: %s:%d: type of field %s can not be used for hardcoded", m.Pos.Filename, m.Pos.Line+pos, name)

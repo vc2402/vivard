@@ -164,7 +164,7 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 
 	//components := map[string]vcComponentDescriptor{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
-	typesFromTS := []string{}
+	typesFromTS := map[string][]string{}
 	funcs := template.FuncMap{
 		"Label": func(f fieldDescriptor) string { return f.title },
 		"Rows": func(it interface{}) [][]fieldDescriptor {
@@ -369,7 +369,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				cmp := qt.FS(featureVueKind, fVKLookupComponent)
 				p := qt.FS(featureVueKind, fVKLookupComponentPath)
 				if cmp != "" && p != "" {
-					hlp.addComponent(cmp, p, qt)
+					hlp.addComponent(cmp, p, qt.File, qt.Name)
 					return cmp
 				}
 			}
@@ -431,26 +431,26 @@ import {RoundNumber} from '@/filters/numberFilter';
 		"FormComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKFormComponent)
 			p := e.FS(featureVueKind, fVKFormComponentPath)
-			th.addComponent(cmp, p, e)
+			th.addComponent(cmp, p, e.File, e.Name)
 			return cmp
 		},
 		"ViewComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKViewComponent)
 			p := e.FS(featureVueKind, fVKViewComponentPath)
-			th.addComponent(cmp, p, e)
+			th.addComponent(cmp, p, e.File, e.Name)
 			return cmp
 		},
 		"DialogComponent": func(hlp *helper) string {
 			cmp := e.FS(featureVueKind, fVKDialogComponent)
 			p := e.FS(featureVueKind, fVKDialogComponentPath)
-			th.addComponent(cmp, p, e)
+			th.addComponent(cmp, p, e.File, e.Name)
 			return cmp
 		},
 		"DictEditComponent": func(hlp *helper, addToRequired bool) string {
 			cmp := e.FS(featureVueKind, fVKDictEditComponent)
 			if addToRequired {
 				p := e.FS(featureVueKind, fVKDictEditComponentPath)
-				th.addComponent(cmp, p, e)
+				th.addComponent(cmp, p, e.File, e.Name)
 			}
 			return cmp
 		},
@@ -459,7 +459,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				if gen.IsPrimitiveType(f.fld.Type.Array.Type) {
 					return false
 				}
-				if f, ok := cg.desc.FindType(f.fld.Type.Array.Type); ok {
+				if f, ok := cg.desc.FindType(f.fld.Type.Array.Type); ok && f.Entity() != nil {
 					return !f.Entity().HasModifier(gen.TypeModifierEmbeddable)
 				}
 			}
@@ -470,10 +470,16 @@ import {RoundNumber} from '@/filters/numberFilter';
 				if gen.IsPrimitiveType(f.fld.Type.Array.Type) {
 					return false
 				}
-				if e, ok := cg.desc.FindType(f.fld.Type.Array.Type); ok {
+				if e, ok := cg.desc.FindType(f.fld.Type.Array.Type); ok && e.Entity() != nil {
 					if e.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 						name := e.Entity().FS(js.Features, js.FInstanceGenerator)
-						typesFromTS = append(typesFromTS, name)
+						path, err := cg.getTypesPath(e.Entity())
+						if err != nil {
+							cg.desc.AddError(err)
+							return false
+						}
+						typesFromTS[path] = append(typesFromTS[path], name)
+						//typesFromTS = append(typesFromTS, name)
 						return true
 					}
 				}
@@ -508,29 +514,40 @@ import {RoundNumber} from '@/filters/numberFilter';
 			}
 			typename := tip.Type
 			var lc, lcp string
+			var genFile *gen.File
+			var entityName string
 			if t, ok := e.Pckg.FindType(typename); ok {
-				if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
-					lc = t.Entity().FS(featureVueKind, fVKFormComponent)
-					lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
-				}
-				if lc == "" {
-					ud := f.fld.FS(featureVueKind, fVKUseInDialog)
-
-					switch ud {
-					case fVKUseInDialogLookup:
-						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
-						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
-					case fVKUseInDialogForm:
+				if t.Entity() != nil {
+					genFile = t.Entity().File
+					entityName = t.Entity().Name
+					if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 						lc = t.Entity().FS(featureVueKind, fVKFormComponent)
 						lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
-					default:
-						lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
-						lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
 					}
+					if lc == "" {
+						ud := f.fld.FS(featureVueKind, fVKUseInDialog)
+						switch ud {
+						case fVKUseInDialogLookup:
+							lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+							lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+						case fVKUseInDialogForm:
+							lc = t.Entity().FS(featureVueKind, fVKFormComponent)
+							lcp = t.Entity().FS(featureVueKind, fVKFormComponentPath)
+						default:
+							lc = t.Entity().FS(featureVueKind, fVKLookupComponent)
+							lcp = t.Entity().FS(featureVueKind, fVKLookupComponentPath)
+						}
+					}
+
+				} else if t.Enum() != nil {
+					lc = t.Enum().Features.String(featureVueKind, fVKLookupComponent)
+					lcp = t.Enum().Features.String(featureVueKind, fVKLookupComponentPath)
+					genFile = t.Enum().File
+					entityName = t.Enum().Name
 				}
 				if lc != "" && lcp != "" {
 					if addToRequired {
-						th.addComponent(lc, lcp, t.Entity())
+						th.addComponent(lc, lcp, genFile, entityName)
 					}
 				}
 			}
@@ -554,14 +571,19 @@ import {RoundNumber} from '@/filters/numberFilter';
 				hcp := he.FS(featureVueKind, fVKHistComponentPath)
 				if hf, ok := f.fld.Features.GetField(gen.FeatureHistKind, gen.FHHistoryField); ok {
 					fn := hf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-					th.addComponent(hc, hcp, he)
+					th.addComponent(hc, hcp, he.File, he.Name)
 					return []string{fmt.Sprintf("<%s v-if=\"value && value.%s\" :items=\"value.%s\"/>", hc, fn, fn)}
 				}
 			}
 			return nil
 		},
 		"ItemText": func() string {
-			return cg.getTitleFieldName(e)
+			name, _ := cg.getTitleFieldName(e)
+			return name
+		},
+		"ItemTypeIsString": func() bool {
+			_, tip := cg.getTitleFieldName(e)
+			return tip == gen.TipString
 		},
 		"ItemValue": func() string { return idf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "") },
 		"FieldWithAppend": func(f fieldDescriptor) bool {
@@ -694,7 +716,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if f.fld.Type.Array != nil {
 				t = f.fld.Type.Array.Type
 			}
-			if e, ok := cg.desc.FindType(t); ok {
+			if e, ok := cg.desc.FindType(t); ok && e.Entity() != nil {
 				if e.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 					if ret := fromAnnotations(e.Entity().Annotations, ""); ret != "" {
 						return ret
@@ -767,7 +789,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if f.fld.Type.Array != nil {
 				t = f.fld.Type.Array.Type
 			}
-			if e, ok := e.Pckg.FindType(t); ok {
+			if e, ok := e.Pckg.FindType(t); ok && e.Entity() != nil {
 				name := e.Entity().FS(js.Features, js.FInstanceGenerator)
 				// it is too late to do it here... will do earlier
 				//typesFromTS = append(typesFromTS, name)
@@ -776,7 +798,15 @@ import {RoundNumber} from '@/filters/numberFilter';
 			return ""
 		},
 		"TypesFromTS": func() string {
-			return strings.Join(typesFromTS, ", ")
+			result := strings.Builder{}
+			for path, types := range typesFromTS {
+				result.WriteString("import {")
+				result.WriteString(strings.Join(types, ", "))
+				result.WriteString("} from '")
+				result.WriteString(path)
+				result.WriteString("';\n")
+			}
+			return result.String()
 		},
 		"SelfFormComponent": func() string {
 			if cd, ok := th.ctx.getComponentDescriptor("form"); ok {
@@ -970,6 +1000,9 @@ func (ctx helperContext) getTabs(from int) (tabs [][][]fieldDescriptor, next int
 }
 
 func (ctx helperContext) getRows(from int) (rows [][]fieldDescriptor, next int) {
+	if len(ctx.fields) <= from {
+		return nil, 0
+	}
 	current := ctx.fields[from].tab
 	var row []fieldDescriptor
 	for {
@@ -986,6 +1019,9 @@ func (ctx helperContext) getRows(from int) (rows [][]fieldDescriptor, next int) 
 }
 
 func (ctx helperContext) getRow(from int) (row []fieldDescriptor, next int) {
+	if len(ctx.fields) <= from {
+		return nil, 0
+	}
 	curRow := ctx.fields[from].row
 	curTab := ctx.fields[from].tab
 	for next = from; next < len(ctx.fields); next++ {

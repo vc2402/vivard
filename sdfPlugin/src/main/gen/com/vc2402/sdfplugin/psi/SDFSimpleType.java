@@ -8,6 +8,9 @@ import com.intellij.psi.PsiElement;
 public interface SDFSimpleType extends PsiElement {
 
   @Nullable
+  SDFStAuto getStAuto();
+
+  @Nullable
   SDFStBool getStBool();
 
   @Nullable

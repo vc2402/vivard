@@ -155,7 +155,8 @@ const vueTabbedFormTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName}}, {{InstanceGeneratorName}}, {{TypesFromTS}} } from '{{TypesFilePath}}';
+import { {{TypeName}}, {{InstanceGeneratorName}} } from '{{TypesFilePath}}';
+{{TypesFromTS}}
 {{range RequiredComponents}}
 import {{.Comp}} from '{{.Imp}}'{{end}}
 {{range AdditionalComponents}}

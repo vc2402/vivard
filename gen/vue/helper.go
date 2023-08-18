@@ -2,6 +2,7 @@ package vue
 
 import (
 	"fmt"
+	"github.com/alecthomas/participle/lexer"
 	"os"
 	"path"
 	"text/template"
@@ -67,10 +68,25 @@ type componentDescriptor struct {
 	relPath string
 }
 
-func (cg *VueCLientGenerator) getTypesPath(e *gen.Entity) (string, error) {
-	fp, ok := e.Features.GetString(js.Features, js.FFilePath)
+func (cg *VueCLientGenerator) getTypesPath(e any) (string, error) {
+	var features gen.Features
+	var name string
+	var pos lexer.Position
+	switch v := e.(type) {
+	case *gen.Entity:
+		features = v.Features
+		name = v.Name
+		pos = v.Pos
+	case *gen.Enum:
+		features = v.Features
+		name = v.Name
+		pos = v.Pos
+	default:
+		return "", fmt.Errorf("vue: invalid type for getTypePath: %T", e)
+	}
+	fp, ok := features.GetString(js.Features, js.FFilePath)
 	if !ok {
-		return "", fmt.Errorf("file path not set for %s", e.Name)
+		return "", fmt.Errorf("vue: at %v: file path not set for %s", pos, name)
 	}
 	tn := path.Base(fp)
 	ext := path.Ext(tn)
@@ -639,17 +655,17 @@ func (th *helper) parse(str string) *helper {
 	return th
 }
 
-func (th *helper) addComponent(cmp string, p string, entity *gen.Entity) {
+func (th *helper) addComponent(cmp string, p string, file *gen.File, name string) {
 	if cmp != "" && p != "" {
 		if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
-			if entity.File.Package == th.e.File.Package {
-				if entity.File.Name == th.e.File.Name {
+			if file.Package == th.e.File.Package {
+				if file.Name == th.e.File.Name {
 					p = "." + string(os.PathSeparator) + p
 				} else {
-					p = path.Join("..", entity.File.Name, p)
+					p = path.Join("..", file.Name, p)
 				}
 			} else {
-				p = path.Join("..", "..", entity.File.Package, entity.File.Name, p)
+				p = path.Join("..", "..", file.Package, file.Name, p)
 			}
 		}
 		th.components[cmp] = vcComponentDescriptor{
@@ -657,37 +673,39 @@ func (th *helper) addComponent(cmp string, p string, entity *gen.Entity) {
 			Imp:  p,
 		}
 	} else {
-		th.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, entity.Name))
+		th.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, name))
 	}
 }
 
-func (cg *VueCLientGenerator) getTitleFieldName(e *gen.Entity) string {
-	fn := ""
+func (cg *VueCLientGenerator) getTitleFieldName(e *gen.Entity) (name string, tip string) {
+	name = ""
+	tip = ""
 	for {
 		f := getTitleField(e)
 		if f == nil {
-			return ""
+			return "", ""
 		}
-		if fn != "" {
-			fn += "."
+		if name != "" {
+			name += "."
 		}
-		fn += f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
+		name += f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 		if !f.Type.Complex {
+			tip = f.Type.Type
 			break
 		}
 
 		dt, ok := cg.desc.FindType(f.Type.Type)
 		if !ok {
 			cg.b.AddError(fmt.Errorf("at %v: type not found: '%s'", f.Pos, f.Type.Type))
-			return ""
+			return "", ""
 		}
 		e = dt.Entity()
 		if e == nil {
-			cg.b.AddError(fmt.Errorf("at %v: external type is not supported for title: '%s'", f.Pos, f.Type.Type))
-			return ""
+			cg.b.AddError(fmt.Errorf("at %v: title: external types and Enums are not supported: '%s'", f.Pos, f.Type.Type))
+			return "", ""
 		}
 	}
-	return fn
+	return
 }
 
 func getTitleField(e *gen.Entity) *gen.Field {

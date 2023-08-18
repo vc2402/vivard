@@ -205,6 +205,9 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 	if _, ok := item.(*Method); ok && ann.Name == AnnotationCall {
 		return true, nil
 	}
+	if _, ok := item.(*Entity); ok && ann.Name == AnnotationAccess {
+		return true, nil
+	}
 	if ann.Name == AnnotationBulk {
 		if _, ok := item.(*Entity); ok {
 			for _, value := range ann.Values {
@@ -220,6 +223,15 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 			return true, nil
 		}
 		return true, fmt.Errorf("at %v: annotation %s should be used for Entity", ann.Pos, ann.Name)
+	}
+	if ann.Name == AnnotationReadonly {
+		if f, ok := item.(*Field); ok {
+			readonly := true
+			if set, ok := ann.GetNameTag("set"); ok {
+				readonly = set != "false"
+			}
+			f.Features.Set(FeaturesCommonKind, FCReadonly, readonly)
+		}
 	}
 	return false, nil
 }
@@ -281,6 +293,13 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 	cg.desc = bldr.Descriptor
 	cg.b = bldr
+	for _, e := range bldr.File.Enums {
+		err = cg.generateEnum(e)
+		if err != nil {
+			err = fmt.Errorf("while generating enum %s (%s): %w", e.Name, bldr.File.FileName, err)
+			return
+		}
+	}
 	for _, t := range bldr.File.Entries {
 		if t.HasModifier(TypeModifierExternal) {
 			continue
@@ -426,6 +445,42 @@ func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj inter
 	}
 	return
 }
+
+func (cg *CodeGenerator) generateEnum(e *Enum) error {
+	cg.b.Types.Add(jen.Type().Id(e.Name).Add(cg.goType(&TypeRef{Type: e.AliasForType})).Line())
+
+	if len(e.Fields) > 0 {
+		constSection := "const_" + e.Name
+		withIota := e.Fields[0].FloatVal == nil && e.Fields[0].IntVal == nil && e.Fields[0].StringVal == nil
+		for i, field := range e.Fields {
+			expr := jen.Id(field.Name)
+
+			if withIota {
+				if i == 0 {
+					expr.Id(e.Name).Op("=").Iota()
+				}
+			} else {
+				expr.Id(e.Name)
+				var val jen.Code
+				if field.IntVal != nil {
+					val = jen.Lit(*field.IntVal)
+				} else if field.FloatVal != nil {
+					val = jen.Lit(*field.FloatVal)
+				} else if field.StringVal != nil {
+					val = jen.Lit(*field.StringVal)
+				}
+				//TODO add warning
+				if val != nil {
+					expr.Op("=").Add(val)
+				}
+			}
+			cg.b.AddConst(constSection, expr)
+		}
+	}
+
+	return nil
+}
+
 func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 	fields := jen.Statement{}
 	typeName := ent.Name
@@ -455,9 +510,11 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 	}
 	for _, d := range ent.Fields {
 		if ent.IsDictionary() &&
-			(d.Type.Array != nil && d.Type.Array.Complex && !d.HasModifier(AttrModifierEmbeddedRef)) &&
-			!d.HasModifier(AttrModifierEmbedded) || !cg.options.AllowEmbeddedArraysForDictionary {
-			return fmt.Errorf("%s:%s: only simple types allowed for Dictionary", ent.Name, d.Name)
+			// at the moment not more than 2-dimension arrays are allowed for dictionaries
+			(d.Type.Array != nil && d.Type.Array.Complex && (d.Type.Array.Array == nil || d.Type.Array.Array.Complex) &&
+				!d.HasModifier(AttrModifierEmbeddedRef)) && !d.HasModifier(AttrModifierEmbedded) ||
+			!cg.options.AllowEmbeddedArraysForDictionary {
+			return fmt.Errorf("at %v: %s: only simple types allowed for Dictionary", d.Pos, d.Name)
 		}
 		fieldName := d.FS(FeatGoKind, FCGName)
 		otm, itsOneToMany := d.Features.GetEntity(FeaturesCommonKind, FCOneToManyType)
@@ -606,8 +663,8 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 								tr := d.Type.Array
 								if d.HasModifier(AttrModifierEmbeddedRef) {
 									if t, ok := cg.desc.FindType(tr.Type); ok {
-										if idfld := t.entry.GetIdField(); idfld != nil {
-											tr = idfld.Type
+										if idt, err := t.IdType(); err == nil {
+											tr = &TypeRef{Type: idt}
 										}
 									}
 								}
@@ -629,8 +686,13 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 										return
 									}
 								}
-								g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val"))))
-								g.Add(cg.getSetAttrValueFuncFeature(d)("obj", cg.getIDFromObjectFuncFeature(ref.entry)("val")))
+								if ref.entry != nil {
+									g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val"))))
+									g.Add(cg.getSetAttrValueFuncFeature(d)("obj", cg.getIDFromObjectFuncFeature(ref.entry)("val")))
+								} else {
+									g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", "val")))
+									g.Add(cg.getSetAttrValueFuncFeature(d)("obj", "val"))
+								}
 								//g.Id("obj").Dot(d.Name).Op("=").Add(cg.getIDFromObjectFuncFeature(ref.entry)("val"))
 							}
 							g.Add(cg.proj.OnHook(HookSet, HMExit, d, nil))
@@ -777,9 +839,13 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 				engVar := cg.desc.CallCodeFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
 				//TODO: check that it is not necessary add params to initializer
 				fields[jen.Id(fieldName)] = jen.Id(d.Name)
-				idstmt.Add(
-					jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(jen.Id("ctx")),
-				).Line()
+				if ft.Entity() != nil {
+					idstmt.Add(
+						jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(jen.Id("ctx")),
+					).Line()
+				} else if ft.Enum() != nil {
+					jen.Id(d.Name).Op(":=").Add(ft.Enum().GetDefaultValue(cg.desc))
+				}
 			} else {
 				fields[jen.Id(fieldName)] = cg.b.goEmptyValue(d.Type, !d.HasModifier(AttrModifierEmbedded))
 			}
@@ -870,7 +936,7 @@ func (cg *CodeGenerator) createArraySetter(g *jen.Group, ref *TypeRef, goalVar s
 			cg.createArraySetter(gg, ref.Array, goalVar+"a", "v", idx+"i")
 			// gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id(goalVar + "a")
 		} else if ref.Complex {
-			if t, ok := cg.desc.FindType(ref.Type); ok {
+			if t, ok := cg.desc.FindType(ref.Type); ok && t.entry != nil {
 				if idfld := t.entry.GetIdField(); idfld != nil {
 					gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
 					return
@@ -888,7 +954,7 @@ func (cg *CodeGenerator) createMapSetter(g *jen.Group, mapType *MapType, goalVar
 		if mapType.ValueType.Array != nil {
 			cg.createArraySetter(gg, mapType.ValueType.Array, goalVar+"a", "v", idx+"i")
 		} else if mapType.ValueType.Complex {
-			if t, ok := cg.desc.FindType(mapType.ValueType.Type); ok {
+			if t, ok := cg.desc.FindType(mapType.ValueType.Type); ok && t.entry != nil {
 				if idfld := t.entry.GetIdField(); idfld != nil {
 					gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
 					return
@@ -925,7 +991,15 @@ func (b *Builder) addType(stmt *jen.Statement, ref *TypeRef, embedded ...bool) (
 	default:
 		ref.Complex = true
 		if dt, ok := b.Descriptor.FindType(ref.Type); ok {
-			if !ref.Embedded && (len(embedded) == 0 || !embedded[0]) &&
+			if dt.enum != nil {
+				ref.Complex = false
+				if b.File.Package != dt.pckg {
+					f = jen.Qual(dt.packagePath, dt.enum.Name)
+				} else {
+					f = jen.Id(dt.enum.Name)
+				}
+			} else if dt.entry != nil &&
+				!ref.Embedded && (len(embedded) == 0 || !embedded[0]) &&
 				!dt.entry.HasModifier(TypeModifierEmbeddable) &&
 				!dt.entry.HasModifier(TypeModifierTransient) &&
 				!dt.entry.HasModifier(TypeModifierExternal) &&
@@ -1022,14 +1096,20 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 	default:
 		if len(idForRef) > 0 && idForRef[0] && ref.Type != "" {
 			if dt, ok := b.Descriptor.FindType(ref.Type); ok {
-				it := dt.entry.GetIdField()
-				if it == nil {
-					if !dt.external {
-						b.Descriptor.AddWarning(fmt.Sprintf("there is no id field for type: %s", dt.name))
+				if dt.enum != nil {
+					return dt.enum.GetDefaultValue(b.Pckg)
+				} else if dt.entry != nil {
+					it := dt.entry.GetIdField()
+					if it == nil {
+						if !dt.external {
+							b.Descriptor.AddWarning(fmt.Sprintf("there is no id field for type: %s", dt.name))
+						}
+						return
 					}
-					return
+					return b.goEmptyValue(it.Type)
+				} else {
+
 				}
-				return b.goEmptyValue(it.Type)
 			} else {
 				b.Descriptor.AddWarning(fmt.Sprintf("undefined type: %s", ref.Type))
 			}
@@ -1096,7 +1176,7 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 				cg.desc.AddTag(f, v.Key, *v.Value.String)
 			}
 		}
-		if f.Type.Complex && !f.Type.Embedded || f.FB(FeatGoKind, FCGCalculated) {
+		if f.Type.Complex && !f.Type.Embedded && (f.Type.Array == nil || f.Type.Array.Complex) || f.FB(FeatGoKind, FCGCalculated) {
 			f.Features.Set(FeaturesCommonKind, FCComplexAccessor, true)
 		} else if _, ok := f.Features.GetEntity(FeaturesCommonKind, FCOneToManyType); ok {
 			f.Features.Set(FeaturesCommonKind, FCComplexAccessor, true)
@@ -1141,10 +1221,21 @@ func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statemen
 	default:
 		f = &jen.Statement{}
 		if dt, ok := cg.desc.FindType(ref.Type); ok {
-			if dt.entry.HasModifier(TypeModifierExternal) {
-				f = jen.Qual(dt.packagePath, dt.name)
+			if dt.enum != nil {
+				if dt.pckg != cg.desc.Name {
+					f = f.Qual(dt.packagePath, dt.enum.Name)
+				} else {
+					f = f.Id(dt.enum.Name)
+				}
+			} else if dt.entry != nil && dt.entry.HasModifier(TypeModifierExternal) {
+				if cg.desc.fullPackage != dt.packagePath {
+					f = jen.Qual(dt.packagePath, dt.name)
+				} else {
+					f = jen.Id(dt.name)
+				}
 			} else if !ref.Embedded &&
 				(len(embedded) == 0 || !embedded[0]) &&
+				dt.entry != nil &&
 				!dt.entry.HasModifier(TypeModifierEmbeddable) &&
 				!dt.entry.HasModifier(TypeModifierTransient) &&
 				!dt.entry.HasModifier(TypeModifierConfig) {

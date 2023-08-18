@@ -107,6 +107,10 @@ public class SDFVisitor extends PsiElementVisitor {
     visitPsiElement(o);
   }
 
+  public void visitStAuto(@NotNull SDFStAuto o) {
+    visitPsiElement(o);
+  }
+
   public void visitStBool(@NotNull SDFStBool o) {
     visitPsiElement(o);
   }

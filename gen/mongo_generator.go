@@ -849,14 +849,19 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 					g.IfFunc(func(g *jen.Group) {
 						if f.Type.Array == nil {
 							//TODO add option to compare with empty string
-							if f.Type.Type == TipString {
-								if f.Type.NonNullable {
-									g.Id("query").Dot(f.Name).Op("!=").Lit("")
-								} else {
+							if !f.Type.NonNullable {
+								if f.Type.Type == TipString {
 									g.Id("query").Dot(f.Name).Op("!=").Nil().Op("&&").Op("*").Id("query").Dot(f.Name).Op("!=").Lit("")
+								} else {
+									g.Id("query").Dot(f.Name).Op("!=").Nil()
 								}
 							} else {
-								g.Id("query").Dot(f.Name).Op("!=").Nil()
+								switch f.Type.Type {
+								case TipString:
+									g.Id("query").Dot(f.Name).Op("!=").Lit("")
+								default:
+									g.True()
+								}
 							}
 						} else {
 							g.Len(jen.Id("query").Dot(f.Name)).Op("!=").Lit(0)
@@ -946,23 +951,41 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 										})
 									}
 								case AFTStartsWith:
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
-									})
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$regex")).Op("=").Lit("^").Op("+").Op("*").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$regex"): jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
+										})
+									}
 								case AFTStartsWithIgnoreCase:
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Lit("$regex"):   jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
-										jen.Lit("$options"): jen.Lit("i"),
-									})
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$regex")).Op("=").Lit("^").Op("+").Op("*").Id("query").Dot(f.Name)
+										g.Add(pref).Index(jen.Lit("$options")).Op("=").Lit("i")
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$regex"):   jen.Lit("^").Op("+").Op("*").Id("query").Dot(f.Name),
+											jen.Lit("$options"): jen.Lit("i"),
+										})
+									}
 								case AFTContains:
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
-									})
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$regex")).Op("=").Op("*").Id("query").Dot(f.Name)
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$regex"): jen.Op("*").Id("query").Dot(f.Name),
+										})
+									}
 								case AFTContainsIgnoreCase:
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
-										jen.Lit("$options"): jen.Lit("i"),
-									})
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$regex")).Op("=").Op("*").Id("query").Dot(f.Name)
+										g.Add(pref).Index(jen.Lit("$options")).Op("=").Lit("i")
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$regex"):   jen.Op("*").Id("query").Dot(f.Name),
+											jen.Lit("$options"): jen.Lit("i"),
+										})
+									}
 								case AFTIsNull, AFTIsNotNull:
 									ops := [...]string{"$eq", "$ne"}
 									idx := 0

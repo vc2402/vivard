@@ -77,7 +77,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	// }
 
 	l := strings.Trim(m.Current()[0], " \t")
-	r := regexp.MustCompile(`^\s*(hardcoded)|(init-values)\s*\{$`)
+	r := regexp.MustCompile(`^\s*(hardcoded)|(init-values)|(values)\s*\{$`)
 	match := r.FindStringSubmatch(l)
 	if match == nil {
 		return
@@ -91,6 +91,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	kind := 0
 	items := []jen.Code{}
 	readonly := match[1] != ""
+	initValues := match[2] != ""
 	var name string
 
 	var valueFor func(tr *TypeRef, a *hcValue, pos int, notNull ...bool) (val jen.Code, err error)
@@ -249,7 +250,11 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 			m.TypeRef.Features.Set(FeatGoKind, FCDictGetter, arr)
 			m.TypeRef.Features.Set(FeaturesCommonKind, FCReadonly, true)
 		} else {
-			m.TypeRef.Features.Set(FeatGoKind, FCDictIniter, arr)
+			if initValues {
+				m.TypeRef.Features.Set(FeatGoKind, FCDictIniter, arr)
+			} else {
+				m.TypeRef.Features.Set(FeatGoKind, FCDictEnsurer, arr)
+			}
 		}
 		return nil
 	}

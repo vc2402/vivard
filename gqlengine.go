@@ -115,11 +115,10 @@ func (gqe *GQLEngine) Provide() interface{} {
 	return gqe
 }
 
-func (gqe *GQLEngine) HTTPHandler() http.HandlerFunc {
-	pretty := true
+func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 	h := handler.New(&handler.Config{
 		Schema:   gqe.schema,
-		Pretty:   pretty,
+		Pretty:   len(pretty) == 0 || !pretty[0],
 		GraphiQL: true,
 	})
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -144,7 +143,7 @@ func (gqe *GQLEngine) HTTPHandler() http.HandlerFunc {
 		w.Header().Add("Content-Type", "application/json; charset=utf-8")
 
 		var buff []byte
-		if pretty {
+		if len(pretty) == 0 || !pretty[0] {
 			w.WriteHeader(http.StatusOK)
 			buff, _ = json.MarshalIndent(result, "", "\t")
 

@@ -10,7 +10,7 @@ type Context interface {
 	Source() string
 	HasRole(role string) bool
 	RolesMask() int
-	GetExt(key string) interface{}
+	GetExt(key string) (interface{}, bool)
 }
 
 type DefaultContext struct {
@@ -21,14 +21,6 @@ type DefaultContext struct {
 	roles     []string
 	rolesMask int
 	ext       map[string]interface{}
-}
-
-func (c DefaultContext) GetExt(key string) (interface{}, bool) {
-	if c.ext == nil {
-		return nil, false
-	}
-	ret, ok := c.ext[key]
-	return ret, ok
 }
 
 var ContextID = &struct{ vivardName string }{"VivardContext"}
@@ -46,7 +38,11 @@ func NewContext(ctx context.Context, userID int, userName string, source string,
 	return context.WithValue(ctx, ContextID, newCtx)
 }
 
-func RequestContext(ctx context.Context) DefaultContext {
+func WithRequestContext(ctx context.Context, requestContext DefaultContext) context.Context {
+	return context.WithValue(ctx, ContextID, requestContext)
+}
+
+func RequestContext(ctx context.Context) Context {
 	cv := ctx.Value(ContextID)
 	if dc, ok := cv.(DefaultContext); ok {
 		return dc
@@ -85,4 +81,12 @@ func (c DefaultContext) Roles() []string {
 
 func (c DefaultContext) RolesMask() int {
 	return c.rolesMask
+}
+
+func (c DefaultContext) GetExt(key string) (interface{}, bool) {
+	if c.ext == nil {
+		return nil, false
+	}
+	ret, ok := c.ext[key]
+	return ret, ok
 }

@@ -392,6 +392,8 @@ const (
 	FCDictGetter = "fc-dict-getter"
 	//FCDictIniter - code for init dict values (if empty)
 	FCDictIniter = "fc-dict-initer"
+	//FCDictEnsurer - code for values that should be in the dict
+	FCDictEnsurer = "fc-dict-ensurer"
 	//FCEngineVar - code feature for Field - returns code for engine to access this field (usualy *Engine but checks package)
 	FCEngineVar = "engine-var"
 	//FCDescendants - array of *Entity that are descendants of this type

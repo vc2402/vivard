@@ -333,7 +333,6 @@ func (cg *GQLCLientGenerator) getTypeForImport(pckg *gen.Package, ref *gen.TypeR
 				cg.desc.AddError(fmt.Errorf("at %v: type is not an Entity", dt.Position()))
 				return "", nil
 			}
-			return "", nil
 		}
 	}
 }
@@ -440,9 +439,9 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					if i == gen.GQLOperationSet || !isCfg {
 						req = "mutation"
 						jstype := cg.GetJSEntityTypeName(e.Name)
+						inputInit = e.FS(Features, FFillInputFuncName)
 						if i == gen.GQLOperationSet {
 							jstype = cg.GetJSEntityInputTypeName(e.Name)
-							inputInit = e.FS(Features, FFillInputFuncName)
 						}
 						ad = []ArgDef{{
 							Name:    "val",

@@ -259,7 +259,7 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 		return nil
 	}
 	for pos := 1; pos < len(m.Current()); pos++ {
-		l = strings.Trim(m.Current()[pos], " \t")
+		l = strings.Trim(m.Current()[pos], " \t\r")
 		if l == "}" {
 			if phase == 0 {
 				err = write(pos)

@@ -688,7 +688,7 @@ func (a Annotations) GetStringAnnotationDefTrimmed(name string, key string, def 
 	if !ok {
 		val = def
 	}
-	val = strings.Trim(val, " \t\n")
+	val = strings.Trim(val, " \t\r\n")
 	return
 }
 func (a Annotations) GetBoolAnnotation(name string, key string) (val bool, ok bool) {
@@ -989,14 +989,14 @@ func (m *Meta) Next() bool {
 		return false
 	}
 	m.start = m.end
-	for m.start < len(m.Lines) && strings.Trim(m.Lines[m.start], " \t") == "" {
+	for m.start < len(m.Lines) && strings.Trim(m.Lines[m.start], " \t\r") == "" {
 		m.start++
 	}
 	if m.start >= len(m.Lines) {
 		return false
 	}
 	m.end = m.start
-	for m.end < len(m.Lines) && strings.Trim(m.Lines[m.end], " \t") != "" {
+	for m.end < len(m.Lines) && strings.Trim(m.Lines[m.end], " \t\r") != "" {
 		m.end++
 	}
 	if m.end == m.start && m.start == 0 {

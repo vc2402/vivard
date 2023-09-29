@@ -14,7 +14,7 @@ import (
 	_ "github.com/vc2402/vivard/gen/vue"
 )
 
-const version = "0.1.0"
+const version = "0.1.11"
 
 func main() {
 	pflag.String("package", "test", "default package name")

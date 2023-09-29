@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/template"
@@ -876,7 +877,7 @@ func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 		ret = cg.outputPath
 	}
 
-	ret = path.Join(ret, "types")
+	ret = filepath.FromSlash(path.Join(ret, "types"))
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }

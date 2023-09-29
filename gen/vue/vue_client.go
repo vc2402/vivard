@@ -659,6 +659,7 @@ func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 	if opt := cg.options.OutputDir; opt != "" {
 		ret = opt
 	}
+	ret = filepath.FromSlash(ret)
 	return
 }
 

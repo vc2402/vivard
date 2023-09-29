@@ -7,6 +7,7 @@ import (
 	"github.com/vc2402/vivard/utils"
 	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -486,6 +487,7 @@ func (p *Project) CallFeatureHookFunc(obj interface{}, kind FeatureKind, name st
 }
 
 func (p *Project) Generate() (err error) {
+	p.Options.OutputDir = filepath.FromSlash(p.Options.OutputDir)
 	// desc.generators = []Generator{&CodeGenerator{}, &GQLGenerator{}}
 	p.start()
 

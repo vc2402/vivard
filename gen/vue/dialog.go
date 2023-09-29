@@ -198,7 +198,7 @@ export default class {{.Name}}DialogComponent extends Vue {
       this.reject(exc);
     }{{end}}
   }
-  async close(save: boolean) {
+  async close(save?: boolean) {
     if(!save) {
       this.resolve(null);
       this.showDialog = false;

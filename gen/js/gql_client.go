@@ -1127,8 +1127,8 @@ const fillInputFuncTemplate = `
 export function {{FillInputName .}}(arg: {{InputTypeName .}}): {{InputTypeName .}} {
   return {
     {{range GetFields .}}{{if NeedFill . }}{{FieldName .}}: {{if CallFill .}}{{GetFillName .}}(arg.{{FieldName .}}){{else}}cleanInput(arg.{{FieldName .}}){{end}},
-		{{end}}{{end}}
-  }
+		{{end}}{{end}}{{range SetNullFields .}}{{.}}: arg.{{.}},
+		{{end}}}
 }
 `
 

@@ -8,6 +8,7 @@ require (
 	github.com/dop251/goja v0.0.0-20230621100801-7749907a8a20
 	github.com/graphql-go/graphql v0.8.0
 	github.com/graphql-go/handler v0.2.3
+	github.com/jmoiron/sqlx v1.3.5
 	github.com/lestrrat-go/file-rotatelogs v2.4.0+incompatible
 	github.com/nats-io/nats.go v1.27.0
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5

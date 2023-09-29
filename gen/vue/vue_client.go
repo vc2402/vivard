@@ -1302,7 +1302,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop() label!: string;
   @Prop() readonly!: boolean;
   @Prop({default:true}) returnObject!: boolean
-  @Prop({default:undefined}) hideAdd: string|undefined
+  @Prop({default:undefined}) hideAdd: boolean|undefined
   @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];

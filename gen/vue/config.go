@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -33,7 +33,7 @@ func (ch *configHelper) generate() error {
 		return fmt.Errorf("Error while parsing config template: %v", ch.err)
 	}
 	p := ch.e.FS(featureVueKind, fVKConfComponentPath)
-	p = path.Join(ch.outDir, p)
+	p = filepath.Join(ch.outDir, p)
 
 	f, err := os.Create(p)
 	if err != nil {
@@ -243,12 +243,12 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 	if !ok {
 		return nil, fmt.Errorf("vue: at %v: file path not set for %s", e.Pos, e.Name)
 	}
-	tn := path.Base(fp)
-	ext := path.Ext(tn)
+	tn := filepath.Base(fp)
+	ext := filepath.Ext(tn)
 	if ext != "" {
 		tn = tn[:len(tn)-len(ext)]
 	}
-	typesPath := path.Join("..", "..", "..", "/types", tn)
+	typesPath := filepath.Join("..", "..", "..", "/types", tn)
 	//components := map[string]string{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
 	leafs := map[string]leafDescriptor{}
@@ -500,15 +500,15 @@ func (th *configHelper) parse(str string) *configHelper {
 
 func (th *configHelper) addComponent(cmp string, p string, entity *gen.Entity) {
 	if cmp != "" && p != "" {
-		if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+		if p[0] != '@' && p[0] != '.' && !filepath.IsAbs(p) {
 			if entity.File.Package == th.e.File.Package {
 				if entity.File.Name == th.e.File.Name {
 					p = "." + string(os.PathSeparator) + p
 				} else {
-					p = path.Join("..", entity.File.Name, p)
+					p = filepath.Join("..", entity.File.Name, p)
 				}
 			} else {
-				p = path.Join("..", "..", entity.File.Package, entity.File.Name, p)
+				p = filepath.Join("..", "..", entity.File.Package, entity.File.Name, p)
 			}
 		}
 		th.components[cmp] = vcComponentDescriptor{

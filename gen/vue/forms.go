@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 func (h *helper) generateForm(formName string) error {
@@ -32,9 +32,8 @@ func (h *helper) generateForm(formName string) error {
 	}
 
 	if h.e.FB(featureVueKind, fVKFormRequired) {
-		// p := path.Join(h.outDir, h.e.Name+"Form.vue")
 		p := h.e.FS(featureVueKind, fVKFormComponentPath)
-		p = path.Join(h.outDir, p)
+		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -52,7 +51,7 @@ func (h *helper) generateForm(formName string) error {
 	}
 	if h.e.FB(featureVueKind, fVKFormListRequired) {
 		p := h.e.FS(featureVueKind, fVKFormListComponentPath)
-		p = path.Join(h.outDir, p)
+		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -70,9 +69,8 @@ func (h *helper) generateForm(formName string) error {
 	}
 
 	if h.e.FB(featureVueKind, fVKCardRequired) {
-		// p := path.Join(h.outDir, h.e.Name+"Form.vue")
 		p := h.e.FS(featureVueKind, fVKCardComponentPath)
-		p = path.Join(h.outDir, p)
+		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)

@@ -3,7 +3,6 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -278,9 +277,7 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 			outDir := cg.getOutputDirForEntity(t)
 			t.Features.Set(featureVueKind, fVKOutDir, outDir)
 			if t.HasModifier(gen.TypeModifierConfig) {
-				//p := path.Join(outDir, t.Name+".vue")
 				t.Features.Set(featureVueKind, fVKConfComponentPath, t.Name+".vue")
-				// cg.processForConfig(t)
 			} else {
 				generateCommon := true
 				if t.Annotations.GetBoolAnnotationDef(gen.AnnotationConfig, gen.AnnCfgGroup, false) {
@@ -289,12 +286,10 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if generateCommon {
 					// lookup
 					n := t.Name + "LookupComponent"
-					//p := path.Join(outDir, n+".vue")
 					t.Features.Set(featureVueKind, fVKLookupComponent, n)
 					t.Features.Set(featureVueKind, fVKLookupComponentPath, n+".vue")
 
 					// type descriptor
-					//p = path.Join(outDir, t.Name+"TypeDescriptor.ts")
 					t.Features.Set(featureVueKind, fVKTypeDescriptorPath, t.Name+"TypeDescriptor.ts")
 					// form
 					if !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
@@ -302,7 +297,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 						if t.FB(featureVueKind, fVKFormListRequired) {
 							t.Features.Set(featureVueKind, fVKFormRequired, true)
 							c := t.Name + "FormListComponent"
-							//p := path.Join(outDir, c) + ".vue"
 							t.Features.Set(featureVueKind, fVKFormListComponent, c)
 							t.Features.Set(featureVueKind, fVKFormListComponentPath, c+".vue")
 						}
@@ -317,7 +311,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 						} else {
 							if ignore, ok := t.Annotations.GetBoolAnnotation(vueFormAnnotation, vueAnnotationIgnore); !ok || !ignore {
 								c := t.Name + "FormComponent"
-								//p := path.Join(outDir, c) + ".vue"
 								t.Features.Set(featureVueKind, fVKFormRequired, true)
 								t.Features.Set(featureVueKind, fVKFormComponent, c)
 								t.Features.Set(featureVueKind, fVKFormComponentPath, c+".vue")
@@ -327,7 +320,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 					// do not generate by default
 					if create, ok := t.Annotations.GetBoolAnnotation(vueFormAnnotation, vfaCard); ok && create {
 						c := t.Name + "Card"
-						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKCardRequired, true)
 						t.Features.Set(featureVueKind, fVKCardComponent, c)
 						t.Features.Set(featureVueKind, fVKCardComponentPath, c+".vue")
@@ -350,7 +342,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				} else {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueViewAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "View"
-						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKViewRequired, true)
 						t.Features.Set(featureVueKind, fVKViewComponent, c)
 						t.Features.Set(featureVueKind, fVKViewComponentPath, c+".vue")
@@ -359,7 +350,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				//history
 				if _, ok := t.Features.Get(gen.FeatureHistKind, gen.FHHistoryOf); ok {
 					c := t.Name + "HistComponent"
-					//p := path.Join(outDir, c) + ".vue"
 					t.Features.Set(featureVueKind, fVKHistComponent, c)
 					t.Features.Set(featureVueKind, fVKHistComponentPath, c+".vue")
 				}
@@ -418,7 +408,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueDialogAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "DialogComponent"
-						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKDialogRequired, true)
 						t.Features.Set(featureVueKind, fVKDialogComponent, c)
 						t.Features.Set(featureVueKind, fVKDialogComponentPath, c+".vue")
@@ -428,7 +417,6 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if t.HasModifier(gen.TypeModifierDictionary) && !t.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
 					if ignore, ok := t.Annotations.GetBoolAnnotation(vueAnnotation, vueAnnotationIgnore); !ok || !ignore {
 						c := t.Name + "DictEditComponent"
-						//p := path.Join(outDir, c) + ".vue"
 						t.Features.Set(featureVueKind, fVKDialogRequired, true)
 						t.Features.Set(featureVueKind, fVKDictEditComponent, c)
 						t.Features.Set(featureVueKind, fVKDictEditComponentPath, c+".vue")
@@ -466,8 +454,6 @@ func (cg *VueCLientGenerator) Generate(b *gen.Builder) (err error) {
 }
 
 func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err error) {
-	// wr := os.Stdout
-	// tn := path.Base(e.Annotations.GetStringAnnotationDef(jsAnnotation, jsAnnotationFilePath, ""))
 	if e.HasModifier(gen.TypeModifierTransient) || e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
 		return
 	}
@@ -500,7 +486,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 
 		if th.idField != nil {
 			p := e.FS(featureVueKind, fVKLookupComponentPath)
-			p = path.Join(outDir, p)
+			p = filepath.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for LookupComponent for %s: %v", e.Name, err)
@@ -531,7 +517,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			if err != nil {
 				return err
 			}
-			p = path.Join(outDir, p)
+			p = filepath.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for TypeDescriptor for %s: %v", e.Name, err)
@@ -551,7 +537,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 
 		if p != "" {
 			th, err = cg.newFormHelper("VIEW", e, vueViewAnnotation, "", outDir)
-			p = path.Join(outDir, p)
+			p = filepath.Join(outDir, p)
 			f, err := os.Create(p)
 			if err != nil {
 				return fmt.Errorf("while opening file for ViewComponent for %s: %v", e.Name, err)
@@ -646,7 +632,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 }
 
 func (cg *VueCLientGenerator) getOutputDir() (ret string) {
-	ret = path.Join(cg.getClientOutputDir(), "components")
+	ret = filepath.Join(cg.getClientOutputDir(), "components")
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }
@@ -672,7 +658,7 @@ func (cg *VueCLientGenerator) getOutputDirForEnum(e *gen.Enum) (ret string) {
 }
 
 func (cg *VueCLientGenerator) getOutputDirForFile(packageName, fileName string) (ret string) {
-	dir := path.Join(cg.getOutputDir(), packageName, fileName)
+	dir := filepath.Join(cg.getOutputDir(), packageName, fileName)
 	err := os.MkdirAll(dir, os.ModeDir|os.ModePerm)
 	if err != nil {
 		cg.desc.AddError(err)
@@ -809,7 +795,7 @@ func (cg *VueCLientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName strin
 
 func (cg *VueCLientGenerator) getPathForComponent(e *gen.Entity, name string) string {
 	outDir := cg.getOutputDirForEntity(e)
-	return path.Join(outDir, name)
+	return filepath.Join(outDir, name)
 }
 
 func parseComponentAnnotation(ann string) (component string, path string, ok bool) {

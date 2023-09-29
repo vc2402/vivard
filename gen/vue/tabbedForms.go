@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 func (h *helper) generateGridForm(formName string, compPath ...string) error {
@@ -41,12 +41,11 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 	}
 
 	if h.e.FB(featureVueKind, fVKFormRequired) || (len(compPath) > 0 && compPath[0] != "") {
-		// p := path.Join(h.outDir, h.e.Name+"GridForm.vue")
 		p := h.e.FS(featureVueKind, fVKFormComponentPath)
 		if len(compPath) > 0 && compPath[0] != "" {
 			p = compPath[0]
 		}
-		p = path.Join(h.outDir, p)
+		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("Error opening file '%s': %v", p, err)
@@ -71,7 +70,7 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 		if p == "" {
 			return fmt.Errorf("FormList: form list requested but path not generated for %s", h.e.Name)
 		}
-		p = path.Join(h.outDir, p)
+		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
 			return fmt.Errorf("FormList: Error opening file '%s': %v", p, err)

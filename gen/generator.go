@@ -6,7 +6,6 @@ import (
 	"github.com/alecthomas/participle/lexer"
 	"github.com/vc2402/vivard/utils"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -659,18 +658,18 @@ func (p *Project) Print() {
 func (p *Project) WriteToFiles() (err error) {
 	for _, desc := range p.packages {
 		for _, bldr := range desc.builders {
-			err = os.MkdirAll(path.Join(p.Options.OutputDir, desc.Name), os.ModeDir|os.ModePerm)
+			err = os.MkdirAll(filepath.Join(p.Options.OutputDir, desc.Name), os.ModeDir|os.ModePerm)
 			if err != nil {
 				return
 			}
-			fname := path.Join(p.Options.OutputDir, desc.Name, bldr.File.Name+".go")
+			fname := filepath.Join(p.Options.OutputDir, desc.Name, bldr.File.Name+".go")
 			err = bldr.JenFile.Save(fname)
 			if err != nil {
 				return
 			}
 		}
 		if !desc.engineless {
-			err := desc.Engine.file.Save(path.Join(p.Options.OutputDir, desc.Name, "engine.go"))
+			err := desc.Engine.file.Save(filepath.Join(p.Options.OutputDir, desc.Name, "engine.go"))
 			if err != nil {
 				return err
 			}

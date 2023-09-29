@@ -5,13 +5,13 @@ import (
 	"github.com/vc2402/vivard/gen"
 	"github.com/vc2402/vivard/gen/js"
 	"os"
-	"path"
+	"path/filepath"
 	"text/template"
 )
 
 func (cg *VueCLientGenerator) generateEnum(outDir string, e *gen.Enum) error {
 	fileName := e.Features.String(featureVueKind, fVKLookupComponentPath)
-	p := path.Join(outDir, fileName)
+	p := filepath.Join(outDir, fileName)
 	f, err := os.Create(p)
 	if err != nil {
 		return fmt.Errorf("while opening file for ViewComponent for %s: %v", e.Name, err)

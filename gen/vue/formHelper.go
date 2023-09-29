@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -819,7 +819,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				return cd.relPath
 			}
 			p := e.FS(featureVueKind, fVKFormComponentPath)
-			if p[0] != '@' && p[0] != '.' && !path.IsAbs(p) {
+			if p[0] != '@' && p[0] != '.' && !filepath.IsAbs(p) {
 				p = "." + string(os.PathSeparator) + p
 			}
 			return p

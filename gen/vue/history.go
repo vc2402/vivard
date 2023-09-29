@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 func (h *helper) generateHistoryComponent() error {
@@ -15,7 +15,7 @@ func (h *helper) generateHistoryComponent() error {
 		return fmt.Errorf("Error while parsing form template: %v", h.err)
 	}
 	p := h.e.FS(featureVueKind, fVKHistComponentPath)
-	p = path.Join(h.outDir, p)
+	p = filepath.Join(h.outDir, p)
 	f, err := os.Create(p)
 	if err != nil {
 		return fmt.Errorf("Error opening file '%s': %v", p, err)

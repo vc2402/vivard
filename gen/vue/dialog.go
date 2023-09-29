@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 //TODO not to include create, set functions for readonly dictionaries
@@ -13,7 +13,7 @@ func (h *helper) createDialog(compPath ...string) error {
 	if len(compPath) > 0 {
 		p = compPath[0]
 	}
-	p = path.Join(h.outDir, p)
+	p = filepath.Join(h.outDir, p)
 	f, err := os.Create(p)
 	defer f.Close()
 	if err != nil {

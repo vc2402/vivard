@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -865,7 +864,7 @@ func (cg *GQLCLientGenerator) GetJSEntityInputTypeName(name string) string {
 
 func (cg *GQLCLientGenerator) getFilePathForName(name string) string {
 	fileName := name + ".ts"
-	return path.Join(cg.getOutputDir(), fileName)
+	return filepath.Join(cg.getOutputDir(), fileName)
 }
 
 func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
@@ -877,7 +876,7 @@ func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 		ret = cg.outputPath
 	}
 
-	ret = filepath.FromSlash(path.Join(ret, "types"))
+	ret = filepath.FromSlash(filepath.Join(ret, "types"))
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }

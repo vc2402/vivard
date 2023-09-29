@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/alecthomas/participle"
@@ -266,7 +266,7 @@ func Parse(files []string) ([]*File, error) {
 		if err != nil {
 			return nil, fmt.Errorf("while parsing '%s': %w", file, err)
 		}
-		ast.FileName = path.Base(file)
+		ast.FileName = filepath.Base(file)
 		ast.Name = ast.FileName
 		err = ast.postProcess()
 		if err != nil {

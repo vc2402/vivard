@@ -2,7 +2,7 @@ package js
 
 import (
 	"os"
-	"path"
+	"path/filepath"
 )
 
 const vivardFileName = "vivard.ts"
@@ -11,7 +11,7 @@ func (cg *GQLCLientGenerator) GenerateVivard() (err error) {
 	if cg.vivardGenerated {
 		return
 	}
-	p := path.Join(cg.getOutputDir(), vivardFileName)
+	p := filepath.Join(cg.getOutputDir(), vivardFileName)
 	outFile, err := os.Create(p)
 	if err != nil {
 		return

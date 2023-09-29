@@ -3,7 +3,7 @@ package vue
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 )
 
 func (h *helper) createDictEditor() error {
@@ -12,7 +12,7 @@ func (h *helper) createDictEditor() error {
 		return nil
 	}
 
-	p = path.Join(h.outDir, p)
+	p = filepath.Join(h.outDir, p)
 	f, err := os.Create(p)
 	defer f.Close()
 	if err != nil {

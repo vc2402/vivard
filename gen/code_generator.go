@@ -1034,8 +1034,8 @@ func (b *Builder) mustAddType(stmt *jen.Statement, ref *TypeRef) *jen.Statement 
 }
 
 // GoType returns statement with Go type for ref
-func (b *Builder) GoType(ref *TypeRef) *jen.Statement {
-	ret, err := b.addType(&jen.Statement{}, ref)
+func (b *Builder) GoType(ref *TypeRef, embedded ...bool) *jen.Statement {
+	ret, err := b.addType(&jen.Statement{}, ref, embedded...)
 	if err != nil {
 		b.Descriptor.AddError(err)
 		ret = &jen.Statement{}

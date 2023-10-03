@@ -1224,7 +1224,7 @@ func (cg *GQLGenerator) generateGQLMethodMutation(m *Method) (err error) {
 				}),
 				jen.Id("Resolve"): jen.Func().Params(jen.Id("p").Qual(gqlPackage, "ResolveParams")).Parens(jen.List(jen.Interface(), jen.Error())).BlockFunc(func(g *jen.Group) {
 					for _, p := range m.Params {
-						g.Var().Id(p.Name + "_Arg").Add(cg.b.GoType(p.Type))
+						g.Var().Id(p.Name + "_Arg").Add(cg.b.GoType(p.Type, true))
 						g.Add(cg.inputParserCodeGenerator(p.Type, p.Name, jen.Id(p.Name+"_Arg"), p.Pos))
 					}
 					id := jen.Nil()

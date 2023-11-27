@@ -67,6 +67,18 @@ public class SDFVisitor extends PsiElementVisitor {
     visitPsiElement(o);
   }
 
+  public void visitEnumDeclaration(@NotNull SDFEnumDeclaration o) {
+    visitPsiElement(o);
+  }
+
+  public void visitEnumEntries(@NotNull SDFEnumEntries o) {
+    visitPsiElement(o);
+  }
+
+  public void visitEnumEntry(@NotNull SDFEnumEntry o) {
+    visitPsiElement(o);
+  }
+
   public void visitField(@NotNull SDFField o) {
     visitPsiElement(o);
   }
@@ -92,6 +104,14 @@ public class SDFVisitor extends PsiElementVisitor {
   }
 
   public void visitPackageDeclaration(@NotNull SDFPackageDeclaration o) {
+    visitPsiElement(o);
+  }
+
+  public void visitPackageModifier(@NotNull SDFPackageModifier o) {
+    visitPsiElement(o);
+  }
+
+  public void visitPackageModifiers(@NotNull SDFPackageModifiers o) {
     visitPsiElement(o);
   }
 

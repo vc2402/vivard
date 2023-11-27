@@ -992,13 +992,27 @@ func (cg *MongoGenerator) generateFindFunc(e *Entity) error {
 									if op == AFTIsNotNull {
 										idx = 1
 									}
-									g.Var().Id("nullOp").String()
-									g.If(jen.Op("*").Id("query").Dot(f.Name)).
-										Block(jen.Id("nullOp").Op("=").Lit(ops[idx])).
-										Else().Block(jen.Id("nullOp").Op("=").Lit(ops[1-idx]))
-									g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
-										jen.Id("nullOp"): jen.Nil(),
-									})
+									if addToExisting {
+										g.If(jen.Op("*").Id("query").Dot(f.Name)).
+											Block(jen.Add(pref).Index(jen.Lit(ops[idx])).Op("=").Nil()).
+											Else().Block(jen.Add(pref).Index(jen.Lit(ops[1-idx])).Op("=").Nil())
+									} else {
+										g.If(jen.Op("*").Id("query").Dot(f.Name)).
+											Block(jen.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+												jen.Lit(ops[idx]): jen.Nil(),
+											})).Else().
+											Block(jen.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+												jen.Lit(ops[1-idx]): jen.Nil(),
+											}))
+									}
+								case AFTExists, AFTNotExists:
+									if addToExisting {
+										g.Add(pref).Index(jen.Lit("$exists").Op("=").Op("*").Id("query").Dot(f.Name))
+									} else {
+										g.Add(pref).Op("=").Qual(bsonPackage, "M").Values(jen.Dict{
+											jen.Lit("$exists"): jen.Op("*").Id("query").Dot(f.Name),
+										})
+									}
 								case AFTIgnore:
 									if mngFldName == mdDeletedFieldName && f.Type.Type == TipBool {
 										arg := jen.Id("query").Dot(f.Name)

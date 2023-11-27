@@ -16,7 +16,7 @@ class SDFSyntaxHighlighter : SyntaxHighlighterBase() {
 
     override fun getTokenHighlights(tokenType: IElementType): Array<out TextAttributesKey?> {
         when(tokenType) {
-            Types.KW_TYPE, Types.PACKAGE, Types.EXTENDS, Types.MAP -> return KEY_KEYS
+            Types.KW_TYPE, Types.KW_ENUM, Types.PACKAGE, Types.EXTENDS, Types.MAP -> return KEY_KEYS
             Types.INT, Types.FLOAT, Types.STRING, Types.BOOL, Types.DATE -> return TYPE
             Types.COMMENT_LINE -> return COMMENT_KEYS
             Types.IDENTIFIER -> return IDENTIFIER_KEYS

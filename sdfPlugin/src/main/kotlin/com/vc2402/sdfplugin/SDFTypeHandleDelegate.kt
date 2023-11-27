@@ -35,7 +35,7 @@ class SDFTypeHandleDelegate : TypedHandlerDelegate() {
                 editor,
                 Types.MODIFIEROPEN,
                 Types.MODIFIERCLOSE,
-                INVALID_INSIDE_REFERENCE
+                UtilObj.INVALID_INSIDE_REFERENCE
             ) && CodeInsightSettings.getInstance().AUTOINSERT_PAIR_BRACKET
         ) return Result.STOP
 
@@ -50,21 +50,24 @@ class SDFTypeHandleDelegate : TypedHandlerDelegate() {
             editor,
             Types.MODIFIEROPEN,
             Types.MODIFIERCLOSE,
-            INVALID_INSIDE_REFERENCE
+            UtilObj.INVALID_INSIDE_REFERENCE
         )
-        if(checkIfSemicolonRequired(editor.caretModel.offset, editor))
-            editor.document.insertString(editor.caretModel.offset  +1, ";")
+//        if(checkIfSemicolonRequired(editor.caretModel.offset, editor))
+//            editor.document.insertString(editor.caretModel.offset  +1, ";")
         return Result.STOP
     }
 
-    companion object {
+    object UtilObj {
         val INVALID_INSIDE_REFERENCE = TokenSet.create(
+//            Types.MODIFIEROPEN,
+//            Types.MODIFIERCLOSE
 //            Types.BR_OPEN,
 //            Types.BR_CLOSE,
 //            Types.BRACESOPEN,
 //            Types.BRACESCLOSE
         )
     }
+
     fun checkIfSemicolonRequired(offset: Int,
                                  editor: Editor):Boolean {
         var iterator: HighlighterIterator = editor.highlighter.createIterator(offset)

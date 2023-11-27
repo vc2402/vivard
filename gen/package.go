@@ -323,6 +323,27 @@ func (desc *Package) processStandardFileAnnotations(f *File) (err error) {
 	for _, a := range f.Annotations {
 		switch a.Name {
 		case AnnotationRefPackage:
+			for _, value := range a.Values {
+				if value.Value == nil {
+					desc.GetExtEngineRef(value.Key)
+					continue
+				}
+				switch value.Key {
+				case ARFPackageName:
+					if value.Value.String == nil {
+						return fmt.Errorf("at %v: package name should be given for annotation %s", a.Pos, AnnotationRefPackage)
+					}
+					desc.GetExtEngineRef(*value.Value.String)
+				case ARFPackageNames:
+					if value.Value.String == nil {
+						return fmt.Errorf("at %v: packages names should be given for annotation %s", a.Pos, AnnotationRefPackage)
+					}
+					packages := strings.Fields(*value.Value.String)
+					for _, p := range packages {
+						desc.GetExtEngineRef(p)
+					}
+				}
+			}
 			packageName, ok := a.GetNameTag(ARFPackageName)
 			if !ok {
 				return fmt.Errorf("at %v: package name should be given for annotation %s", a.Pos, AnnotationRefPackage)

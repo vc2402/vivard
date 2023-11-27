@@ -113,7 +113,7 @@ var htmlGridFormTemplate = `
   <div class="d-flex flex-column" {{FormStyles}}>
     <slot name="pre-fields"></slot>
     {{range Rows .}}
-      <v-row justify="space-between" align="center">
+      <v-row justify="space-between" align="center"{{if Compact}} no-gutters{{end}}>
         {{range .}}
         <v-col {{GridColAttrs .}}>
           {{if IsID .}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>

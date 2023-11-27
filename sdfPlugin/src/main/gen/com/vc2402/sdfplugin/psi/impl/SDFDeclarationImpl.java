@@ -35,6 +35,12 @@ public class SDFDeclarationImpl extends ASTWrapperPsiElement implements SDFDecla
 
   @Override
   @Nullable
+  public SDFEnumDeclaration getEnumDeclaration() {
+    return findChildByClass(SDFEnumDeclaration.class);
+  }
+
+  @Override
+  @Nullable
   public SDFMetaDeclaration getMetaDeclaration() {
     return findChildByClass(SDFMetaDeclaration.class);
   }

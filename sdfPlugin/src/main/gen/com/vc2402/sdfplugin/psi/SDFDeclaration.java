@@ -11,6 +11,9 @@ public interface SDFDeclaration extends PsiElement {
   SDFComment getComment();
 
   @Nullable
+  SDFEnumDeclaration getEnumDeclaration();
+
+  @Nullable
   SDFMetaDeclaration getMetaDeclaration();
 
   @Nullable

@@ -11,14 +11,14 @@ import static com.vc2402.sdfplugin.psi.Types.*;
 import com.intellij.extapi.psi.ASTWrapperPsiElement;
 import com.vc2402.sdfplugin.psi.*;
 
-public class SDFPackageDeclarationImpl extends ASTWrapperPsiElement implements SDFPackageDeclaration {
+public class SDFEnumDeclarationImpl extends ASTWrapperPsiElement implements SDFEnumDeclaration {
 
-  public SDFPackageDeclarationImpl(@NotNull ASTNode node) {
+  public SDFEnumDeclarationImpl(@NotNull ASTNode node) {
     super(node);
   }
 
   public void accept(@NotNull SDFVisitor visitor) {
-    visitor.visitPackageDeclaration(this);
+    visitor.visitEnumDeclaration(this);
   }
 
   @Override
@@ -28,9 +28,9 @@ public class SDFPackageDeclarationImpl extends ASTWrapperPsiElement implements S
   }
 
   @Override
-  @Nullable
-  public SDFPackageModifiers getPackageModifiers() {
-    return findChildByClass(SDFPackageModifiers.class);
+  @NotNull
+  public SDFEnumEntries getEnumEntries() {
+    return findNotNullChildByClass(SDFEnumEntries.class);
   }
 
 }

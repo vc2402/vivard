@@ -23,6 +23,9 @@ public interface Types {
   IElementType DECLARATIONS = new ElementType("DECLARATIONS");
   IElementType ENTRIES = new ElementType("ENTRIES");
   IElementType ENTRY = new ElementType("ENTRY");
+  IElementType ENUM_DECLARATION = new ElementType("ENUM_DECLARATION");
+  IElementType ENUM_ENTRIES = new ElementType("ENUM_ENTRIES");
+  IElementType ENUM_ENTRY = new ElementType("ENUM_ENTRY");
   IElementType FIELD = new ElementType("FIELD");
   IElementType HOOK_TAG = new ElementType("HOOK_TAG");
   IElementType MAP_INDEX_TYPE = new ElementType("MAP_INDEX_TYPE");
@@ -30,6 +33,8 @@ public interface Types {
   IElementType META_DECLARATION = new ElementType("META_DECLARATION");
   IElementType METHOD = new ElementType("METHOD");
   IElementType PACKAGE_DECLARATION = new ElementType("PACKAGE_DECLARATION");
+  IElementType PACKAGE_MODIFIER = new ElementType("PACKAGE_MODIFIER");
+  IElementType PACKAGE_MODIFIERS = new ElementType("PACKAGE_MODIFIERS");
   IElementType PARAM = new ElementType("PARAM");
   IElementType PARAMS = new ElementType("PARAMS");
   IElementType SIMPLE_TYPE = new ElementType("SIMPLE_TYPE");
@@ -65,6 +70,7 @@ public interface Types {
   IElementType HOOKTAG = new TokenType("HOOKTAG");
   IElementType IDENTIFIER = new TokenType("IDENTIFIER");
   IElementType INT = new TokenType("INT");
+  IElementType KW_ENUM = new TokenType("KW_ENUM");
   IElementType KW_TYPE = new TokenType("KW_TYPE");
   IElementType MAP = new TokenType("MAP");
   IElementType META = new TokenType("META");
@@ -130,6 +136,15 @@ public interface Types {
       else if (type == ENTRY) {
         return new SDFEntryImpl(node);
       }
+      else if (type == ENUM_DECLARATION) {
+        return new SDFEnumDeclarationImpl(node);
+      }
+      else if (type == ENUM_ENTRIES) {
+        return new SDFEnumEntriesImpl(node);
+      }
+      else if (type == ENUM_ENTRY) {
+        return new SDFEnumEntryImpl(node);
+      }
       else if (type == FIELD) {
         return new SDFFieldImpl(node);
       }
@@ -150,6 +165,12 @@ public interface Types {
       }
       else if (type == PACKAGE_DECLARATION) {
         return new SDFPackageDeclarationImpl(node);
+      }
+      else if (type == PACKAGE_MODIFIER) {
+        return new SDFPackageModifierImpl(node);
+      }
+      else if (type == PACKAGE_MODIFIERS) {
+        return new SDFPackageModifiersImpl(node);
       }
       else if (type == PARAM) {
         return new SDFParamImpl(node);

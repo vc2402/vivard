@@ -225,8 +225,9 @@ public class Parser implements PsiParser, LightPsiParser {
 
   /* ********************************************************** */
   // DUMMYIDENTIFIER
-  //     | type_declaration
-  //     | meta_declaration
+  //     | <type_declaration>
+  //     | <enum_declaration>
+  //     | <meta_declaration>
   //     | comment
   public static boolean declaration(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "declaration")) return false;
@@ -234,6 +235,7 @@ public class Parser implements PsiParser, LightPsiParser {
     Marker m = enter_section_(b, l, _NONE_, DECLARATION, "<declaration>");
     r = consumeToken(b, DUMMYIDENTIFIER);
     if (!r) r = type_declaration(b, l + 1);
+    if (!r) r = enum_declaration(b, l + 1);
     if (!r) r = meta_declaration(b, l + 1);
     if (!r) r = comment(b, l + 1);
     exit_section_(b, l, m, r, false, null);
@@ -241,7 +243,7 @@ public class Parser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // declaration*
+  // <declaration>*
   public static boolean declarations(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "declarations")) return false;
     Marker m = enter_section_(b, l, _NONE_, DECLARATIONS, "<declarations>");
@@ -307,6 +309,92 @@ public class Parser implements PsiParser, LightPsiParser {
     r = r && attr_modifiers(b, l + 1);
     r = r && consumeToken(b, MODIFIERCLOSE);
     exit_section_(b, m, null, r);
+    return r;
+  }
+
+  /* ********************************************************** */
+  // KW_ENUM IDENTIFIER DUMMYIDENTIFIER? BRACESOPEN DUMMYIDENTIFIER? enum_entries BRACESCLOSE
+  public static boolean enum_declaration(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_declaration")) return false;
+    if (!nextTokenIs(b, KW_ENUM)) return false;
+    boolean r;
+    Marker m = enter_section_(b);
+    r = consumeTokens(b, 0, KW_ENUM, IDENTIFIER);
+    r = r && enum_declaration_2(b, l + 1);
+    r = r && consumeToken(b, BRACESOPEN);
+    r = r && enum_declaration_4(b, l + 1);
+    r = r && enum_entries(b, l + 1);
+    r = r && consumeToken(b, BRACESCLOSE);
+    exit_section_(b, m, ENUM_DECLARATION, r);
+    return r;
+  }
+
+  // DUMMYIDENTIFIER?
+  private static boolean enum_declaration_2(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_declaration_2")) return false;
+    consumeToken(b, DUMMYIDENTIFIER);
+    return true;
+  }
+
+  // DUMMYIDENTIFIER?
+  private static boolean enum_declaration_4(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_declaration_4")) return false;
+    consumeToken(b, DUMMYIDENTIFIER);
+    return true;
+  }
+
+  /* ********************************************************** */
+  // enum_entry*
+  public static boolean enum_entries(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_entries")) return false;
+    Marker m = enter_section_(b, l, _NONE_, ENUM_ENTRIES, "<enum entries>");
+    while (true) {
+      int c = current_position_(b);
+      if (!enum_entry(b, l + 1)) break;
+      if (!empty_element_parsed_guard_(b, "enum_entries", c)) break;
+    }
+    exit_section_(b, l, m, true, false, null);
+    return true;
+  }
+
+  /* ********************************************************** */
+  // IDENTIFIER (EQUAL (NUMBER_VALUE|STRING_VALUE))? STATEMENT_END
+  public static boolean enum_entry(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_entry")) return false;
+    if (!nextTokenIs(b, IDENTIFIER)) return false;
+    boolean r;
+    Marker m = enter_section_(b);
+    r = consumeToken(b, IDENTIFIER);
+    r = r && enum_entry_1(b, l + 1);
+    r = r && consumeToken(b, STATEMENT_END);
+    exit_section_(b, m, ENUM_ENTRY, r);
+    return r;
+  }
+
+  // (EQUAL (NUMBER_VALUE|STRING_VALUE))?
+  private static boolean enum_entry_1(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_entry_1")) return false;
+    enum_entry_1_0(b, l + 1);
+    return true;
+  }
+
+  // EQUAL (NUMBER_VALUE|STRING_VALUE)
+  private static boolean enum_entry_1_0(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_entry_1_0")) return false;
+    boolean r;
+    Marker m = enter_section_(b);
+    r = consumeToken(b, EQUAL);
+    r = r && enum_entry_1_0_1(b, l + 1);
+    exit_section_(b, m, null, r);
+    return r;
+  }
+
+  // NUMBER_VALUE|STRING_VALUE
+  private static boolean enum_entry_1_0_1(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "enum_entry_1_0_1")) return false;
+    boolean r;
+    r = consumeToken(b, NUMBER_VALUE);
+    if (!r) r = consumeToken(b, STRING_VALUE);
     return r;
   }
 
@@ -486,15 +574,64 @@ public class Parser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // PACKAGE IDENTIFIER STATEMENT_END
+  // DUMMYIDENTIFIER? package_modifiers? PACKAGE IDENTIFIER STATEMENT_END
   public static boolean package_declaration(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "package_declaration")) return false;
-    if (!nextTokenIs(b, PACKAGE)) return false;
     boolean r;
-    Marker m = enter_section_(b);
-    r = consumeTokens(b, 0, PACKAGE, IDENTIFIER, STATEMENT_END);
-    exit_section_(b, m, PACKAGE_DECLARATION, r);
+    Marker m = enter_section_(b, l, _NONE_, PACKAGE_DECLARATION, "<package declaration>");
+    r = package_declaration_0(b, l + 1);
+    r = r && package_declaration_1(b, l + 1);
+    r = r && consumeTokens(b, 0, PACKAGE, IDENTIFIER, STATEMENT_END);
+    exit_section_(b, l, m, r, false, null);
     return r;
+  }
+
+  // DUMMYIDENTIFIER?
+  private static boolean package_declaration_0(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "package_declaration_0")) return false;
+    consumeToken(b, DUMMYIDENTIFIER);
+    return true;
+  }
+
+  // package_modifiers?
+  private static boolean package_declaration_1(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "package_declaration_1")) return false;
+    package_modifiers(b, l + 1);
+    return true;
+  }
+
+  /* ********************************************************** */
+  // DUMMYIDENTIFIER? annotation
+  public static boolean package_modifier(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "package_modifier")) return false;
+    if (!nextTokenIs(b, "<package modifier>", ANNOTATIONTAG, DUMMYIDENTIFIER)) return false;
+    boolean r;
+    Marker m = enter_section_(b, l, _NONE_, PACKAGE_MODIFIER, "<package modifier>");
+    r = package_modifier_0(b, l + 1);
+    r = r && annotation(b, l + 1);
+    exit_section_(b, l, m, r, false, null);
+    return r;
+  }
+
+  // DUMMYIDENTIFIER?
+  private static boolean package_modifier_0(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "package_modifier_0")) return false;
+    consumeToken(b, DUMMYIDENTIFIER);
+    return true;
+  }
+
+  /* ********************************************************** */
+  // package_modifier*
+  public static boolean package_modifiers(PsiBuilder b, int l) {
+    if (!recursion_guard_(b, l, "package_modifiers")) return false;
+    Marker m = enter_section_(b, l, _NONE_, PACKAGE_MODIFIERS, "<package modifiers>");
+    while (true) {
+      int c = current_position_(b);
+      if (!package_modifier(b, l + 1)) break;
+      if (!empty_element_parsed_guard_(b, "package_modifiers", c)) break;
+    }
+    exit_section_(b, l, m, true, false, null);
+    return true;
   }
 
   /* ********************************************************** */
@@ -554,7 +691,7 @@ public class Parser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // DUMMYIDENTIFIER? comments? DUMMYIDENTIFIER? <package declaration>? declarations?
+  // DUMMYIDENTIFIER? comments? DUMMYIDENTIFIER? <package_declaration>? declarations?
   static boolean sdfFile(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "sdfFile")) return false;
     boolean r;
@@ -589,7 +726,7 @@ public class Parser implements PsiParser, LightPsiParser {
     return true;
   }
 
-  // <package declaration>?
+  // <package_declaration>?
   private static boolean sdfFile_3(PsiBuilder b, int l) {
     if (!recursion_guard_(b, l, "sdfFile_3")) return false;
     package_declaration(b, l + 1);

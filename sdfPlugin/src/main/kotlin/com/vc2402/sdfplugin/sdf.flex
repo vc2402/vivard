@@ -21,6 +21,7 @@ DUMMYIDENTIFIER = "DuM_Id"
 META_LINE = [#\t][^\r\n]*
 PACKAGE = "package"
 KW_TYPE = "type"
+KW_ENUM = "enum"
 EXTENDS = "extends"
 META = "meta"
 TYPEMODIFIER = "abstract" | "config" | "dictionary" | "transient" | "embeddable" | "singleton" | "extern" | "extendable"
@@ -80,6 +81,8 @@ digit = [0-9]
 <YYINITIAL> {PACKAGE}                           { yybegin(YYINITIAL); return Types.PACKAGE; }
 
 <YYINITIAL> {KW_TYPE}                                { yybegin(YYINITIAL); return Types.KW_TYPE; }
+
+<YYINITIAL> {KW_ENUM}                                { yybegin(YYINITIAL); return Types.KW_ENUM; }
 
 <YYINITIAL> {EXTENDS}                                { yybegin(YYINITIAL); return Types.EXTENDS; }
 

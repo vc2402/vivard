@@ -15,25 +15,36 @@
   psiImplUtilClass="com.vc2402.sdfplugin.psi.impl.ImplUtil"
 }
 
-sdfFile ::= DUMMYIDENTIFIER? comments? DUMMYIDENTIFIER? <package declaration>? declarations?
+sdfFile ::= DUMMYIDENTIFIER? comments? DUMMYIDENTIFIER? <package_declaration>? declarations?
 
 comments ::= comment*
 
 comment ::= COMMENT_LINE
 
-<package declaration> ::= PACKAGE IDENTIFIER STATEMENT_END
+<package_declaration> ::= DUMMYIDENTIFIER? package_modifiers? PACKAGE IDENTIFIER STATEMENT_END
 
-declarations ::= declaration*
+package_modifiers ::= package_modifier*
 
-declaration ::= DUMMYIDENTIFIER
-    | type_declaration
-    | meta_declaration
+package_modifier ::=  DUMMYIDENTIFIER? annotation
+
+declarations ::= <declaration>*
+
+<declaration> ::= DUMMYIDENTIFIER
+    | <type_declaration>
+    | <enum_declaration>
+    | <meta_declaration>
     | comment
 
-meta_declaration ::= META BR_OPEN IDENTIFIER BR_CLOSE
+<meta_declaration> ::= META BR_OPEN IDENTIFIER BR_CLOSE
     META_LINE*
 
-type_declaration ::= type_modifiers? (KW_TYPE IDENTIFIER | QUALIFIEDNAME) (DUMMYIDENTIFIER? EXTENDS DUMMYIDENTIFIER? IDENTIFIER | QUALIFIEDNAME)? DUMMYIDENTIFIER? BRACESOPEN DUMMYIDENTIFIER? entries MORE? BRACESCLOSE
+<enum_declaration> ::= KW_ENUM IDENTIFIER DUMMYIDENTIFIER? BRACESOPEN DUMMYIDENTIFIER? enum_entries BRACESCLOSE
+
+enum_entries ::= enum_entry*
+
+enum_entry ::= IDENTIFIER (EQUAL (NUMBER_VALUE|STRING_VALUE))? STATEMENT_END
+
+<type_declaration> ::= type_modifiers? (KW_TYPE IDENTIFIER | QUALIFIEDNAME) (DUMMYIDENTIFIER? EXTENDS DUMMYIDENTIFIER? IDENTIFIER | QUALIFIEDNAME)? DUMMYIDENTIFIER? BRACESOPEN DUMMYIDENTIFIER? entries MORE? BRACESCLOSE
 
 type_modifiers ::= type_modifier*
 

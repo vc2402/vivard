@@ -232,8 +232,10 @@ const (
 const (
 	// AnnotationRefPackage creates reference to engine from given package as Engine's
 	AnnotationRefPackage = "ref"
-	// ARFPackageName name of package to include (may be just the only parameter of annotation)
+	// ARFPackageName name of package to include (may be just the nameless parameter of annotation)
 	ARFPackageName = "name"
+	// ARFPackageNames string of space delimited package names
+	ARFPackageNames = "packages"
 
 	// AnnotationEngineless tells not to generate Engine class for package
 	AnnotationEngineless = "engineless"
@@ -274,6 +276,9 @@ const (
 	// AFTIsNull - null nullable fields (value should be bool)
 	AFTIsNull    = "is-null"
 	AFTIsNotNull = "is-not-null"
+	// AFTExists - check weather value exists (value should be bool)
+	AFTExists    = "exists"
+	AFTNotExists = "not-exists"
 
 	// AnnotationLookup for lookup function generation
 	AnnotationLookup       = "lookup"

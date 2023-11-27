@@ -58,6 +58,8 @@ const (
 	GQLAnnotationQueryTag      = "query"
 	GQLAnnotationMutationTag   = "mutation"
 	GQLAnnotationBulkCreateTag = "bulkCreate"
+	// GQLAnnotationReadonlyTag do not generate GraphQL mutations for type
+	GQLAnnotationReadonlyTag = "readonly"
 
 	gqlTagJSON = "json"
 )
@@ -75,7 +77,8 @@ const (
 	GQLFMethodTypeMutation = "mutation"
 	GQLFMethodTypeQuery    = "query"
 	// GQLFIDOnly use only id for embedded type
-	GQLFIDOnly = "id-only"
+	GQLFIDOnly   = "id-only"
+	GQLFReadonly = "redonly"
 
 	// GQLFMethodResultType - code generator for method's result type
 	GQLFMethodResultType = "result-type"

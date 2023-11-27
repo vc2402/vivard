@@ -122,6 +122,8 @@ const (
 	vcaDefault  = "default"
 	// vcaNoWrap may be used for flex forms (by default flex-wrap class used)
 	vcaNoWrap = "noWrap"
+	// vcaCompact generate form without paddings
+	vcaCompact = "compact"
 )
 
 const (
@@ -499,7 +501,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 				th.parse(vueEntityLookupTSTemplate)
 
 			}
-			th.parse(htmlDictionaryLookupTemplate).parse("{{template \"HTML\" .}}\n{{template \"TS\" .}}\n")
+			th.parse(htmlLookupTemplate).parse("{{template \"HTML\" .}}\n{{template \"TS\" .}}\n")
 			if th.err != nil {
 				return fmt.Errorf("Error while parsing template: %v\n", th.err)
 			}
@@ -1116,7 +1118,7 @@ const htmlViewCSS = `
 
 // Lookups
 
-var htmlDictionaryLookupTemplate = `
+var htmlLookupTemplate = `
 {{define "HTML"}}
 <template>
   <div class="flex-row">
@@ -1133,6 +1135,7 @@ var htmlDictionaryLookupTemplate = `
       :loading="loading"
       :error-messages="problem || errorMessages"
       hide-no-data
+      hide-details="auto"
       {{if CanBeMultiple}}:multiple="multiple"
       :chips="multiple"
       :rules="rules"
@@ -1274,7 +1277,7 @@ const vueEntityLookupTSTemplate = `
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
-import { {{TypeName .}}, {{LookupQuery}}, {{GetQuery .}} } from '{{TypesFilePath .}}';
+import { {{TypeName .}}, {{LookupQuery}}, {{GetQuery .}}{{if HasFindType}}, {{FindQuery}}, {{FindTypeName}}{{end}}} from '{{TypesFilePath .}}';
 import {{DialogComponent .}} from './{{DialogComponent .}}.vue';
 
 @Component({
@@ -1293,7 +1296,8 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:false}) disabled!: boolean;{{if CanBeMultiple}}
   @Prop({default:false}) multiple!: boolean;{{end}}
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
-  @Prop({default:()=>[]}) errorMessages!: string|string[];
+  @Prop({default:()=>[]}) errorMessages!: string|string[];{{if HasFindType}}
+  @Prop({default:null}) query!:{{FindTypeName}}|null;{{end}}
   private selected: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
@@ -1309,7 +1313,10 @@ export default class {{TypeName}}LookupComponent extends Vue {
       this.items = {{if CanBeMultiple}}this.multiple ? this.selected as {{TypeName .}}[] : {{end}}[this.selected as {{TypeName .}}];
     }
     
-  }
+  }{{if HasFindType}}
+  @Watch('query') onQueryChange() {
+    this.search();
+  }{{end}}
   @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|{{IDType .}}|null {
     return this.selected;
   }
@@ -1324,12 +1331,25 @@ export default class {{TypeName}}LookupComponent extends Vue {
     this.loading = true;
     this.items = [];
     this.problem = "";
-    try {
+    try { {{if HasFindType}}
+      let useQuery = false;
+      if(this.query) {
+        let prop: keyof {{FindTypeName}};
+        for(prop in this.query) {
+          if(this.query[prop]) {
+            useQuery = true;
+          }
+        }
+      }
+      if(useQuery) {
+        this.items = await {{FindQuery}}(this.$apollo.getClient(), this.query!);
+      } else { {{end}}
       this.lastSearch = this.searchString;
       let res = await {{LookupQuery}}({{ApolloClient}}, this.lastSearch);
       if(res) {
         this.items = res;
-      }
+      }{{if HasFindType}}
+      } {{end}}
     } catch(exc) {
       this.problem = exc.toString();
     }

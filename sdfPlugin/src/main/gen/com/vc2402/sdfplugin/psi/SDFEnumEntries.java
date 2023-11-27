@@ -5,9 +5,9 @@ import java.util.List;
 import org.jetbrains.annotations.*;
 import com.intellij.psi.PsiElement;
 
-public interface SDFPackageDeclaration extends PsiElement {
+public interface SDFEnumEntries extends PsiElement {
 
-  @Nullable
-  SDFPackageModifiers getPackageModifiers();
+  @NotNull
+  List<SDFEnumEntry> getEnumEntryList();
 
 }

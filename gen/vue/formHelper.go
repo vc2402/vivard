@@ -331,7 +331,6 @@ import {RoundNumber} from '@/filters/numberFilter';
 				cg.b.AddError(err)
 			}
 			return name.(string)
-			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationDelete])
 		},
 		"ListQuery": func() string {
 			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationList)
@@ -339,7 +338,6 @@ import {RoundNumber} from '@/filters/numberFilter';
 				cg.b.AddError(err)
 			}
 			return name.(string)
-			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationList])
 		},
 		"LookupQuery": func() string {
 			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationLookup)
@@ -347,7 +345,13 @@ import {RoundNumber} from '@/filters/numberFilter';
 				cg.b.AddError(err)
 			}
 			return name.(string)
-			//return e.Features.String(gen.GQLFeatures, gen.GQLOperationsAnnotationsTags[gen.GQLOperationLookup])
+		},
+		"FindQuery": func() string {
+			name, err := cg.desc.Project.CallFeatureFunc(e, js.Features, js.FFunctionName, gen.GQLOperationFind)
+			if err != nil {
+				cg.b.AddError(err)
+			}
+			return name.(string)
 		},
 		"DictWithQualifier": func(hlp *helper) bool {
 			return e.FB(gen.FeatureDictKind, gen.FDQualified)
@@ -970,6 +974,26 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"ValidatorClass": func() string {
 			return e.FS(js.FeaturesValidator, js.FVValidatorClass)
+		},
+		"Compact": func() bool {
+			return ctx.ann.getBoolDef(vcaCompact, false)
+		},
+		"HasFindType": func() bool {
+			_, ok := e.Features.GetEntity(gen.FeaturesAPIKind, gen.FAPIFindParamType)
+			return ok
+		},
+		"FindTypeName": func() string {
+			if ft, ok := e.Features.GetEntity(gen.FeaturesAPIKind, gen.FAPIFindParamType); ok {
+				name := ft.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
+				path, err := cg.getTypesPath(ft)
+				if err != nil {
+					cg.desc.AddError(err)
+					return ""
+				}
+				typesFromTS[path] = append(typesFromTS[path], name)
+				return name
+			}
+			return ""
 		},
 	}
 	th.templ.Funcs(funcs)

@@ -17,15 +17,19 @@ type GQLEngine struct {
 	schema               *graphql.Schema
 	descriptor           *GQLDescriptor
 	log                  *zap.Logger
-	statisticsChannel    chan interface{}
+	statisticsChannel    chan queryStatistics
 	collectStatistics    bool
 	statisticsSchema     *graphql.Schema
 	statistics           map[uint32]*statistics
 	statisticsMux        sync.RWMutex
 	statisticsHistoryLen time.Duration
 	runningSince         time.Time
+	options              GQLOptions
 }
 
+type GQLOptions struct {
+	LogClientErrors bool
+}
 type GQLTypeGenerator func() graphql.Output
 type GQLInputTypeGenerator func() graphql.Input
 type GQLQueryGenerator func() *graphql.Field
@@ -76,7 +80,7 @@ func (gqe *GQLEngine) CollectStatistics(collect bool, length ...time.Duration) *
 		} else {
 			gqe.statisticsHistoryLen = cDefaultStatisticsHistoryLen
 		}
-		gqe.statisticsChannel = make(chan interface{}, cAdminStatisticsChannelLen)
+		gqe.statisticsChannel = make(chan queryStatistics, cAdminStatisticsChannelLen)
 		go gqe.statisticsProcessor()
 	}
 	if !collect && gqe.collectStatistics {
@@ -89,6 +93,11 @@ func (gqe *GQLEngine) CollectStatistics(collect bool, length ...time.Duration) *
 
 func (gqe *GQLEngine) SetLogger(logger *zap.Logger) *GQLEngine {
 	gqe.log = logger
+	return gqe
+}
+
+func (gqe *GQLEngine) SetOptions(options GQLOptions) *GQLEngine {
+	gqe.options = options
 	return gqe
 }
 

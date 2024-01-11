@@ -103,6 +103,19 @@ func (gqe *GQLEngine) doProcessQueryStatistics(qs queryStatistics) {
 	}
 	qs.duration = qs.finished.Sub(qs.started) / time.Microsecond
 	st.overall.update(qs)
+	if len(qs.errors) > 0 && gqe.options.LogClientErrors {
+		if gqe.log != nil {
+			gqe.log.Error("error sent to client", zap.String("request", opName))
+			for _, err := range qs.errors {
+				gqe.log.Error("error", zap.String("problem", err.Error()), zap.String("request", opName))
+			}
+		} else {
+			for i, err := range qs.errors {
+				fmt.Printf("error sent to client for request '%s' %d: %s", opName, i+1, err.Error())
+			}
+		}
+	}
+
 }
 
 func (gqe *GQLEngine) doShiftStatistics() {

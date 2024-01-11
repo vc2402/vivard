@@ -1,6 +1,7 @@
 package vue
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,14 +21,28 @@ func (h *helper) createDialog(compPath ...string) error {
 		return fmt.Errorf("while opening file for DialogComponent for %s: %v", h.e.Name, err)
 	}
 	h.parse(htmlGridDialogTemplate).
-		parse(vueGridDialogTSTemplate).
-		parse("{{template \"HTML\" .}}\n{{template \"TS\" .}}\n")
+		parse(vueGridDialogTSTemplateBody).
+		parse("{{template \"TS\" .}}\n{{template \"HTML\" .}}\n")
+	if h.err != nil {
+		return fmt.Errorf("error while parsing template: %v", h.err)
+	}
+	buffer := bytes.Buffer{}
+	err = h.templ.Execute(&buffer, h.e)
+	if err != nil {
+		return fmt.Errorf("while executing template for DialogComponent for %s: %v", h.e.Name, err)
+	}
+	h.parse(vueGridDialogTSTemplateHeader).
+		parse("{{template \"TS-HEADER\" .}}\n")
 	if h.err != nil {
 		return fmt.Errorf("error while parsing template: %v", h.err)
 	}
 	err = h.templ.Execute(f, h.e)
 	if err != nil {
 		return fmt.Errorf("while executing template for DialogComponent for %s: %v", h.e.Name, err)
+	}
+	_, err = buffer.WriteTo(f)
+	if err != nil {
+		return fmt.Errorf("while writing body for DialogComponent for %s: %v", h.e.Name, err)
 	}
 	return nil
 }
@@ -96,13 +111,18 @@ var htmlGridDialogTemplate = `
 {{end}}
 `
 
-const vueGridDialogTSTemplate = `
-{{define "TS"}}
+const vueGridDialogTSTemplateHeader = `
+{{define "TS-HEADER"}}
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{if not Readonly}}{{SaveQuery .}}, {{CreateQuery .}}, {{DeleteQuery .}}{{end}}{{if WithValidator}}, {{ValidatorClass}}{{end}} } from '{{TypesFilePath .}}';
 import {{SelfFormComponent}} from '{{SelfFormComponentPath}}';
+{{TypesFromTS}}
+{{end}}
+`
+const vueGridDialogTSTemplateBody = `
+{{define "TS"}}
 
 @Component({
   name: "{{.Name}}DialogComponent", 

@@ -75,6 +75,7 @@ var htmlEnumLookupTemplate = `
       :disabled="disabled"
       :label="label"
       :return-object="false"
+			:small-chips="multiple"
       hide-no-data
     >
     </v-select>
@@ -94,13 +95,14 @@ import { {{TypeName .}}, {{range .Fields}}{{.Name}},{{end}} } from '{{TypesFileP
   name: "{{ComponentName .}}",
 })
 export default class {{ComponentName .}} extends Vue {
-  @Prop() value!: {{TypeName .}};
+  @Prop() value!: {{TypeName .}}|{{TypeName .}}[];
   @Prop() hint!: string;
   @Prop() label!: string;
   @Prop() readonly!: boolean;
   @Prop({default:false}) disabled!: boolean; 
+	@Prop({default:false}) multiple!: boolean;
 
-  private selected: {{TypeName .}}|null = {{DefaultValue .}};
+  private selected: {{TypeName .}}|{{TypeName .}}[]|null = {{DefaultValue .}};
   private items = [
   {{range .Fields}}{text: "{{FieldLabel .}}", value: {{.Name}}},{{end}}
   ];
@@ -112,7 +114,7 @@ export default class {{ComponentName .}} extends Vue {
   @Watch('value') onValueChange() {
     this.selected = this.value;
   }
-  @Emit('input') selectedChanged(): {{TypeName .}}|null {
+  @Emit('input') selectedChanged(): {{TypeName .}}|{{TypeName .}}[]|null {
     this.emitChanged();
     return this.selected;
   }

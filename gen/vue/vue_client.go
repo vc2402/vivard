@@ -1,6 +1,7 @@
 package vue
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -496,18 +497,36 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 			}
 			defer f.Close()
 			if e.IsDictionary() {
-				th.parse(vueDictionaryLookupTSTemplate)
+				th.parse(vueDictionaryLookupTSTemplateBody)
 			} else {
-				th.parse(vueEntityLookupTSTemplate)
-
+				th.parse(vueEntityLookupTSTemplateBody)
 			}
-			th.parse(htmlLookupTemplate).parse("{{template \"HTML\" .}}\n{{template \"TS\" .}}\n")
+			th.parse(htmlLookupTemplate).parse("{{template \"TS\" .}}\n{{template \"HTML\" .}}\n")
 			if th.err != nil {
-				return fmt.Errorf("Error while parsing template: %v\n", th.err)
+				return fmt.Errorf("Error while parsing template for LookupComponent: %v\n", th.err)
+			}
+			buffer := bytes.Buffer{}
+			err = th.templ.Execute(&buffer, th)
+			if err != nil {
+				return fmt.Errorf("while executing template for LookupComponent for %s: %v", th.e.Name, err)
+			}
+
+			if e.IsDictionary() {
+				th.parse(vueDictionaryLookupTSTemplateHeader)
+			} else {
+				th.parse(vueEntityLookupTSTemplateHeader)
+			}
+			th.parse("{{template \"TS-HEADER\" .}}\n")
+			if th.err != nil {
+				return fmt.Errorf("error while parsing template for LookupComponent header: %v", th.err)
 			}
 			err = th.templ.Execute(f, th)
 			if err != nil {
-				return fmt.Errorf("while executing template for LookupComponent for %s: %v", e.Name, err)
+				return fmt.Errorf("while executing template for LookupComponent header for %s: %v", th.e.Name, err)
+			}
+			_, err = buffer.WriteTo(f)
+			if err != nil {
+				return fmt.Errorf("while executing template for LookupComponent header for %s: %v", th.e.Name, err)
 			}
 		}
 
@@ -553,15 +572,29 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 				parse(htmlFieldViewFloatTemplate).
 				parse(htmlFieldViewIntTemplate).
 				parse(htmlFieldViewTextTemplate).
-				parse(vueViewTSTemplate).
+				parse(vueViewTSTemplateBody).
 				parse(htmlViewCSS).
-				parse("{{template \"HTML\" .}}\n{{template \"TS\" .}}\n{{template \"CSS\" .}}\n")
+				parse("{{template \"TS\" .}}\n{{template \"HTML\" .}}\n{{template \"CSS\" .}}\n")
 			if th.err != nil {
 				return fmt.Errorf("Error while parsing view template: %v", th.err)
 			}
-			err = th.templ.Execute(f, th)
+			buffer := bytes.Buffer{}
+			err = th.templ.Execute(&buffer, th)
 			if err != nil {
 				return fmt.Errorf("while executing template for ViewComponent for %s: %v", e.Name, err)
+			}
+			th.parse(vueViewTSTemplateHeader).
+				parse("{{template \"TS-HEADER\" .}}\n")
+			if th.err != nil {
+				return fmt.Errorf("error while parsing template for View: %v", th.err)
+			}
+			err = th.templ.Execute(f, th)
+			if err != nil {
+				return fmt.Errorf("while executing template for View for %s: %v", th.e.Name, err)
+			}
+			_, err = buffer.WriteTo(f)
+			if err != nil {
+				return fmt.Errorf("while writing body for View for %s: %v", th.e.Name, err)
 			}
 		}
 
@@ -825,98 +858,6 @@ type vcComponentDescriptor struct {
 	Imp  string
 }
 
-//Dialog
-//var htmlDialogTemplate = `
-//{{define "HTML"}}
-//<template>
-//  <v-dialog
-//    v-model="showDialog"
-//    persistent
-//    scrollable
-//    :fullscreen="$vuetify.breakpoint.sm"
-//    :width="$vuetify.breakpoint.lgAndUp ? '60vw' : '80vw'"
-//  >
-//    <v-card >
-//      <v-card-title
-//        class="headline lighten-2"
-//        primary-title
-//      >
-//        <v-layout row justify-space-between>
-//          <v-flex>
-//            {{"{{title}}"}}
-//          </v-flex>
-//
-//          <v-spacer></v-spacer>
-//          <v-btn
-//            text
-//            icon
-//            color="primary"
-//            @click="close()"
-//          >
-//            <v-icon>mdi-close</v-icon>
-//          </v-btn>
-//        </v-layout>
-//      </v-card-title>
-//
-//      <v-card-text>
-//        <v-progress-linear v-if="loading" intermediate></v-progress-linear>
-//        <div v-if="problem">{{"{{problem}}"}}</div>
-//        <div class="d-flex flex-row flex-wrap justify-space-around align-center" v-if="value">
-//          {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID .}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{end}}{{if IsAuto .}}<div v-else class="mx-2">{{template "DIALOG_INPUT_FIELD" .}}</div>{{end}}
-//          {{else}}<div class="mx-2">{{template "DIALOG_INPUT_FIELD" .}}</div>{{end}}{{end}}
-//        </div>
-//      </v-card-text>
-//      <v-divider></v-divider>
-//      <v-card-actions>
-//        <v-btn
-//          color="primary"
-//          @click="close()"
-//        >
-//          Close
-//        </v-btn>
-//        <v-btn
-//          color="primary"
-//          @click="close(true)"
-//        >
-//          {{"{{okText}}"}}
-//        </v-btn>
-//      </v-card-actions>
-//    </v-card>
-//  </v-dialog>
-//</template>
-//{{end}}
-//`
-
-// const htmlInputTemplate = `{{define "DIALOG_INPUT_FIELD"}}{{if eq .Type.Type "string"}}{{template "TEXT_INPUT" .}}
-//   {{else if eq .Type.Type "int"}}{{template "TEXT_INPUT" .}}
-//   {{else if eq .Type.Type "float"}}{{template "TEXT_INPUT" .}}
-//   {{else if eq .Type.Type "date"}}{{template "DATE_INPUT" .}}
-//   {{else if eq .Type.Type "bool"}}{{template "BOOL_INPUT" .}}
-//   {{else if .Type.Map}}{{template "MAP_INPUT" .}}
-//   {{else if .Type.Array}}{{template "ARRAY_INPUT" .}}
-//   {{else}}{{template "LOOKUP_INPUT" .}}{{end}}{{end}}`
-
-// const htmlTextInputTemplate = `{{define "TEXT_INPUT"}}<v-text-field
-//     v-model="value.{{FieldName .}}"
-//     label="{{Label .}}"
-//   ></v-text-field>{{end}}`
-// const htmlDateInputTemplate = `{{define "DATE_INPUT"}}<{{CustomComponent "date"}}
-//     v-model="value.{{FieldName .}}"
-//     label="{{Label .}}"
-//     {{ConponentAddAttrs .}}
-//   ></{{CustomComponent "date"}}>{{end}}`
-// const htmlMapInputTemplate = `{{define "MAP_INPUT"}}<{{CustomComponent "map"}}
-//     v-model="value.{{FieldName .}}"
-//     label="{{Label .}}"
-//     {{ConponentAddAttrs .}}
-//   ></{{CustomComponent "map"}}>{{end}}`
-
-// const htmlArrayInputTemplate = `{{define "ARRAY_INPUT"}}{{if ArrayAsLookup .}}<{{LookupComponent . true}}  v-if="value" v-model="value.{{FieldName .}}" label="{{Label .}}" @change="changed('{{FieldName .}}')" {{LookupAttrs .}}/>{{end}}{{end}}`
-
-// const htmlLookupInputTemplate = `{{define "LOOKUP_INPUT"}}<{{LookupComponent . true}} v-model="value.{{FieldName .}}" label="{{Label .}}" {{LookupAttrs .}}/>{{end}}`
-
-// const htmlBoolInputTemplate = `{{define "BOOL_INPUT"}}<v-checkbox v-model="value.{{FieldName .}}" label="{{Label .}}"/>{{end}}`
-
 const typeDescriptorTSTemplate = `
 export const {{TypeName .}}Descriptor = {
   id: "{{IDField}}",
@@ -925,96 +866,6 @@ export const {{TypeName .}}Descriptor = {
   ]
 };
 `
-
-//const vueDialogTSTemplate = `
-//{{define "TS"}}
-//<script lang="ts">
-//import { Component, Prop, Vue, Emit, Inject } from 'vue-property-decorator';
-//import VueApollo from 'vue-apollo';
-//import { {{TypeName .}}, New{{TypeName .}}Instance, {{GetQuery .}}, {{SaveQuery .}}, {{CreateQuery .}} } from '{{TypesFilePath .}}';
-//{{range RequiredComponents}}
-//import {{.Comp}} from '{{.Imp}}'{{end}}
-//{{range AdditionalComponents}}
-//import {{.Comp}} from '{{.Imp}}';{{end}}
-//
-//@Component({
-//  name: "{{DialogComponent .}}",
-//  components:{
-//    {{range RequiredComponents}}
-//      {{.Comp}},{{end}}
-//    {{range AdditionalComponents}}
-//      {{.Comp}},{{end}}
-//  }
-//})
-//export default class {{DialogComponent .}} extends Vue {
-//  private value: {{TypeName .}} | null = null;
-//  private isNew = false;
-//  private title: string = "{{Title .}}";
-//  private okText: string = "OK";
-//  private showDialog: boolean = false;
-//  private resolve: (res: {{TypeName .}}|null)=>void = () => {};
-//  private reject: (err: any)=>void = () => {};
-//  private loading = false;
-//  private problem = "";
-//  doNotGQL = {{NotExported .}}
-//
-//  show(v: {{TypeName .}}|{{IDType .}}|null): Promise<{{TypeName .}}|null> {
-//    this.showDialog = true;
-//    if(!v) {
-//      this.value = New{{TypeName .}}Instance();
-//      this.isNew = true;
-//    } else if(typeof v === "object") {
-//      this.value = v;
-//      this.isNew = false;
-//    } else {
-//      this.loadAndShow(v);
-//      this.isNew = false;
-//    }
-//    return new Promise((resolve, reject) => {
-//      this.resolve = resolve;
-//      this.reject = reject;
-//    });
-//  }
-//  async loadAndShow(id: {{IDType .}}) {
-//    this.loading = true;
-//    try {
-//      this.value = await {{GetQuery .}}({{ApolloClient}}, id);
-//    } catch(exc) {
-//      this.problem = exc.toString();
-//    }
-//    this.loading = false;
-//  }
-//  async saveAndClose() {
-//    //TODO: check that all necessary fields are filled
-//    try {
-//      let res: {{TypeName .}}
-//      if(this.doNotGQL) {
-//        this.resolve(this.value)
-//      } else {
-//        if(this.isNew) {
-//          res = await {{CreateQuery .}}({{ApolloClient}}, this.value!);
-//        } else {
-//          res = await {{SaveQuery .}}({{ApolloClient}}, this.value!);
-//        }
-//        this.resolve(res);
-//      }
-//      this.showDialog = false;
-//    } catch(exc) {
-//      this.reject(exc);
-//    }
-//  }
-//  async close(save: boolean) {
-//    if(!save) {
-//      this.resolve(null);
-//      this.showDialog = false;
-//    } else {
-//      this.saveAndClose();
-//    }
-//  }
-//}
-//</script>
-//{{end}}
-//`
 
 // CardView
 var htmlCardViewTemplate = `
@@ -1052,13 +903,18 @@ const htmlFieldViewComplexTemplate = `{{define "COMPLEX_VIEW"}}{{"{{"}}value.{{A
 
 const htmlFieldViewBoolTemplate = `{{define "BOOL_VIEW"}}<v-icon>{{"{{"}}value.{{FieldName .}}?'mdi-checkbox-marked':'mdi-checkbox-blank-outline'{{"}}"}}</v-icon>{{end}}`
 
-const vueViewTSTemplate = `
-{{define "TS"}}
+const vueViewTSTemplateHeader = `
+{{define "TS-HEADER"}}
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Inject, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}{{if ne (IDType .) "" }}, {{GetQuery .}}{{end}} } from '{{TypesFilePath .}}';
 {{FiltersImports}}
+{{TypesFromTS}}
+{{end}}
+`
+const vueViewTSTemplateBody = `
+{{define "TS"}}
 
 @Component({
   name: "{{TypeName}}CardViewComponent",
@@ -1079,7 +935,7 @@ export default class {{TypeName}}CardViewComponent extends Vue {
     } else {
       if(typeof this.item == "object") {
         this.value = this.item;
-      } {{if ne (IDType .) "" }}else if(typeof this.item == "{{IDType .}}") {
+      } {{if ne (IDType .) "" }}else if(typeof this.item == "{{IDTypeJS .}}") {
         this.load(this.item as {{IDType .}});
       }{{end}}
     }
@@ -1156,14 +1012,20 @@ var htmlLookupTemplate = `
 {{end}}
 `
 
-// TODO emit changed after input
-const vueDictionaryLookupTSTemplate = `
-{{define "TS"}}
+const vueDictionaryLookupTSTemplateHeader = `
+{{define "TS-HEADER"}}
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, {{ListQuery}} } from '{{TypesFilePath .}}';
 {{if LookupWithAdd}}import {{DialogComponent .}} from './{{DialogComponent .}}.vue';{{end}}
+{{TypesFromTS}}
+{{end}}
+`
+
+// TODO emit changed after input
+const vueDictionaryLookupTSTemplateBody = `
+{{define "TS"}}
 
 @Component({
   name: "{{TypeName}}LookupComponent",
@@ -1270,15 +1132,19 @@ export default class {{TypeName}}LookupComponent extends Vue {
 </script>
 {{end}}
 `
-
-// TODO onChange: use toString() if necessary
-const vueEntityLookupTSTemplate = `
-{{define "TS"}}
+const vueEntityLookupTSTemplateHeader = `
+{{define "TS-HEADER"}}
 <script lang="ts">
 import { Component, Prop, Vue, Emit, Watch } from 'vue-property-decorator';
 import VueApollo from 'vue-apollo';
 import { {{TypeName .}}, {{LookupQuery}}, {{GetQuery .}}{{if HasFindType}}, {{FindQuery}}, {{FindTypeName}}{{end}}} from '{{TypesFilePath .}}';
 import {{DialogComponent .}} from './{{DialogComponent .}}.vue';
+{{end}}
+`
+
+// TODO onChange: use toString() if necessary
+const vueEntityLookupTSTemplateBody = `
+{{define "TS"}}
 
 @Component({
   name: "{{TypeName}}LookupComponent",

@@ -994,9 +994,9 @@ func (b *Builder) addType(stmt *jen.Statement, ref *TypeRef, embedded ...bool) (
 			if dt.enum != nil {
 				ref.Complex = false
 				if b.File.Package != dt.pckg {
-					f = jen.Qual(dt.packagePath, dt.enum.Name)
+					f = stmt.Qual(dt.packagePath, dt.enum.Name)
 				} else {
-					f = jen.Id(dt.enum.Name)
+					f = stmt.Id(dt.enum.Name)
 				}
 			} else if dt.entry != nil &&
 				!ref.Embedded && (len(embedded) == 0 || !embedded[0]) &&
@@ -1094,11 +1094,11 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 	case TipFloat:
 		v = 0.0
 	default:
-		if len(idForRef) > 0 && idForRef[0] && ref.Type != "" {
-			if dt, ok := b.Descriptor.FindType(ref.Type); ok {
-				if dt.enum != nil {
-					return dt.enum.GetDefaultValue(b.Pckg)
-				} else if dt.entry != nil {
+		if dt, ok := b.Descriptor.FindType(ref.Type); ok {
+			if dt.enum != nil {
+				return dt.enum.GetDefaultValue(b.Pckg)
+			} else if len(idForRef) > 0 && idForRef[0] && ref.Type != "" {
+				if dt.entry != nil {
 					it := dt.entry.GetIdField()
 					if it == nil {
 						if !dt.external {

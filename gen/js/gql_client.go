@@ -199,6 +199,7 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 			tname := cg.GetJSEntityTypeName(enum.Name)
 			enum.Features.Set(Features, FName, tname)
 			enum.Features.Set(Features, FFilePath, p)
+			enum.Features.Set(Features, FType, cg.GetJSTypeNameByVivardName(enum.AliasForType))
 		}
 	}
 	return nil
@@ -731,24 +732,28 @@ func (cg *GQLCLientGenerator) GetJSTypeName(ref *gen.TypeRef, asRef bool) (ret s
 				//}
 			}
 		}
-		if ret == "" {
-			switch ref.Type {
-			case gen.TipBool:
-				ret = "boolean"
-			case gen.TipString:
-				ret = "string"
-			case gen.TipInt, gen.TipFloat:
-				ret = "number"
-			case gen.TipDate:
-				ret = "string"
-			case gen.TipAny:
-				ret = "any"
-			default:
-				//if t, ok := cg.desc.FindType(ref.Type); ok {
-				ret = cg.GetJSEntityTypeName(ref.Type)
-				//}
-			}
-		}
+		ret = cg.GetJSTypeNameByVivardName(ref.Type)
+	}
+	return ret
+}
+
+func (cg *GQLCLientGenerator) GetJSTypeNameByVivardName(tip string) string {
+	var ret string
+	switch tip {
+	case gen.TipBool:
+		ret = "boolean"
+	case gen.TipString:
+		ret = "string"
+	case gen.TipInt, gen.TipFloat:
+		ret = "number"
+	case gen.TipDate:
+		ret = "string"
+	case gen.TipAny:
+		ret = "any"
+	default:
+		//if t, ok := cg.desc.FindType(ref.Type); ok {
+		ret = cg.GetJSEntityTypeName(tip)
+		//}
 	}
 	return ret
 }

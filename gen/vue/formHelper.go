@@ -13,7 +13,13 @@ import (
 	"github.com/vc2402/vivard/gen/js"
 )
 
-func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName string, annSpec string, outDir string) (*helper, error) {
+func (cg *VueCLientGenerator) newFormHelper(
+	name string,
+	e *gen.Entity,
+	annName string,
+	annSpec string,
+	outDir string,
+) (*helper, error) {
 	skipTabs := false
 	skipRows := false
 	if annName == vueTableAnnotation {
@@ -140,7 +146,13 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		ctx.fields = append(ctx.fields, fd)
 	}
 	if hasStringWidth && hasIntWidth {
-		cg.desc.AddWarning(fmt.Sprintf("at %v: %s: both string and int 'width' values found in vue annotations", e.Pos, e.Name))
+		cg.desc.AddWarning(
+			fmt.Sprintf(
+				"at %v: %s: both string and int 'width' values found in vue annotations",
+				e.Pos,
+				e.Name,
+			),
+		)
 	}
 	if hasIntWidth {
 		ctx.useGrid = true
@@ -160,11 +172,31 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 		}
 	}
 	sort.Sort(&ctx.fields)
-	th := &helper{templ: template.New(name), cg: cg, e: e, idField: idf, outDir: outDir, ctx: ctx, components: map[string]vcComponentDescriptor{}}
+	th := &helper{
+		templ:      template.New(name),
+		cg:         cg,
+		e:          e,
+		idField:    idf,
+		outDir:     outDir,
+		ctx:        ctx,
+		components: map[string]vcComponentDescriptor{},
+	}
 
 	//components := map[string]vcComponentDescriptor{}
 	customComponents := map[string]vcCustomComponentDescriptor{}
 	typesFromTS := map[string][]string{}
+	addTypeFromTs := func(path string, tip string) {
+		if existing, ok := typesFromTS[path]; ok {
+			for _, s := range existing {
+				if s == tip {
+					return
+				}
+			}
+			typesFromTS[path] = append(existing, tip)
+			return
+		}
+		typesFromTS[path] = []string{tip}
+	}
 	funcs := template.FuncMap{
 		"Label": func(f fieldDescriptor) string { return f.title },
 		"Rows": func(it interface{}) [][]fieldDescriptor {
@@ -234,7 +266,10 @@ func (cg *VueCLientGenerator) newFormHelper(name string, e *gen.Entity, annName 
 			return e.Name
 		},
 		"ShowInTable": func(f fieldDescriptor) bool {
-			if _, ok := f.fld.Features.GetField(gen.FeatureHistKind, gen.FHHistoryOf); ok || f.fld.HasModifier(gen.AttrModifierAuxiliary) {
+			if _, ok := f.fld.Features.GetField(
+				gen.FeatureHistKind,
+				gen.FHHistoryOf,
+			); ok || f.fld.HasModifier(gen.AttrModifierAuxiliary) {
 				return false
 			}
 			return !f.fld.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vueAnnotationIgnore, false) &&
@@ -280,7 +315,10 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				idfld := qt.GetIdField()
-				return fmt.Sprintf("this.qualifier && (this.qualifiedByObject ? [this.qualifier.%s] : [this.qualifier])", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+				return fmt.Sprintf(
+					"this.qualifier && (this.qualifiedByObject ? [this.qualifier.%s] : [this.qualifier])",
+					idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""),
+				)
 			}
 			return ""
 		},
@@ -288,7 +326,10 @@ import {RoundNumber} from '@/filters/numberFilter';
 			if e.FB(gen.FeatureDictKind, gen.FDQualified) {
 				qt, _ := e.Features.GetEntity(gen.FeatureDictKind, gen.FDQualifierType)
 				idfld := qt.GetIdField()
-				return fmt.Sprintf("this.qualifier && (!this.qualifiedByObject || this.qualifier.%s)", idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+				return fmt.Sprintf(
+					"this.qualifier && (!this.qualifiedByObject || this.qualifier.%s)",
+					idfld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""),
+				)
 			}
 			return ""
 
@@ -387,6 +428,28 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"IDType": func(arg ...interface{}) string {
 			t, _ := e.Features.GetString(js.Features, js.FIDType)
+			if idField := e.GetIdField(); idField != nil && !gen.IsPrimitiveType(idField.Type.Type) {
+				// it may be enum
+				if ft, ok := cg.desc.FindType(idField.Type.Type); ok && ft.Enum() != nil {
+					path, err := cg.getTypesPath(ft.Enum())
+					if err == nil {
+						addTypeFromTs(path, t)
+					}
+				}
+			}
+
+			return t
+		},
+		"IDTypeJS": func(arg ...interface{}) string {
+			t, _ := e.Features.GetString(js.Features, js.FIDType)
+			if idField := e.GetIdField(); idField != nil && !gen.IsPrimitiveType(idField.Type.Type) {
+				// it may be enum
+				if ft, ok := cg.desc.FindType(idField.Type.Type); ok && ft.Enum() != nil {
+					if tip, ok := ft.Enum().Features.GetString(js.Features, js.FType); ok {
+						t = tip
+					}
+				}
+			}
 			return t
 		},
 		"IDField": func() (ret string) {
@@ -482,7 +545,8 @@ import {RoundNumber} from '@/filters/numberFilter';
 							cg.desc.AddError(err)
 							return false
 						}
-						typesFromTS[path] = append(typesFromTS[path], name)
+						addTypeFromTs(path, name)
+						//typesFromTS[path] = append(typesFromTS[path], name)
 						//typesFromTS = append(typesFromTS, name)
 						return true
 					}
@@ -564,6 +628,9 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"LookupWithQualifier": func(f fieldDescriptor) bool {
 			_, ok := f.fld.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy)
+			if !ok {
+				_, ok = f.fld.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedByConst)
+			}
 			return ok
 		},
 		"ByRefField": func(f fieldDescriptor) bool {
@@ -699,7 +766,8 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"GUITableType": func(f fieldDescriptor) string {
 			fromAnnotations := func(ann gen.Annotations, def string) string {
-				return ann.GetStringAnnotationDef(vueTableAnnotation, vueAnnotationDisplayType,
+				return ann.GetStringAnnotationDef(
+					vueTableAnnotation, vueAnnotationDisplayType,
 					ann.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType, def),
 				)
 			}
@@ -727,8 +795,10 @@ import {RoundNumber} from '@/filters/numberFilter';
 					}
 				}
 				if ff := getTitleField(e.Entity()); ff != nil {
-					return ff.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueAnnotationDisplayType,
-						ff.Annotations.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType,
+					return ff.Annotations.GetStringAnnotationDef(
+						vueTableAnnotation, vueAnnotationDisplayType,
+						ff.Annotations.GetStringAnnotationDef(
+							vueAnnotation, vueAnnotationDisplayType,
 							ff.Type.Type,
 						),
 					)
@@ -764,15 +834,35 @@ import {RoundNumber} from '@/filters/numberFilter';
 					ret += " multiple"
 				}
 				if origField, ok := f.fld.Features.GetField(gen.FeaturesAPIKind, gen.FAPIFindFor); ok {
-					if origField, ok := origField.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy); ok {
-						ret += fmt.Sprintf(" :qualifiedByObject='false' :allowEmptyQualifier='true' :qualifier='value.%s'", origField.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+					if qualField, ok := origField.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy); ok {
+						ret += fmt.Sprintf(
+							" :qualifiedByObject='false' :allowEmptyQualifier='true' :qualifier='value.%s'",
+							qualField.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""),
+						)
+					} else if constVal, ok := origField.Features.Get(gen.FeatureDictKind, gen.FDQualifiedByConst); ok {
+						switch val := constVal.(type) {
+						case string:
+							ret += fmt.Sprintf(" :qualifiedByObject='false' :allowEmptyQualifier='true' qualifier='%s'", val)
+						case int:
+							ret += fmt.Sprintf(" :qualifiedByObject='false' :allowEmptyQualifier='true' :qualifier='%d'", val)
+						}
 					}
 				}
 			} else if f.fld.Type.Array != nil {
 				ret = "multiple"
 			}
 			if qf, ok := f.fld.Features.GetField(gen.FeatureDictKind, gen.FDQualifiedBy); ok {
-				ret += fmt.Sprintf(" :qualifier=\"value.%s\"", qf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""))
+				ret += fmt.Sprintf(
+					" :qualifier=\"value.%s\"",
+					qf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, ""),
+				)
+			} else if constVal, ok := f.fld.Features.Get(gen.FeatureDictKind, gen.FDQualifiedByConst); ok {
+				switch val := constVal.(type) {
+				case string:
+					ret += fmt.Sprintf(" :qualifiedByObject='false' qualifier='%s'", val)
+				case int:
+					ret += fmt.Sprintf(" :qualifiedByObject='false' :qualifier='%d'", val)
+				}
 			}
 			return
 		},
@@ -990,7 +1080,8 @@ import {RoundNumber} from '@/filters/numberFilter';
 					cg.desc.AddError(err)
 					return ""
 				}
-				typesFromTS[path] = append(typesFromTS[path], name)
+				addTypeFromTs(path, name)
+				//typesFromTS[path] = append(typesFromTS[path], name)
 				return name
 			}
 			return ""

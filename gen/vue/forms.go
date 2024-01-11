@@ -93,7 +93,7 @@ func (h *helper) generateForm(formName string) error {
 // Forms templates
 var htmlFormTemplate = `
 {{define "FORM"}}
-  <div class="d-flex flex-row flex-wrap justify-space-around align-center">
+  <div class="d-flex flex-row flex-wrap justify-space-around align-baseline">
     <slot name="pre-fields"></slot>
     {{range (GetFields .)}}{{if ShowInDialog .}}{{if IsID .}}<div v-if="!isNew">{{"{{"}}value.{{FieldName .}}{{"}}"}}</div>{{if NotAuto .}}<div class="mx-2" v-if="isNew">{{template "FORM_INPUT_FIELD" .}}</div>{{end}}
       {{else}}<div class="mx-2">

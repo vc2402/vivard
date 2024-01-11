@@ -16,6 +16,8 @@ const (
 	// AnnIndex forces to build index by field
 	AnnIndex = "index"
 	aiUnique = "unique"
+	//aqbConst may be used with qualified-by if qualifier is constatn
+	aqbConst = "const"
 )
 
 const (
@@ -35,6 +37,9 @@ const (
 
 	// FDQualifiedBy - *Field for Field, refs the field in the same Entity that is qualifier for this dict field
 	FDQualifiedBy = "qual-by"
+
+	// FDQualifiedByConst - *Field for Field, refs the field in the same Entity that is qualifier for this dict field
+	FDQualifiedByConst = "qual-by-const"
 
 	// FDQualifierFor - *Field for Field, refs to field requires this as qualifier
 	FDQualifierFor = "qualifier-for"
@@ -86,7 +91,11 @@ func (ncg *DictionariesGenerator) SetDescriptor(proj *Project) {
 }
 
 // ProvideFeature from FeatureProvider interface
-func (ncg *DictionariesGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (ncg *DictionariesGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:
 		switch name {
@@ -133,12 +142,30 @@ func (ncg *DictionariesGenerator) CheckAnnotation(desc *Package, ann *Annotation
 						return true, fmt.Errorf("at %v: qualified-by should reference to field", fld.Pos)
 					}
 					name := ann.Values[0].Key
-					qb := fld.Parent().GetField(name)
-					if qb == nil {
-						return true, fmt.Errorf("at %v: qualified-by should reference to existing field: %s not found in type %s", fld.Pos, name, dict.Name)
+					if name == aqbConst && ann.Values[0].Value != nil {
+						if ann.Values[0].Value.String != nil {
+							fld.Features.Set(FeatureDictKind, FDQualifiedByConst, *ann.Values[0].Value.String)
+						} else if ann.Values[0].Value.Number != nil {
+							fld.Features.Set(FeatureDictKind, FDQualifiedByConst, int(*ann.Values[0].Value.Number))
+						} else {
+							return true, fmt.Errorf(
+								"at %v: for const value int qualified-by can be used only int and string",
+								fld.Pos,
+							)
+						}
+					} else {
+						qb := fld.Parent().GetField(name)
+						if qb == nil {
+							return true, fmt.Errorf(
+								"at %v: qualified-by should reference to existing field: %s not found in type %s",
+								fld.Pos,
+								name,
+								dict.Name,
+							)
+						}
+						fld.Features.Set(FeatureDictKind, FDQualifiedBy, qb)
+						qb.Features.Set(FeatureDictKind, FDQualifierFor, fld)
 					}
-					fld.Features.Set(FeatureDictKind, FDQualifiedBy, qb)
-					qb.Features.Set(FeatureDictKind, FDQualifierFor, fld)
 					return true, nil
 				}
 			} else if _, ok := fld.Parent().Annotations[AnnotationFind]; ok {
@@ -199,7 +226,12 @@ func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
 							dqt = qual.Type.Array.Type
 						}
 						if qb.Type.Type != dqt {
-							return fmt.Errorf("at %v: qualified-by should reference to type '%s' but refs to '%s'", f.Pos, dqt, qb.Type.Type)
+							return fmt.Errorf(
+								"at %v: qualified-by should reference to type '%s' but refs to '%s'",
+								f.Pos,
+								dqt,
+								qb.Type.Type,
+							)
 						}
 					}
 				}
@@ -465,39 +497,52 @@ func (ncg *DictionariesGenerator) generateAllDictGetter(t *Entity, idType *TypeR
 	//qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
 	loadername := fmt.Sprintf(DictCacheLoaderTempl, name)
 	var qualIDFld *Field
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).ParamsFunc(func(g *jen.Group) {
-		g.Id("ctx").Qual("context", "Context")
-		if t.FB(FeatureDictKind, FDQualified) {
-			qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
-			qualIDFld = qt.GetIdField()
-			switch qualIDFld.Type.Type {
-			case TipInt:
-				g.Id("qual").Op("...").Int()
-			case TipString:
-				g.Id("qual").Op("...").String()
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).ParamsFunc(
+		func(g *jen.Group) {
+			g.Id("ctx").Qual("context", "Context")
+			if t.FB(FeatureDictKind, FDQualified) {
+				qt, _ := t.Features.GetEntity(FeatureDictKind, FDQualifierType)
+				qualIDFld = qt.GetIdField()
+				switch qualIDFld.Type.Type {
+				case TipInt:
+					g.Id("qual").Op("...").Int()
+				case TipString:
+					g.Id("qual").Op("...").String()
+				}
 			}
-		}
-	}).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(func(g *jen.Group) {
-		g.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx"))
-		g.Add(ncg.generateLockUnlockStmt(name, true))
-		if qf, ok := t.Features.GetField(FeatureDictKind, FDQualifier); ok {
-			dscs, _ := t.Features.Get(FeatureDictKind, FDIndexes)
-			qualIdxName := dscs.(map[string]indexDescriptor)[qf.Name].engFieldName
-			g.If(jen.Len(jen.Id("qual")).Op(">").Lit(0)).Block(
-				jen.Id("ret").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Lit(0), jen.Len(jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Id("qual").Index(jen.Lit(0))))),
-				jen.For(jen.List(jen.Id("_"), jen.Id("q")).Op(":=").Range().Id("qual")).Block(
-					jen.For(jen.List(jen.Id("_"), jen.Id("idx")).Op(":=").Range().Id(EngineVar).Dot(qualIdxName).Index(jen.Id("q"))).Block(
-						jen.Id("ret").Op("=").Append(jen.Id("ret"), jen.Id(EngineVar).Dot(fldname).Index(jen.Id("idx"))),
+		},
+	).Parens(jen.List(jen.Index().Op("*").Id(name), jen.Error())).BlockFunc(
+		func(g *jen.Group) {
+			g.Id(EngineVar).Dot(loadername).Params(jen.Id("ctx"))
+			g.Add(ncg.generateLockUnlockStmt(name, true))
+			if qf, ok := t.Features.GetField(FeatureDictKind, FDQualifier); ok {
+				dscs, _ := t.Features.Get(FeatureDictKind, FDIndexes)
+				qualIdxName := dscs.(map[string]indexDescriptor)[qf.Name].engFieldName
+				g.If(jen.Len(jen.Id("qual")).Op(">").Lit(0)).Block(
+					jen.Id("ret").Op(":=").Make(
+						jen.Index().Op("*").Id(name),
+						jen.Lit(0),
+						jen.Len(jen.Id(EngineVar).Dot(qualIdxName).Index(jen.Id("qual").Index(jen.Lit(0)))),
 					),
-				),
-				jen.Return(jen.Id("ret"), jen.Nil()),
+					jen.For(jen.List(jen.Id("_"), jen.Id("q")).Op(":=").Range().Id("qual")).Block(
+						jen.For(
+							jen.List(
+								jen.Id("_"),
+								jen.Id("idx"),
+							).Op(":=").Range().Id(EngineVar).Dot(qualIdxName).Index(jen.Id("q")),
+						).Block(
+							jen.Id("ret").Op("=").Append(jen.Id("ret"), jen.Id(EngineVar).Dot(fldname).Index(jen.Id("idx"))),
+						),
+					),
+					jen.Return(jen.Id("ret"), jen.Nil()),
+				)
+			}
+			g.Return(
+				// TODO: check that item exists
+				jen.List(jen.Id(EngineVar).Dot(fldname), jen.Nil()),
 			)
-		}
-		g.Return(
-			// TODO: check that item exists
-			jen.List(jen.Id(EngineVar).Dot(fldname), jen.Nil()),
-		)
-	}).Line()
+		},
+	).Line()
 
 	ncg.b.Functions.Add(f)
 	return nil
@@ -510,124 +555,139 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 	//qualIdxName := t.FS(FeatureDictKind, FDQualIdxName)
 	//idxname := t.FS(FeatureDictKind, FDIdxFieldName)
 	//idt, _ := ncg.b.addType(&jen.Statement{}, idField.Type)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Error().Block(
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		),
+	).Error().Block(
 		jen.If(jen.Id(EngineVar).Dot(fldname).Op("==").Nil()).Block(
 			//WARNING: generating only lock statement! do unlock if returning before main unlock
 			ncg.generateLockStmt(name, false).
-				If(jen.Id(EngineVar).Dot(fldname).Op("==").Nil()).BlockFunc(func(g *jen.Group) {
-				var itemsCode jen.Code
-				if c, ok := t.Features.Get(FeatGoKind, FCDictGetter); ok {
-					if code, ok := c.(jen.Code); ok {
-						// there is getter code
-						itemsCode = code
+				If(jen.Id(EngineVar).Dot(fldname).Op("==").Nil()).BlockFunc(
+				func(g *jen.Group) {
+					var itemsCode jen.Code
+					if c, ok := t.Features.Get(FeatGoKind, FCDictGetter); ok {
+						if code, ok := c.(jen.Code); ok {
+							// there is getter code
+							itemsCode = code
+						}
 					}
-				}
-				if itemsCode == nil {
-					// loading the cache
-					itemsCode = jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodList, name)).Params(jen.Id("ctx"))
-				}
-				g.Var().Err().Error()
-				g.List(jen.Id("items"), jen.Id("err")).Op(":=").Add(itemsCode)
-				g.If(jen.Id("err").Op("!=").Nil()).Block(
-					ncg.generateUnlockStmt(name, false).Return(jen.Id("err")),
-				)
-
-				if !t.Features.Bool(FeaturesCommonKind, FCReadonly) {
-					if c, ok := t.Features.Get(FeatGoKind, FCDictIniter); ok {
-						code := c.(jen.Code)
-						g.If(jen.Len(jen.Id("items")).Op("==").Lit(0)).BlockFunc(func(g *jen.Group) {
-							g.List(jen.Id("items"), jen.Id("err")).Op("=").Add(code)
-							g.If(jen.Id("err").Op("!=").Nil()).Block(
-								ncg.generateUnlockStmt(name, false).Return(jen.Id("err")),
-							)
-							if f := ncg.desc.GetFeature(t, FeaturesDBKind, FDBFlushDict); f != nil {
-								fun, ok := f.(func(args ...interface{}) jen.Code)
-								if ok {
-									g.Add(fun("items"))
-								}
-							}
-						})
+					if itemsCode == nil {
+						// loading the cache
+						itemsCode = jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodList, name)).Params(jen.Id("ctx"))
 					}
-				}
-				g.Id(EngineVar).Dot(fldname).Op("=").Id("items")
-				if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
-					indexes := idxs.(map[string]indexDescriptor)
-					utils.WalkMap(
-						indexes,
-						func(descriptor indexDescriptor, _ string) error {
-							elementType := jen.Int()
-							if !descriptor.unique {
-								elementType = jen.Index().Int()
-							}
-							g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
-							return nil
-						},
+					g.Var().Err().Error()
+					g.List(jen.Id("items"), jen.Id("err")).Op(":=").Add(itemsCode)
+					g.If(jen.Id("err").Op("!=").Nil()).Block(
+						ncg.generateUnlockStmt(name, false).Return(jen.Id("err")),
 					)
-				}
-				g.For(jen.List(jen.Id("idx"), jen.Id("val")).Op(":=").Range().Id("items")).BlockFunc(func(g *jen.Group) {
-					g.Add(ncg.indexesStatement(t, "val", "idx"))
-				})
-				g.Add(ncg.generateUnlockStmt(name, false))
-				/*if !t.Features.Bool(FeaturesCommonKind, FCReadonly) {
-				  if c, ok := t.Features.Get(FeatGoKind, FCDictIniter); ok {
-				    code := c.(jen.Code)
-				    g.If(jen.Len(jen.Id("items")).Op("==").Lit(0)).BlockFunc(func(g *jen.Group) {
-				      if idField.HasModifier(AttrModifierIDAuto) {
-				        g.Id("maxId").Op(":=").Lit(0).Line()
-				      }
-				      g.List(jen.Id("items"), jen.Id("err")).Op("=").Add(code)
-				      g.Add(returnIfErrValue())
-				      g.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Id("items")).BlockFunc(func(g *jen.Group) {
-				        if idField.HasModifier(AttrModifierIDAuto) {
-				          g.If(jen.Id("maxId").Op("<=").Id("o").Dot(idField.Name)).Block(
-				            jen.Id("maxId").Op("=").Id("o").Dot(idField.Name),
-				          )
-				        }
-				        g.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o"))
-				      })
-				      if idField.HasModifier(AttrModifierIDAuto) {
-				        if f := ncg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
-				          fun, ok := f.(func(args ...interface{}) jen.Code)
-				          if ok {
-				            g.Add(fun("maxId"))
-				          }
-				        }
-				      }
-				    })
-				  } else */if c, ok := t.Features.Get(FeatGoKind, FCDictEnsurer); ok {
-					code := c.(jen.Code)
-					if idField.HasModifier(AttrModifierIDAuto) {
-						g.Id("maxId").Op(":=").Lit(0).Line()
-					}
-					g.List(jen.Id("values"), jen.Id("err")).Op(":=").Add(code)
-					g.Add(returnIfErrValue())
-					g.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Id("values")).BlockFunc(func(g *jen.Group) {
-						if idField.HasModifier(AttrModifierIDAuto) {
-							g.If(jen.Id("maxId").Op("<=").Id("o").Dot(idField.Name)).Block(
-								jen.Id("maxId").Op("=").Id("o").Dot(idField.Name),
+
+					if !t.Features.Bool(FeaturesCommonKind, FCReadonly) {
+						if c, ok := t.Features.Get(FeatGoKind, FCDictIniter); ok {
+							code := c.(jen.Code)
+							g.If(jen.Len(jen.Id("items")).Op("==").Lit(0)).BlockFunc(
+								func(g *jen.Group) {
+									g.List(jen.Id("items"), jen.Id("err")).Op("=").Add(code)
+									g.If(jen.Id("err").Op("!=").Nil()).Block(
+										ncg.generateUnlockStmt(name, false).Return(jen.Id("err")),
+									)
+									if f := ncg.desc.GetFeature(t, FeaturesDBKind, FDBFlushDict); f != nil {
+										fun, ok := f.(func(args ...interface{}) jen.Code)
+										if ok {
+											g.Add(fun("items"))
+										}
+									}
+								},
 							)
 						}
-						g.List(jen.Id("_"), jen.Err()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, t.Name)).
-							Params(jen.Id("ctx"), jen.Id("o").Dot(idField.Name))
-						// thinking that err is not-found
-						g.If(jen.Err().Op("!=").Nil()).Block(
-							jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o")),
-						)
-					})
-					if idField.HasModifier(AttrModifierIDAuto) {
-						g.If(jen.Len(jen.Id("items").Op("==").Lit(0))).BlockFunc(func(g *jen.Group) {
-							//TODO may be we need to put this constant to options or get it from vvf file...
-							g.Id("maxId").Op("+=").Lit("1000")
-							if f := ncg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
-								fun, ok := f.(func(args ...interface{}) jen.Code)
-								if ok {
-									g.Add(fun("maxId"))
-								}
-							}
-						})
 					}
-				}
-			}).Else().Block(
+					g.Id(EngineVar).Dot(fldname).Op("=").Id("items")
+					if idxs, ok := t.Features.Get(FeatureDictKind, FDIndexes); ok {
+						indexes := idxs.(map[string]indexDescriptor)
+						utils.WalkMap(
+							indexes,
+							func(descriptor indexDescriptor, _ string) error {
+								elementType := jen.Int()
+								if !descriptor.unique {
+									elementType = jen.Index().Int()
+								}
+								g.Id(EngineVar).Dot(descriptor.engFieldName).Op("=").Map(descriptor.keyType).Add(elementType).Values()
+								return nil
+							},
+						)
+					}
+					g.For(jen.List(jen.Id("idx"), jen.Id("val")).Op(":=").Range().Id("items")).BlockFunc(
+						func(g *jen.Group) {
+							g.Add(ncg.indexesStatement(t, "val", "idx"))
+						},
+					)
+					g.Add(ncg.generateUnlockStmt(name, false))
+					/*if !t.Features.Bool(FeaturesCommonKind, FCReadonly) {
+					  if c, ok := t.Features.Get(FeatGoKind, FCDictIniter); ok {
+					    code := c.(jen.Code)
+					    g.If(jen.Len(jen.Id("items")).Op("==").Lit(0)).BlockFunc(func(g *jen.Group) {
+					      if idField.HasModifier(AttrModifierIDAuto) {
+					        g.Id("maxId").Op(":=").Lit(0).Line()
+					      }
+					      g.List(jen.Id("items"), jen.Id("err")).Op("=").Add(code)
+					      g.Add(returnIfErrValue())
+					      g.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Id("items")).BlockFunc(func(g *jen.Group) {
+					        if idField.HasModifier(AttrModifierIDAuto) {
+					          g.If(jen.Id("maxId").Op("<=").Id("o").Dot(idField.Name)).Block(
+					            jen.Id("maxId").Op("=").Id("o").Dot(idField.Name),
+					          )
+					        }
+					        g.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o"))
+					      })
+					      if idField.HasModifier(AttrModifierIDAuto) {
+					        if f := ncg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
+					          fun, ok := f.(func(args ...interface{}) jen.Code)
+					          if ok {
+					            g.Add(fun("maxId"))
+					          }
+					        }
+					      }
+					    })
+					  } else */if c, ok := t.Features.Get(FeatGoKind, FCDictEnsurer); ok {
+						code := c.(jen.Code)
+						if idField.HasModifier(AttrModifierIDAuto) {
+							g.Id("maxId").Op(":=").Lit(0).Line()
+						}
+						g.List(jen.Id("values"), jen.Id("err")).Op(":=").Add(code)
+						g.Add(returnIfErrValue())
+						g.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Id("values")).BlockFunc(
+							func(g *jen.Group) {
+								if idField.HasModifier(AttrModifierIDAuto) {
+									g.If(jen.Id("maxId").Op("<=").Id("o").Dot(idField.Name)).Block(
+										jen.Id("maxId").Op("=").Id("o").Dot(idField.Name),
+									)
+								}
+								g.List(jen.Id("_"), jen.Err()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, t.Name)).
+									Params(jen.Id("ctx"), jen.Id("o").Dot(idField.Name))
+								// thinking that err is not-found
+								g.If(jen.Err().Op("!=").Nil()).Block(
+									jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o")),
+								)
+							},
+						)
+						if idField.HasModifier(AttrModifierIDAuto) {
+							g.If(jen.Len(jen.Id("items").Op("==").Lit(0))).BlockFunc(
+								func(g *jen.Group) {
+									//TODO may be we need to put this constant to options or get it from vvf file...
+									g.Id("maxId").Op("+=").Lit("1000")
+									if f := ncg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
+										fun, ok := f.(func(args ...interface{}) jen.Code)
+										if ok {
+											g.Add(fun("maxId"))
+										}
+									}
+								},
+							)
+						}
+					}
+				},
+			).Else().Block(
 				ncg.generateUnlockStmt(name, false),
 			),
 		),
@@ -709,10 +769,20 @@ func (ncg *DictionariesGenerator) addConfigAttr(name string) error {
 
 func (ncg *DictionariesGenerator) generateConfigGetter(name string) error {
 	fname := ncg.desc.GetMethodName(MethodGet, name)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		),
+	).
 		Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
 		jen.If(jen.Id(EngineVar).Dot(name).Op("==").Nil()).Block(
-			jen.List(jen.Id("res"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodLoad, name)).Call(jen.Id("ctx")),
+			jen.List(jen.Id("res"), jen.Err()).Op(":=").Id(EngineVar).Dot(
+				ncg.desc.GetMethodName(
+					MethodLoad,
+					name,
+				),
+			).Call(jen.Id("ctx")),
 			returnIfErrValue(jen.Nil()),
 			jen.Id(EngineVar).Dot(name).Op("=").Id("res"),
 		),
@@ -728,10 +798,20 @@ func (ncg *DictionariesGenerator) generateConfigGetter(name string) error {
 
 func (ncg *DictionariesGenerator) generateConfigSetter(name string) error {
 	fname := ncg.desc.GetMethodName(MethodSet, name)
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		), jen.Id("o").Op("*").Id(name),
+	).
 		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Id("err").Error())).Block(
 		jen.Id(EngineVar).Dot(name).Op("=").Id("o"),
-		jen.List(jen.Id("ret"), jen.Err()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Id("ctx"), jen.Id("o")),
+		jen.List(jen.Id("ret"), jen.Err()).Op("=").Id(EngineVar).Dot(
+			ncg.desc.GetMethodName(
+				MethodSave,
+				name,
+			),
+		).Call(jen.Id("ctx"), jen.Id("o")),
 		jen.Return(),
 	).Line()
 
@@ -740,128 +820,160 @@ func (ncg *DictionariesGenerator) generateConfigSetter(name string) error {
 }
 
 func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
-	f := jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id("GetConfigValue").Params(jen.Id("key").String()).Interface().BlockFunc(func(g *jen.Group) {
-		g.Id("parts").Op(":=").Qual("strings", "SplitN").Params(jen.Id("key"), jen.Lit("."), jen.Lit(2))
-		g.Switch(jen.Id("parts").Index(jen.Lit(0))).BlockFunc(func(g *jen.Group) {
-			ca := e.Annotations[AnnotationConfig]
-			var name string
-			var ft *Entity
-			for _, f := range e.Fields {
-				isArray := false
-				if ca == nil || !ca.GetBool(AnnCfgValue, false) {
-					name = f.Type.Type
-					if f.Type.Array != nil {
-						isArray = true
-						name = f.Type.Array.Type
-					}
-					if name == "" {
-						continue
-					}
-					if dt, ok := ncg.desc.FindType(name); ok {
-						ft = dt.Entity()
-						if ft != nil {
-							ca := ft.Annotations[AnnotationConfig]
-							if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+	f := jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id("GetConfigValue").Params(jen.Id("key").String()).Interface().BlockFunc(
+		func(g *jen.Group) {
+			g.Id("parts").Op(":=").Qual("strings", "SplitN").Params(jen.Id("key"), jen.Lit("."), jen.Lit(2))
+			g.Switch(jen.Id("parts").Index(jen.Lit(0))).BlockFunc(
+				func(g *jen.Group) {
+					ca := e.Annotations[AnnotationConfig]
+					var name string
+					var ft *Entity
+					for _, f := range e.Fields {
+						isArray := false
+						if ca == nil || !ca.GetBool(AnnCfgValue, false) {
+							name = f.Type.Type
+							if f.Type.Array != nil {
+								isArray = true
+								name = f.Type.Array.Type
+							}
+							if name == "" {
+								continue
+							}
+							if dt, ok := ncg.desc.FindType(name); ok {
+								ft = dt.Entity()
+								if ft != nil {
+									ca := ft.Annotations[AnnotationConfig]
+									if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+										continue
+									}
+								}
+							} else {
 								continue
 							}
 						}
-					} else {
-						continue
-					}
-				}
-				fname := f.Name
-				g.Case(jen.Lit(fname)).BlockFunc(func(g *jen.Group) {
-					//TODO return array elements?
-					if ca != nil && ca.GetBool(AnnCfgValue, false) || isArray {
-						g.Return(jen.Id("o").Dot(f.Name))
-					} else {
-						g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
-							jen.Return(jen.Id("o").Dot(f.Name)),
+						fname := f.Name
+						g.Case(jen.Lit(fname)).BlockFunc(
+							func(g *jen.Group) {
+								//TODO return array elements?
+								if ca != nil && ca.GetBool(AnnCfgValue, false) || isArray {
+									g.Return(jen.Id("o").Dot(f.Name))
+								} else {
+									g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
+										jen.Return(jen.Id("o").Dot(f.Name)),
+									)
+									g.Return(jen.Id("o").Dot(f.Name).Dot("GetConfigValue").Params(jen.Id("parts").Index(jen.Lit(1))))
+								}
+							},
 						)
-						g.Return(jen.Id("o").Dot(f.Name).Dot("GetConfigValue").Params(jen.Id("parts").Index(jen.Lit(1))))
 					}
-				})
-			}
-		})
-		g.Return(jen.Nil())
-	})
+				},
+			)
+			g.Return(jen.Nil())
+		},
+	)
 
 	ncg.b.Functions.Add(f.Line())
 
 	f = jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id("SetConfigValue").
-		Params(jen.Id("key").String(), jen.Id("val").Interface()).Error().BlockFunc(func(g *jen.Group) {
-		g.Id("parts").Op(":=").Qual("strings", "SplitN").Params(jen.Id("key"), jen.Lit("."), jen.Lit(2))
-		g.Switch(jen.Id("parts").Index(jen.Lit(0))).BlockFunc(func(g *jen.Group) {
-			ca := e.Annotations[AnnotationConfig]
-			var name string
-			var ft *Entity
-			for _, f := range e.Fields {
-				isArray := false
-				if ca == nil || !ca.GetBool(AnnCfgValue, false) {
-					name = f.Type.Type
-					if f.Type.Array != nil {
-						isArray = true
-						name = f.Type.Array.Type
-					}
-					if name == "" {
-						continue
-					}
-					if dt, ok := ncg.desc.FindType(name); ok {
-						ft = dt.Entity()
-						if ft != nil {
-							ca := ft.Annotations[AnnotationConfig]
-							if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+		Params(jen.Id("key").String(), jen.Id("val").Interface()).Error().BlockFunc(
+		func(g *jen.Group) {
+			g.Id("parts").Op(":=").Qual("strings", "SplitN").Params(jen.Id("key"), jen.Lit("."), jen.Lit(2))
+			g.Switch(jen.Id("parts").Index(jen.Lit(0))).BlockFunc(
+				func(g *jen.Group) {
+					ca := e.Annotations[AnnotationConfig]
+					var name string
+					var ft *Entity
+					for _, f := range e.Fields {
+						isArray := false
+						if ca == nil || !ca.GetBool(AnnCfgValue, false) {
+							name = f.Type.Type
+							if f.Type.Array != nil {
+								isArray = true
+								name = f.Type.Array.Type
+							}
+							if name == "" {
+								continue
+							}
+							if dt, ok := ncg.desc.FindType(name); ok {
+								ft = dt.Entity()
+								if ft != nil {
+									ca := ft.Annotations[AnnotationConfig]
+									if ca == nil || (!ca.GetBool(AnnCfgGroup, false) && !ca.GetBool(AnnCfgValue, false)) {
+										continue
+									}
+								}
+							} else {
 								continue
 							}
 						}
-					} else {
-						continue
-					}
-				}
-				fname := f.Name
-				g.Case(jen.Lit(fname)).BlockFunc(func(g *jen.Group) {
-					//TODO return array elements?
-					if ca != nil && ca.GetBool(AnnCfgValue, false) || isArray {
-						g.If(
-							jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(f.Features.Stmt(FeatGoKind, FCGAttrType)),
-							jen.Id("ok"),
-						).
-							Block(
-								//TODO save it to DB
-								jen.Id("o").Dot(f.Name).Op("=").Id("v"),
-								jen.Return(jen.Nil()),
-							).
-							Else().Block(
-							jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
+						fname := f.Name
+						g.Case(jen.Lit(fname)).BlockFunc(
+							func(g *jen.Group) {
+								//TODO return array elements?
+								if ca != nil && ca.GetBool(AnnCfgValue, false) || isArray {
+									g.If(
+										jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(
+											f.Features.Stmt(
+												FeatGoKind,
+												FCGAttrType,
+											),
+										),
+										jen.Id("ok"),
+									).
+										Block(
+											//TODO save it to DB
+											jen.Id("o").Dot(f.Name).Op("=").Id("v"),
+											jen.Return(jen.Nil()),
+										).
+										Else().Block(
+										jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
+									)
+								} else {
+									g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
+										g.If(
+											jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(
+												f.Features.Stmt(
+													FeatGoKind,
+													FCGAttrType,
+												),
+											),
+											jen.Id("ok"),
+										).
+											Block(
+												//TODO save it to DB or not to save - that is the question...
+												jen.Id("o").Dot(f.Name).Op("=").Id("v"),
+												//jen.List(jen.Id("_"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Qual("context", "TODO").Params(), jen.Id("v")),
+												jen.Return(jen.Nil()),
+											).
+											Else().Block(
+											jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
+										),
+									)
+									g.Return(
+										jen.Id("o").Dot(f.Name).Dot("SetConfigValue").Params(
+											jen.Id("parts").Index(jen.Lit(1)),
+											jen.Id("val"),
+										),
+									)
+								}
+							},
 						)
-					} else {
-						g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
-							g.If(
-								jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(f.Features.Stmt(FeatGoKind, FCGAttrType)),
-								jen.Id("ok"),
-							).
-								Block(
-									//TODO save it to DB or not to save - that is the question...
-									jen.Id("o").Dot(f.Name).Op("=").Id("v"),
-									//jen.List(jen.Id("_"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Qual("context", "TODO").Params(), jen.Id("v")),
-									jen.Return(jen.Nil()),
-								).
-								Else().Block(
-								jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),
-							),
-						)
-						g.Return(jen.Id("o").Dot(f.Name).Dot("SetConfigValue").Params(jen.Id("parts").Index(jen.Lit(1)), jen.Id("val")))
 					}
-				})
-			}
-		})
-		g.Return(jen.Nil())
-	})
+				},
+			)
+			g.Return(jen.Nil())
+		},
+	)
 
 	ncg.b.Functions.Add(f.Line())
 	if e.HasModifier(TypeModifierConfig) {
 		ncg.desc.Engine.Initialized.Add(
-			jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, e.Name)).Params(jen.Qual("context", "TODO").Params()).Line(),
+			jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, e.Name)).Params(
+				jen.Qual(
+					"context",
+					"TODO",
+				).Params(),
+			).Line(),
 			jen.If(jen.Id(EngineVar).Dot(e.Name).Op("!=").Nil()).Block(
 				jen.Id("v").Dot("RegisterConfigProvider").Params(jen.Id(EngineVar).Dot(e.Name), jen.Lit(10)),
 			).Line(),
@@ -870,7 +982,12 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 	return nil
 }
 
-func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+func (ncg *DictionariesGenerator) ProvideCodeFragment(
+	module interface{},
+	action interface{},
+	point interface{},
+	ctx interface{},
+) interface{} {
 	if module == CodeFragmentModuleGeneral {
 		if cf, ok := ctx.(*CodeFragmentContext); ok {
 			if cf.Entity != nil && cf.Entity.HasModifier(TypeModifierDictionary) {
@@ -901,33 +1018,68 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(module interface{}, action
 					stmt := jen.If(
 						jen.List(idx, jen.Id("ok")).Op(":=").Id(EngineVar).Dot(idxname).Index(id),
 						jen.Id("ok"),
-					).BlockFunc(func(g *jen.Group) {
-						cf.Push(g)
-						if action == MethodGet {
-							g.Id(cf.GetObjVarName()).Op("=").Id(EngineVar).Dot(fldname).Index(idx)
-						} else if action == MethodSet {
-							g.Id(EngineVar).Dot(fldname).Index(idx).Op("=").Add(cf.GetParam(ParamObject))
-							g.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject)))
-						} else if action == MethodNew {
-							g.Add(cf.GetErr().Op("=").Qual("errors", "New").Params(jen.Lit(fmt.Sprintf("%s: duplicate id found", cf.Entity.Name))))
-							g.Add(jen.Return())
-						} else if action == MethodDelete {
-							cf.Add(cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodRemove, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamID)))
-							cf.AddCheckError()
-							//TODO remove from cache
-							g.Id(EngineVar).Dot(fldname).Op("=").Nil()
-							g.Id(EngineVar).Dot(idxname).Op("=").Nil()
-						}
-						cf.Pop()
-					})
+					).BlockFunc(
+						func(g *jen.Group) {
+							cf.Push(g)
+							if action == MethodGet {
+								g.Id(cf.GetObjVarName()).Op("=").Id(EngineVar).Dot(fldname).Index(idx)
+							} else if action == MethodSet {
+								g.Id(EngineVar).Dot(fldname).Index(idx).Op("=").Add(cf.GetParam(ParamObject))
+								g.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(
+									ncg.desc.GetMethodName(
+										MethodSave,
+										cf.TypeName,
+									),
+								).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject)))
+							} else if action == MethodNew {
+								g.Add(
+									cf.GetErr().Op("=").Qual("errors", "New").Params(
+										jen.Lit(
+											fmt.Sprintf(
+												"%s: duplicate id found",
+												cf.Entity.Name,
+											),
+										),
+									),
+								)
+								g.Add(jen.Return())
+							} else if action == MethodDelete {
+								cf.Add(cf.GetErr()).Op("=").Id(EngineVar).Dot(
+									ncg.desc.GetMethodName(
+										MethodRemove,
+										cf.TypeName,
+									),
+								).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamID)))
+								cf.AddCheckError()
+								//TODO remove from cache
+								g.Id(EngineVar).Dot(fldname).Op("=").Nil()
+								g.Id(EngineVar).Dot(idxname).Op("=").Nil()
+							}
+							cf.Pop()
+						},
+					)
 					if action != MethodNew {
 						stmt.Else().Block(
-							cf.GetErr().Op("=").Qual("fmt", "Errorf").Params(jen.Lit(fmt.Sprintf("no %s found with id %%v", cf.TypeName)), id),
+							cf.GetErr().Op("=").Qual("fmt", "Errorf").Params(
+								jen.Lit(
+									fmt.Sprintf(
+										"no %s found with id %%v",
+										cf.TypeName,
+									),
+								), id,
+							),
 						)
 					}
 					cf.Add(stmt)
 					if action == MethodNew {
-						cf.Add(jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodCreate, cf.TypeName)).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject))))
+						cf.Add(
+							jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(
+								ncg.desc.GetMethodName(
+									MethodCreate,
+									cf.TypeName,
+								),
+							).Params(jen.List(cf.GetParam(ParamContext), cf.GetParam(ParamObject))),
+						)
 						cf.Add(returnIfErr())
 						cf.Add(jen.Id(EngineVar).Dot(fldname).Op("=").Append(jen.Id(EngineVar).Dot(fldname), cf.GetObjVar()))
 						cf.Add(jen.Id("idx").Op(":=").Len(jen.Id(EngineVar).Dot(fldname)).Op("-").Lit(1))

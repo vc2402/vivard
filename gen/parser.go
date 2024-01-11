@@ -503,7 +503,7 @@ func (e *Entity) TypeRef() *TypeRef {
 
 func (f *Field) IsIdField() bool {
 	for _, a := range f.Modifiers {
-		if a.AttrModifier == "id" || a.AttrModifier == "auto" {
+		if a.AttrModifier == string(AttrModifierID) || a.AttrModifier == string(AttrModifierIDAuto) {
 			return true
 		}
 	}

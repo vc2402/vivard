@@ -4,26 +4,35 @@ import (
 	"encoding/json"
 	"fmt"
 	dep "github.com/vc2402/vivard/dependencies"
+	"go.uber.org/zap"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/graphql-go/graphql"
-	gql "github.com/graphql-go/graphql"
 	"github.com/graphql-go/handler"
 )
 
 type GQLEngine struct {
-	schema     *gql.Schema
-	descriptor *GQLDescriptor
+	schema               *graphql.Schema
+	descriptor           *GQLDescriptor
+	log                  *zap.Logger
+	statisticsChannel    chan interface{}
+	collectStatistics    bool
+	statisticsSchema     *graphql.Schema
+	statistics           map[uint32]*statistics
+	statisticsMux        sync.RWMutex
+	statisticsHistoryLen time.Duration
+	runningSince         time.Time
 }
 
-type GQLTypeGenerator func() gql.Output
-type GQLInputTypeGenerator func() gql.Input
-type GQLQueryGenerator func() *gql.Field
+type GQLTypeGenerator func() graphql.Output
+type GQLInputTypeGenerator func() graphql.Input
+type GQLQueryGenerator func() *graphql.Field
 
 type GQLDescriptor struct {
-	// engine              *Engine
-	types               map[string]gql.Output
-	inputs              map[string]gql.Input
+	types               map[string]graphql.Output
+	inputs              map[string]graphql.Input
 	typesGenerators     map[string]GQLTypeGenerator
 	inputsGenerators    map[string]GQLInputTypeGenerator
 	queriesGenerators   map[string]GQLQueryGenerator
@@ -47,21 +56,46 @@ const (
 	KVStringIntInputName    = "_kv_string_int_input_"    //"StringIntKVInput"
 )
 
-// func NewGQLService() *GQLEngine {
-//   return &GQLEngine{
-//     descriptor: createGQLDescriptor(),
-//   }
-// }
+const (
+	cDefaultStatisticsHistoryLen = time.Hour * 24
+	cAdminStatisticsChannelLen   = 20
+)
 
 func (gqe *GQLEngine) Descriptor() *GQLDescriptor {
 	return gqe.descriptor
 }
 
+func (gqe *GQLEngine) CollectStatistics(collect bool, length ...time.Duration) *GQLEngine {
+	gqe.statisticsMux.Lock()
+	defer gqe.statisticsMux.Unlock()
+	if collect && !gqe.collectStatistics {
+		gqe.collectStatistics = true
+		gqe.statistics = map[uint32]*statistics{}
+		if len(length) > 0 {
+			gqe.statisticsHistoryLen = length[0]
+		} else {
+			gqe.statisticsHistoryLen = cDefaultStatisticsHistoryLen
+		}
+		gqe.statisticsChannel = make(chan interface{}, cAdminStatisticsChannelLen)
+		go gqe.statisticsProcessor()
+	}
+	if !collect && gqe.collectStatistics {
+		gqe.collectStatistics = false
+		gqe.statistics = nil
+		close(gqe.statisticsChannel)
+	}
+	return gqe
+}
+
+func (gqe *GQLEngine) SetLogger(logger *zap.Logger) *GQLEngine {
+	gqe.log = logger
+	return gqe
+}
+
 func createGQLDescriptor() *GQLDescriptor {
 	return &GQLDescriptor{
-		// engine:              eng,
-		types:               map[string]gql.Output{},
-		inputs:              map[string]gql.Input{},
+		types:               map[string]graphql.Output{},
+		inputs:              map[string]graphql.Input{},
 		typesGenerators:     map[string]GQLTypeGenerator{},
 		inputsGenerators:    map[string]GQLInputTypeGenerator{},
 		queriesGenerators:   map[string]GQLQueryGenerator{},
@@ -76,32 +110,27 @@ func (gqe *GQLEngine) generate(_ *Engine) error {
 			gqld.types[tn] = tg()
 		}
 	}
-	queries := gql.Fields{}
+	queries := graphql.Fields{}
 	for qn, qg := range gqld.queriesGenerators {
 		queries[qn] = qg()
 	}
-	rootQuery := gql.ObjectConfig{Name: "Query", Fields: queries}
-	mutations := gql.Fields{}
+	rootQuery := graphql.ObjectConfig{Name: "Query", Fields: queries}
+	mutations := graphql.Fields{}
 	for mn, mg := range gqld.mutationsGenerators {
 		mutations[mn] = mg()
 	}
-	rootMutations := gql.ObjectConfig{Name: "Mutation", Fields: mutations}
-	schemaConfig := gql.SchemaConfig{
-		Query:    gql.NewObject(rootQuery),
-		Mutation: gql.NewObject(rootMutations),
-		// Subscription: gql.NewObject(subscription),
+	rootMutations := graphql.ObjectConfig{Name: "Mutation", Fields: mutations}
+	schemaConfig := graphql.SchemaConfig{
+		Query:    graphql.NewObject(rootQuery),
+		Mutation: graphql.NewObject(rootMutations),
 	}
-	sch, err := gql.NewSchema(schemaConfig)
+	sch, err := graphql.NewSchema(schemaConfig)
 	if err != nil {
 		return err
 	}
 	gqe.schema = &sch
 	return nil
 }
-
-// func (gqld *GQLDescriptor) Engine() *Engine {
-// 	return gqld.engine
-// }
 
 func (gqe *GQLEngine) Prepare(_ *Engine, _ dep.Provider) error {
 	gqe.descriptor = createGQLDescriptor()
@@ -116,13 +145,14 @@ func (gqe *GQLEngine) Provide() interface{} {
 }
 
 func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
-	h := handler.New(&handler.Config{
-		Schema:   gqe.schema,
-		Pretty:   len(pretty) == 0 || !pretty[0],
-		GraphiQL: true,
-	})
+	h := handler.New(
+		&handler.Config{
+			Schema:   gqe.schema,
+			Pretty:   len(pretty) == 0 || !pretty[0],
+			GraphiQL: true,
+		},
+	)
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 	h.ContextHandler(r.Context(), w, r)
 		// for statistics implement it yourself
 		opts := handler.NewRequestOptions(r)
 
@@ -134,10 +164,10 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			OperationName:  opts.OperationName,
 			Context:        r.Context(),
 		}
-		// st := app.startQueryStatistics(opts.OperationName, opts.Query)
-		// log.Tracef("Handler: opname: %s, query: %s", opts.OperationName, opts.Query)
+		st := gqe.startQueryStatistics(opts.OperationName, opts.Query)
 		result := graphql.Do(params)
-		// st.finish(len(result.Errors) == 0)
+		st.finish(result)
+		gqe.collectQueryStatistics(st)
 
 		// use proper JSON Header
 		w.Header().Add("Content-Type", "application/json; charset=utf-8")
@@ -156,9 +186,31 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 		}
 
 	}
-
 }
-func (gqld *GQLDescriptor) GetType(name string) gql.Output {
+
+func (gqe *GQLEngine) HTTPStatisticsHandler(pretty ...bool) http.HandlerFunc {
+	if gqe.statisticsSchema == nil {
+		ss, err := gqe.getStatisticsSchema()
+		if err != nil {
+			return func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, err.Error(), 500)
+			}
+		}
+		gqe.statisticsSchema = &ss
+	}
+	h := handler.New(
+		&handler.Config{
+			Schema:   gqe.statisticsSchema,
+			Pretty:   len(pretty) == 0 || !pretty[0],
+			GraphiQL: true,
+		},
+	)
+	return func(w http.ResponseWriter, r *http.Request) {
+		h.ContextHandler(r.Context(), w, r)
+	}
+}
+
+func (gqld *GQLDescriptor) GetType(name string) graphql.Output {
 	if t, ok := gqld.types[name]; ok {
 		return t
 	}
@@ -180,7 +232,7 @@ func (gqld *GQLDescriptor) GetType(name string) gql.Output {
 		panic(fmt.Sprintf("undefined gql type '%s'", name))
 	}
 }
-func (gqld *GQLDescriptor) GetInputType(name string) gql.Input {
+func (gqld *GQLDescriptor) GetInputType(name string) graphql.Input {
 	if t, ok := gqld.inputs[name]; ok {
 		return t
 	}

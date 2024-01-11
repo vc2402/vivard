@@ -175,6 +175,13 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 						return s.count, nil
 					},
 				},
+				"errors": &graphql.Field{
+					Type: graphql.NewNonNull(graphql.Int),
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(*statistic)
+						return s.errors, nil
+					},
+				},
 				"duration": &graphql.Field{
 					Type: graphql.NewNonNull(graphql.Int),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {

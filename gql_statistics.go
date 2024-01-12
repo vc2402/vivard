@@ -266,7 +266,7 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 				"history": &graphql.Field{
 					Type: graphql.NewList(statisticType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-						if _, ok := p.Args["query"]; !ok {
+						if q, ok := p.Info.VariableValues["query"]; !ok || q == "" {
 							return nil, nil
 						}
 						s := p.Source.(*statistics)

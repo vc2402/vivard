@@ -14,21 +14,22 @@ import (
 )
 
 type GQLEngine struct {
-	schema               *graphql.Schema
-	descriptor           *GQLDescriptor
-	log                  *zap.Logger
-	statisticsChannel    chan queryStatistics
-	collectStatistics    bool
-	statisticsSchema     *graphql.Schema
-	statistics           map[uint32]*statistics
-	statisticsMux        sync.RWMutex
-	statisticsHistoryLen time.Duration
-	runningSince         time.Time
-	options              GQLOptions
+	schema            *graphql.Schema
+	descriptor        *GQLDescriptor
+	log               *zap.Logger
+	statisticsChannel chan queryStatistics
+	collectStatistics bool
+	statisticsSchema  *graphql.Schema
+	statistics        map[uint32]*statistics
+	statisticsMux     sync.RWMutex
+	runningSince      time.Time
+	options           GQLOptions
 }
 
 type GQLOptions struct {
-	LogClientErrors bool
+	LogClientErrors          bool
+	StatisticsSnapshotStep   time.Duration
+	StatisticsSnapshotsCount int
 }
 type GQLTypeGenerator func() graphql.Output
 type GQLInputTypeGenerator func() graphql.Input
@@ -61,25 +62,21 @@ const (
 )
 
 const (
-	cDefaultStatisticsHistoryLen = time.Hour * 24
-	cAdminStatisticsChannelLen   = 20
+	optDefaultStatisticsHistoryLen   = 24
+	optDefaultStatisticsSnapshotStep = time.Hour
+	cAdminStatisticsChannelLen       = 20
 )
 
 func (gqe *GQLEngine) Descriptor() *GQLDescriptor {
 	return gqe.descriptor
 }
 
-func (gqe *GQLEngine) CollectStatistics(collect bool, length ...time.Duration) *GQLEngine {
+func (gqe *GQLEngine) CollectStatistics(collect bool) *GQLEngine {
 	gqe.statisticsMux.Lock()
 	defer gqe.statisticsMux.Unlock()
 	if collect && !gqe.collectStatistics {
 		gqe.collectStatistics = true
 		gqe.statistics = map[uint32]*statistics{}
-		if len(length) > 0 {
-			gqe.statisticsHistoryLen = length[0]
-		} else {
-			gqe.statisticsHistoryLen = cDefaultStatisticsHistoryLen
-		}
 		gqe.statisticsChannel = make(chan queryStatistics, cAdminStatisticsChannelLen)
 		go gqe.statisticsProcessor()
 	}
@@ -98,6 +95,12 @@ func (gqe *GQLEngine) SetLogger(logger *zap.Logger) *GQLEngine {
 
 func (gqe *GQLEngine) SetOptions(options GQLOptions) *GQLEngine {
 	gqe.options = options
+	if options.StatisticsSnapshotsCount == 0 {
+		gqe.options.StatisticsSnapshotsCount = optDefaultStatisticsHistoryLen
+	}
+	if options.StatisticsSnapshotStep == 0 {
+		gqe.options.StatisticsSnapshotStep = optDefaultStatisticsSnapshotStep
+	}
 	return gqe
 }
 

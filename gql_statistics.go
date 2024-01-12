@@ -10,8 +10,16 @@ import (
 	"hash/fnv"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"sync"
 	"time"
+)
+
+const (
+	optionLogClientErrors         = "LogClientErrors"
+	optionStatisticsSnapshotStep  = "StatisticsSnapshotStep"
+	optionStatisticsSnapshotCount = "StatisticsSnapshotsCount"
+	optionCollectStatistics       = "CollectStatistics"
 )
 
 type queryStatistics struct {
@@ -137,8 +145,10 @@ func (gqe *GQLEngine) doShiftStatistics() {
 	gqe.statisticsMux.RLock()
 	defer gqe.statisticsMux.RUnlock()
 	for _, st := range gqe.statistics {
-		st.history.PushFront(&list.Element{Value: st.current})
-		st.current = statistic{}
+		now := time.Now()
+		st.current.to = now
+		st.history.PushFront(st.current)
+		st.current = statistic{from: now}
 		if st.history.Len() > gqe.options.StatisticsSnapshotsCount {
 			st.history.Remove(st.history.Back())
 		}
@@ -278,6 +288,7 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 							for curr != nil {
 								ret[idx] = curr.Value.(statistic)
 								idx++
+								curr = curr.Next()
 							}
 						}
 						return ret, nil
@@ -286,6 +297,60 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 			},
 		},
 	)
+	var optionsType = graphql.NewObject(
+		graphql.ObjectConfig{
+			Name: "Options",
+			Fields: graphql.Fields{
+				optionLogClientErrors: &graphql.Field{
+					Type: graphql.NewNonNull(graphql.Boolean),
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						return gqe.options.LogClientErrors, nil
+					},
+				},
+				optionCollectStatistics: &graphql.Field{
+					Type: graphql.NewNonNull(graphql.Boolean),
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						return gqe.collectStatistics, nil
+					},
+				},
+				optionStatisticsSnapshotStep: &graphql.Field{
+					Type:        graphql.NewNonNull(graphql.String),
+					Description: "Duration to push current state in the states history",
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						return gqe.options.StatisticsSnapshotStep.String(), nil
+					},
+				},
+				optionStatisticsSnapshotCount: &graphql.Field{
+					Type:        graphql.NewNonNull(graphql.Int),
+					Description: "number of historic records to store",
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						return gqe.options.StatisticsSnapshotsCount, nil
+					},
+				},
+			},
+		},
+	)
+	var optionsInputType = graphql.NewInputObject(
+		graphql.InputObjectConfig{
+			Name: "OptionsInputType",
+			Fields: graphql.InputObjectConfigFieldMap{
+				optionLogClientErrors: &graphql.InputObjectFieldConfig{
+					Type: graphql.Boolean,
+				},
+				optionCollectStatistics: &graphql.InputObjectFieldConfig{
+					Type: graphql.Boolean,
+				},
+				optionStatisticsSnapshotStep: &graphql.InputObjectFieldConfig{
+					Type:        graphql.String,
+					Description: "duration in golang duration format or integer in minutes",
+				},
+				optionStatisticsSnapshotCount: &graphql.InputObjectFieldConfig{
+					Type: graphql.Int,
+				},
+			},
+		},
+	)
+
 	rootQuery := graphql.ObjectConfig{
 		Name: "Query",
 		Fields: graphql.Fields{
@@ -319,9 +384,55 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 			},
 		},
 	}
+	mutation := graphql.ObjectConfig{
+		Name: "Mutation",
+		Fields: graphql.Fields{
+			"options": &graphql.Field{
+				Type:        optionsType,
+				Description: "set or get options",
+				Args: graphql.FieldConfigArgument{
+					"options": &graphql.ArgumentConfig{
+						Type: optionsInputType,
+					},
+				},
+				Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+					if opts, ok := p.Args["options"].(map[string]interface{}); ok {
+						if log, ok := opts[optionLogClientErrors].(bool); ok {
+							gqe.options.LogClientErrors = log
+						}
+						if step, ok := opts[optionStatisticsSnapshotStep].(string); ok {
+							minutes, err := strconv.ParseInt(step, 10, 32)
+							if err == nil {
+								gqe.options.StatisticsSnapshotStep = time.Duration(minutes) * time.Minute
+							} else {
+								dur, err := time.ParseDuration(step)
+								if err != nil {
+									return nil, fmt.Errorf(
+										"%s should be integer (value of minutes) or golang duration format string: %s",
+										optionStatisticsSnapshotStep,
+										step,
+									)
+								}
+								gqe.options.StatisticsSnapshotStep = dur
+							}
+						}
+						if count, ok := opts[optionStatisticsSnapshotCount].(int); ok {
+							gqe.options.StatisticsSnapshotsCount = count
+						}
+						if collect, ok := opts[optionCollectStatistics].(bool); ok {
+							if collect != gqe.collectStatistics {
+								gqe.CollectStatistics(collect)
+							}
+						}
+					}
+					return true, nil
+				},
+			},
+		},
+	}
 	schemaConfig := graphql.SchemaConfig{
-		Query: graphql.NewObject(rootQuery),
-		//Mutation: graphql.NewObject(mutation),
+		Query:    graphql.NewObject(rootQuery),
+		Mutation: graphql.NewObject(mutation),
 	}
 	return graphql.NewSchema(schemaConfig)
 }

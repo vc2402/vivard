@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/graphql-go/graphql"
-	"github.com/graphql-go/graphql/gqlerrors"
 	"go.uber.org/zap"
 	"hash/fnv"
 	"regexp"
@@ -22,6 +21,9 @@ const (
 	optionCollectStatistics       = "CollectStatistics"
 )
 
+var durationType = graphql.Float
+var minMaxType = graphql.Int
+
 type queryStatistics struct {
 	operation    string
 	query        string
@@ -29,7 +31,7 @@ type queryStatistics struct {
 	finished     time.Time
 	duration     time.Duration
 	isSuccessful bool
-	errors       []gqlerrors.FormattedError
+	errors       []string
 }
 
 type statistic struct {
@@ -39,6 +41,10 @@ type statistic struct {
 	duration    time.Duration
 	maxDuration time.Duration
 	minDuration time.Duration
+	maxAt       time.Time
+	minAt       time.Time
+	lastErrorAt time.Time
+	lastError   []string
 	errors      int
 }
 
@@ -123,11 +129,11 @@ func (gqe *GQLEngine) doProcessQueryStatistics(qs queryStatistics) {
 		if gqe.log != nil {
 			gqe.log.Error("error sent to client", zap.String("request", opName))
 			for _, err := range qs.errors {
-				gqe.log.Error("error", zap.String("problem", err.Error()), zap.String("request", opName))
+				gqe.log.Error("error", zap.String("problem", err), zap.String("request", opName))
 			}
 		} else {
 			for i, err := range qs.errors {
-				fmt.Printf("error sent to client for request '%s' %d: %s", opName, i+1, err.Error())
+				fmt.Printf("error sent to client for request '%s' %d: %s", opName, i+1, err)
 			}
 		}
 	}
@@ -158,7 +164,12 @@ func (gqe *GQLEngine) doShiftStatistics() {
 func (qs *queryStatistics) finish(result *graphql.Result) {
 	qs.finished = time.Now()
 	qs.isSuccessful = result != nil && !result.HasErrors()
-	qs.errors = result.Errors
+	if len(result.Errors) > 0 {
+		qs.errors = make([]string, len(result.Errors))
+		for i, e := range result.Errors {
+			qs.errors[i] = e.Error()
+		}
+	}
 }
 
 func (st *statistic) update(qs queryStatistics) {
@@ -170,12 +181,16 @@ func (st *statistic) update(qs queryStatistics) {
 	st.duration += qs.duration
 	if !qs.isSuccessful {
 		st.errors++
+		st.lastError = qs.errors
+		st.lastErrorAt = qs.finished
 	}
 	if st.maxDuration < qs.duration {
 		st.maxDuration = qs.duration
+		st.maxAt = qs.finished
 	}
 	if st.minDuration > qs.duration || st.minDuration == 0 {
 		st.minDuration = qs.duration
+		st.minAt = qs.finished
 	}
 }
 
@@ -225,24 +240,61 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 					},
 				},
 				"duration": &graphql.Field{
-					Type: graphql.NewNonNull(graphql.Int),
+					Type: graphql.NewNonNull(durationType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.duration), nil
+						return int64(s.duration / time.Microsecond), nil
 					},
 				},
 				"minDuration": &graphql.Field{
-					Type: graphql.NewNonNull(graphql.Int),
+					Type: graphql.NewNonNull(minMaxType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.minDuration), nil
+						return int64(s.minDuration / time.Microsecond), nil
 					},
 				},
 				"maxDuration": &graphql.Field{
-					Type: graphql.NewNonNull(graphql.Int),
+					Type: graphql.NewNonNull(minMaxType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.maxDuration), nil
+						return int64(s.maxDuration / time.Microsecond), nil
+					},
+				},
+				"maxAt": &graphql.Field{
+					Type: graphql.DateTime,
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(statistic)
+						if s.maxAt.IsZero() {
+							return nil, nil
+						}
+						return s.maxAt, nil
+					},
+				},
+				"minAt": &graphql.Field{
+					Type: graphql.DateTime,
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(statistic)
+						if s.minAt.IsZero() {
+							return nil, nil
+						}
+						return s.minAt, nil
+					},
+				},
+				"lastErrorAt": &graphql.Field{
+					Type: graphql.DateTime,
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(statistic)
+						if s.lastErrorAt.IsZero() {
+							return nil, nil
+						}
+						return s.lastErrorAt, nil
+					},
+				},
+				"lastError": &graphql.Field{
+					Type: graphql.NewList(graphql.String),
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(statistic)
+						return s.lastError, nil
 					},
 				},
 			},
@@ -273,10 +325,17 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 						return s.overall, nil
 					},
 				},
+				"current": &graphql.Field{
+					Type: graphql.NewNonNull(statisticType),
+					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
+						s := p.Source.(*statistics)
+						return s.current, nil
+					},
+				},
 				"history": &graphql.Field{
 					Type: graphql.NewList(statisticType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
-						if q, ok := p.Info.VariableValues["query"]; !ok || q == "" {
+						if q, ok := p.Info.VariableValues["query"]; !ok || q == nil {
 							return nil, nil
 						}
 						s := p.Source.(*statistics)

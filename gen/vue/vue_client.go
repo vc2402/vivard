@@ -306,7 +306,11 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 						if a, ok := t.Annotations.GetStringAnnotation(vueFormAnnotation, vueAnnotationUse); ok {
 							c, p, ok := parseComponentAnnotation(a)
 							if !ok {
-								return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueFormAnnotation].Pos, a)
+								return fmt.Errorf(
+									"at %v: invalid component annotation format: '%s'",
+									t.Annotations[vueFormAnnotation].Pos,
+									a,
+								)
 							}
 							t.Features.Set(featureVueKind, fVKFormRequired, false)
 							t.Features.Set(featureVueKind, fVKFormComponent, c)
@@ -337,7 +341,11 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 				if a, ok := t.Annotations.GetStringAnnotation(vueViewAnnotation, vueAnnotationUse); ok {
 					c, p, ok := parseComponentAnnotation(a)
 					if !ok {
-						return fmt.Errorf("at %v: invalid component annotation format: '%s'", t.Annotations[vueViewAnnotation].Pos, a)
+						return fmt.Errorf(
+							"at %v: invalid component annotation format: '%s'",
+							t.Annotations[vueViewAnnotation].Pos,
+							a,
+						)
 					}
 					t.Features.Set(featureVueKind, fVKViewRequired, false)
 					t.Features.Set(featureVueKind, fVKViewComponent, c)
@@ -363,7 +371,10 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 							f.Annotations.AddTag(vueFormAnnotation, vueAnnotationIgnore, true)
 							continue
 						}
-						if ignore, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && ignore {
+						if ignore, ok := f.Annotations.GetBoolAnnotation(
+							gen.GQLAnnotation,
+							gen.GQLAnnotationSkipTag,
+						); ok && ignore {
 							f.Annotations.AddTag(vueFormAnnotation, vueAnnotationIgnore, true)
 							continue
 						}
@@ -745,10 +756,24 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 			}
 			if !found && !f.Parent().HasModifier(gen.TypeModifierEmbeddable) {
 				if forTable {
-					cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find attr for table in type %s for %s", f.Pos, f.Type.Type, f.Name))
+					cg.desc.AddWarning(
+						fmt.Sprintf(
+							"vue: at %v: can not find attr for table in type %s for %s",
+							f.Pos,
+							f.Type.Type,
+							f.Name,
+						),
+					)
 				} else {
 					if _, ok := t.Entity().Annotations[gen.AnnotationConfig]; !ok {
-						cg.desc.AddWarning(fmt.Sprintf("vue: at %v: can not find title field in type %s for %s", f.Pos, f.Type.Type, f.Name))
+						cg.desc.AddWarning(
+							fmt.Sprintf(
+								"vue: at %v: can not find title field in type %s for %s",
+								f.Pos,
+								f.Type.Type,
+								f.Name,
+							),
+						)
 					}
 				}
 			}
@@ -874,7 +899,7 @@ var htmlCardViewTemplate = `
   <v-card >
     <v-card-text>
       <v-progress-linear v-if="loading" intermediate></v-progress-linear>
-      <div class="d-flex flex-row flex-wrap justify-space-around align-center" v-if="value">
+      <div class="d-flex flex-row flex-wrap justify-space-around align-baseline" v-if="value">
         {{range (GetFields .)}}{{if ShowInDialog .}}<div class="mx-2">
           {{template "VIEW_FIELD" .}}
         </div>{{end}}

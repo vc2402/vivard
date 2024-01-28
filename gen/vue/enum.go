@@ -75,8 +75,10 @@ var htmlEnumLookupTemplate = `
       :disabled="disabled"
       :label="label"
       :return-object="false"
+			:multiple="multiple"
 			:small-chips="multiple"
       hide-no-data
+      hide-details="auto"
     >
     </v-select>
   </div>

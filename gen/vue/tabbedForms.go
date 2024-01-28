@@ -113,7 +113,7 @@ var htmlGridFormTemplate = `
   <div class="d-flex flex-column" {{FormStyles}}>
     <slot name="pre-fields"></slot>
     {{range Rows .}}
-      <v-row justify="space-between" align="center"{{if Compact}} no-gutters{{end}}>
+      <v-row justify="space-between" align="baseline"{{if Compact}} no-gutters{{end}}>
         {{range .}}
         <v-col {{GridColAttrs .}}>
           {{if IsID .}}<div v-if="!isNew">{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>
@@ -134,7 +134,7 @@ var htmlGridFormTemplate = `
 `
 var htmlFlexFormTemplate = `
 {{define "FORM_CONTENT"}}
-  <div class="d-flex flex-row {{FlexWrap}} {{FlexJustify}} align-center" {{FormStyles}}>
+  <div class="d-flex flex-row {{FlexWrap}} {{FlexJustify}} align-baseline" {{FormStyles}}>
     <slot name="pre-fields"></slot>
     {{range (GetFields .)}}{{if IsID .}}<div v-if="!isNew" {{FlexFieldStyles .}}>{{"{{"}}value && value.{{FieldName .}}{{"}}"}}</div>{{if NotAuto .}}<div v-else class="mx-2" {{FieldAttrs .}} {{FlexFieldStyles .}}>{{template "FORM_INPUT_FIELD" .}}</div>{{end}}
     {{else}}<div class="mx-2" {{FieldAttrs .}} {{FlexFieldStyles .}}>
@@ -245,7 +245,7 @@ const newHtmlFormListTemplate = `
 {{define "FORM-LIST"}}
 <div>
   <div v-if="value">
-    <div v-for="(d, idx) in value" :key="idx" class="d-flex flex-row align-center justify-space-between">
+    <div v-for="(d, idx) in value" :key="idx" class="d-flex flex-row align-baseline justify-space-between">
       <{{FormComponent}}  :value="d" />
       <v-btn icon color="warning" @click="onDelItem(idx)"><v-icon>delete</v-icon></v-btn>
     </div>

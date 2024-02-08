@@ -53,34 +53,42 @@ func (ncg *NoCacheGenerator) Prepare(desc *Package) error {
 			if _, hok := t.HaveHook(TypeHookCreate); hok {
 				// just to set it is required
 				if t.HasModifier(TypeModifierSingleton) {
-					desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
-						Str: desc.GetHookName(TypeHookCreate, nil),
-						Obj: "o",
-					})
+					desc.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
+							Str: desc.GetHookName(TypeHookCreate, nil),
+							Obj: "o",
+						},
+					)
 				} else {
 					ncg.desc.AddWarning(fmt.Sprintf("at: %v: hook %s can be used only with singletons", t.Pos, TypeHookCreate))
 				}
 			}
 			if _, hok := t.HaveHook(TypeHookChange); hok {
-				desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
-					Str:    desc.GetHookName(TypeHookChange, nil),
-					Obj:    "o",
-					ErrVar: "err",
-				})
+				desc.CallFeatureHookFunc(
+					t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
+						Str:    desc.GetHookName(TypeHookChange, nil),
+						Obj:    "o",
+						ErrVar: "err",
+					},
+				)
 			}
 			if _, hok := t.HaveHook(TypeHookChanged); hok {
-				desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
-					Str:    desc.GetHookName(TypeHookChanged, nil),
-					Obj:    "o",
-					ErrVar: "err",
-				})
+				desc.CallFeatureHookFunc(
+					t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+						Str:    desc.GetHookName(TypeHookChanged, nil),
+						Obj:    "o",
+						ErrVar: "err",
+					},
+				)
 			}
 			if _, hok := t.HaveHook(TypeHookDelete); hok {
-				desc.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookDelete, HookArgsDescriptor{
-					Str:    desc.GetHookName(TypeHookDelete, nil),
-					Obj:    "o",
-					ErrVar: "err",
-				})
+				desc.CallFeatureHookFunc(
+					t, FeaturesHookCodeKind, TypeHookDelete, HookArgsDescriptor{
+						Str:    desc.GetHookName(TypeHookDelete, nil),
+						Obj:    "o",
+						ErrVar: "err",
+					},
+				)
 			}
 		}
 	}
@@ -99,7 +107,12 @@ func (ncg *NoCacheGenerator) Generate(b *Builder) (err error) {
 			continue
 		}
 		if f == nil {
-			b.Descriptor.AddWarning(fmt.Sprintf("skipping getter and setter generation for type %s: no id field defined", name))
+			b.Descriptor.AddWarning(
+				fmt.Sprintf(
+					"skipping getter and setter generation for type %s: no id field defined",
+					name,
+				),
+			)
 		} else {
 			if skip, ok := t.Features.GetBool(FeaturesCommonKind, FCSkipAccessors); !ok || !skip {
 				err = b.generateGetter(name, t, f.Type)
@@ -145,33 +158,42 @@ func (b *Builder) generateGetter(name string, ent *Entity, idType *TypeRef) erro
 		},
 	}
 
-	cf.body = jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).ParamsFunc(func(g *jen.Group) {
-		params, err := b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idType)
-		if err != nil {
-			b.Descriptor.AddError(err)
-		} else {
-			g.Add(params)
-		}
-	}).Parens(jen.List(jen.Id("obj").Op("*").Id(name), jen.Err().Error())).BlockFunc(func(g *jen.Group) {
-		cf.Push(g)
-		cf.ErrVar = "err"
-		cf.ObjVar = "obj"
-		cf.Enter(true)
-		cf.Enter(false)
+	cf.body = jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).ParamsFunc(
+		func(g *jen.Group) {
+			params, err := b.addType(jen.List(jen.Id("ctx").Qual("context", "Context"), jen.Id("id")), idType)
+			if err != nil {
+				b.Descriptor.AddError(err)
+			} else {
+				g.Add(params)
+			}
+		},
+	).Parens(jen.List(jen.Id("obj").Op("*").Id(name), jen.Err().Error())).BlockFunc(
+		func(g *jen.Group) {
+			cf.Push(g)
+			cf.ErrVar = "err"
+			cf.ObjVar = "obj"
+			cf.Enter(true)
+			cf.Enter(false)
 
-		//TODO: add error feature calls
-		provided := cf.MainAction()
-		if !provided {
-			cf.Add(
-				jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodLoad, name)).Params(jen.List(jen.Id("ctx"), jen.Id("id"))),
-			)
-		}
+			//TODO: add error feature calls
+			provided := cf.MainAction()
+			if !provided {
+				cf.Add(
+					jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(
+						b.Descriptor.GetMethodName(
+							MethodLoad,
+							name,
+						),
+					).Params(jen.List(jen.Id("ctx"), jen.Id("id"))),
+				)
+			}
 
-		cf.Exit(true)
-		cf.Exit(false)
-		cf.Add(jen.Return())
-		cf.Pop()
-	}).Line()
+			cf.Exit(true)
+			cf.Exit(false)
+			cf.Add(jen.Return())
+			cf.Pop()
+		},
+	).Line()
 
 	b.Functions.Add(cf.body)
 	return nil
@@ -192,60 +214,89 @@ func (b *Builder) generateSetter(t *Entity) error {
 		},
 	}
 	idFld := t.GetIdField()
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
-		Parens(jen.List(jen.Id("obj").Op("*").Id(name), jen.Err().Error())).BlockFunc(func(g *jen.Group) {
-		cf.Push(g)
-		cf.ErrVar = "err"
-		cf.ObjVar = "obj"
-		g.List(jen.Id("obj"), jen.Id("err")).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodGet, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o").Dot(idFld.Name)))
-		cf.AddCheckError()
-		g.If(jen.Id("obj").Op("==").Nil()).BlockFunc(func(g *jen.Group) {
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		), jen.Id("o").Op("*").Id(name),
+	).
+		Parens(jen.List(jen.Id("obj").Op("*").Id(name), jen.Err().Error())).BlockFunc(
+		func(g *jen.Group) {
 			cf.Push(g)
-			g.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("not found"))
-			cf.AddOnErrorReturnStatement()
-			cf.Pop()
-		})
-		cf.Enter(true)
-		if _, hok := t.HaveHook(TypeHookChange); hok {
-			g.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
-				Str: b.Descriptor.GetHookName(TypeHookChange, nil),
-				Obj: "obj",
-				Params: []HookArgParam{
-					//{"oldValue", jen.Id("o")},
-					{"newValue", jen.Id("o")},
-				},
-				ErrVar: "err",
-			}))
+			cf.ErrVar = "err"
+			cf.ObjVar = "obj"
+			g.List(jen.Id("obj"), jen.Id("err")).Op("=").Id(EngineVar).Dot(
+				b.Descriptor.GetMethodName(
+					MethodGet,
+					name,
+				),
+			).Params(jen.List(jen.Id("ctx"), jen.Id("o").Dot(idFld.Name)))
 			cf.AddCheckError()
-			//g.Add(returnIfErrValue(jen.Nil()))
-		}
-		cf.Enter(false)
+			g.If(jen.Id("obj").Op("==").Nil()).BlockFunc(
+				func(g *jen.Group) {
+					cf.Push(g)
+					g.Id("err").Op("=").Qual("errors", "New").Params(jen.Lit("not found"))
+					cf.AddOnErrorReturnStatement()
+					cf.Pop()
+				},
+			)
+			cf.Enter(true)
+			if _, hok := t.HaveHook(TypeHookChange); hok {
+				g.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChange, nil),
+							Obj: "obj",
+							Params: []HookArgParam{
+								//{"oldValue", jen.Id("o")},
+								{"newValue", jen.Id("o")},
+							},
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+				//g.Add(returnIfErrValue(jen.Nil()))
+			}
+			cf.Enter(false)
 
-		if _, hok := t.HaveHook(TypeHookChanged); hok {
-			cf.Add(jen.Id("oldValue").Op(":=").Add(cf.GetObjVar()))
-		}
-		provided := cf.MainAction()
-		if !provided {
-			cf.Add(jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodSave, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))))
-			cf.AddCheckError()
-			//cf.Add(returnIfErrValue(jen.Nil()))
-		}
-		cf.Exit(true)
-		if _, hok := t.HaveHook(TypeHookChanged); hok {
-			g.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
-				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
-				Obj: "oldValue",
-				Params: []HookArgParam{
-					{"newValue", jen.Id("o")},
-				},
-				ErrVar: "err",
-			}))
-			cf.AddCheckError()
-		}
-		cf.Exit(false)
-		g.Return()
-		cf.Pop()
-	}).Line()
+			if _, hok := t.HaveHook(TypeHookChanged); hok {
+				cf.Add(jen.Id("oldValue").Op(":=").Add(cf.GetObjVar()))
+			}
+			provided := cf.MainAction()
+			if !provided {
+				cf.Add(
+					jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(
+						b.Descriptor.GetMethodName(
+							MethodSave,
+							name,
+						),
+					).Params(jen.List(jen.Id("ctx"), jen.Id("o"))),
+				)
+				cf.AddCheckError()
+				//cf.Add(returnIfErrValue(jen.Nil()))
+			}
+			cf.Exit(true)
+			if _, hok := t.HaveHook(TypeHookChanged); hok {
+				g.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+							Obj: "oldValue",
+							Params: []HookArgParam{
+								{"newValue", jen.Id("o")},
+							},
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+			}
+			cf.Exit(false)
+			g.Return()
+			cf.Pop()
+		},
+	).Line()
 
 	b.Functions.Add(f)
 	return nil
@@ -266,62 +317,91 @@ func (b *Builder) generateNew(t *Entity) error {
 			ParamObject:  "o",
 		},
 	}
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).Params(jen.Id("ctx").Qual("context", "Context"), jen.Id("o").Op("*").Id(name)).
-		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Err().Error())).BlockFunc(func(c *jen.Group) {
-		if idField.HasModifier(AttrModifierIDAuto) {
-			c.Add(
-				jen.If(jen.Id("o").Dot(idField.Name).Op("==").Add(b.goEmptyValue(idField.Type))).Block(
-					jen.List(jen.Id("o").Dot(idField.Name), jen.Id("err")).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodGenerateID, name)).Params(jen.Id("ctx")).Line(),
-					returnIfErr().Line(),
-					// jen.Id("o").Dot(idField.Name).Op("=").Id("id").Line(),
-				),
-			)
-		}
-		if t.BaseTypeName != "" || t.HasModifier(TypeModifierExtendable) {
-			tn := t.FS(FeatGoKind, FCGDerivedTypeNameConst)
-			c.If(jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("==").Lit("")).Block(
-				jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("=").String().Parens(jen.Id(tn)),
-			)
-		}
-		cf.Push(c)
-		cf.ErrVar = "err"
-		cf.ObjVar = "ret"
-		cf.Enter(true)
-		if _, hok := t.HaveHook(TypeHookChange); hok {
-			cf.Add(
-				b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
-					Str: b.Descriptor.GetHookName(TypeHookChange, nil),
-					Obj: jen.Id("ret"),
-					Params: []HookArgParam{
-						{"newValue", jen.Id("o")},
-					},
-					ErrVar: "err",
-				}))
-			cf.AddCheckError()
-		}
-		cf.Enter(false)
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		), jen.Id("o").Op("*").Id(name),
+	).
+		Parens(jen.List(jen.Id("ret").Op("*").Id(name), jen.Err().Error())).BlockFunc(
+		func(c *jen.Group) {
+			if idField.HasModifier(AttrModifierIDAuto) {
+				c.Add(
+					jen.If(jen.Id("o").Dot(idField.Name).Op("==").Add(b.goEmptyValue(idField.Type))).Block(
+						jen.List(
+							jen.Id("o").Dot(idField.Name),
+							jen.Id("err"),
+						).Op("=").Id(EngineVar).Dot(
+							b.Descriptor.GetMethodName(
+								MethodGenerateID,
+								name,
+							),
+						).Params(jen.Id("ctx")).Line(),
+						returnIfErr().Line(),
+						// jen.Id("o").Dot(idField.Name).Op("=").Id("id").Line(),
+					),
+				)
+			}
+			if t.BaseTypeName != "" || t.HasModifier(TypeModifierExtendable) {
+				tn := t.FS(FeatGoKind, FCGDerivedTypeNameConst)
+				c.If(jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("==").Lit("")).Block(
+					jen.Id("o").Dot(ExtendableTypeDescriptorFieldName).Op("=").String().Parens(jen.Id(tn)),
+				)
+			}
+			cf.Push(c)
+			cf.ErrVar = "err"
+			cf.ObjVar = "ret"
+			cf.Enter(true)
+			if _, hok := t.HaveHook(TypeHookChange); hok {
+				cf.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChange, nil),
+							Obj: jen.Id("ret"),
+							Params: []HookArgParam{
+								{"newValue", jen.Id("o")},
+							},
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+			}
+			cf.Enter(false)
 
-		provided := cf.MainAction()
-		if !provided {
-			cf.Add(jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodCreate, name)).Params(jen.List(jen.Id("ctx"), jen.Id("o"))))
-			cf.AddCheckError()
-		}
-		cf.Exit(true)
-		if _, hok := t.HaveHook(TypeHookChanged); hok {
-			cf.Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
-				Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
-				Obj: jen.Parens(jen.Op("*").Id(name)).Parens(jen.Nil()), //jen.Id("ret"),
-				Params: []HookArgParam{
-					{"newValue", jen.Id("o")},
-				},
-				ErrVar: "err",
-			}))
-			cf.AddCheckError()
-		}
-		cf.Exit(false)
-		c.Return()
-		cf.Pop()
-	}).Line()
+			provided := cf.MainAction()
+			if !provided {
+				cf.Add(
+					jen.List(cf.GetObjVar(), cf.GetErr()).Op("=").Id(EngineVar).Dot(
+						b.Descriptor.GetMethodName(
+							MethodCreate,
+							name,
+						),
+					).Params(jen.List(jen.Id("ctx"), jen.Id("o"))),
+				)
+				cf.AddCheckError()
+			}
+			cf.Exit(true)
+			if _, hok := t.HaveHook(TypeHookChanged); hok {
+				cf.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+							Obj: jen.Parens(jen.Op("*").Id(name)).Parens(jen.Nil()), //jen.Id("ret"),
+							Params: []HookArgParam{
+								{"newValue", jen.Id("o")},
+							},
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+			}
+			cf.Exit(false)
+			c.Return()
+			cf.Pop()
+		},
+	).Line()
 
 	b.Functions.Add(f)
 	return nil
@@ -369,71 +449,101 @@ func (b *Builder) generateDelete(t *Entity) error {
 		},
 	}
 
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).ParamsFunc(func(g *jen.Group) {
-		params, err := b.addType(jen.List(cf.GetParam(ParamContext).Qual("context", "Context"), cf.GetParam(ParamID)), idType)
-		if err != nil {
-			b.Descriptor.AddError(err)
-		} else {
-			g.Add(params)
-		}
-	}).Parens(jen.List(jen.Err().Error())).BlockFunc(func(g *jen.Group) {
-		cf.Push(g)
-		cf.ErrVar = "err"
-		cf.ObjVar = "o"
-		g.List(jen.Id("o"), jen.Err()).Op(":=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodGet, name)).Params(jen.List(jen.Id("ctx"), jen.Id("id")))
-		cf.AddCheckError()
-		g.If(jen.Id("o").Op("==").Nil()).BlockFunc(func(g *jen.Group) {
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cf.MethodName).ParamsFunc(
+		func(g *jen.Group) {
+			params, err := b.addType(
+				jen.List(cf.GetParam(ParamContext).Qual("context", "Context"), cf.GetParam(ParamID)),
+				idType,
+			)
+			if err != nil {
+				b.Descriptor.AddError(err)
+			} else {
+				g.Add(params)
+			}
+		},
+	).Parens(jen.List(jen.Err().Error())).BlockFunc(
+		func(g *jen.Group) {
 			cf.Push(g)
-			g.Err().Op("=").Qual("errors", "New").Params(jen.Lit("not found"))
-			cf.AddOnErrorReturnStatement()
+			cf.ErrVar = "err"
+			cf.ObjVar = "o"
+			g.List(jen.Id("o"), jen.Err()).Op(":=").Id(EngineVar).Dot(
+				b.Descriptor.GetMethodName(
+					MethodGet,
+					name,
+				),
+			).Params(jen.List(jen.Id("ctx"), jen.Id("id")))
+			cf.AddCheckError()
+			g.If(jen.Id("o").Op("==").Nil()).BlockFunc(
+				func(g *jen.Group) {
+					cf.Push(g)
+					g.Err().Op("=").Qual("errors", "New").Params(jen.Lit("not found"))
+					cf.AddOnErrorReturnStatement()
+					cf.Pop()
+				},
+			)
+			cf.Enter(true)
+			if _, hok := t.HaveHook(TypeHookDelete); hok {
+				g. /*Id("err").Op(":=").*/ Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookDelete, HookArgsDescriptor{
+							Str:    b.Descriptor.GetHookName(TypeHookDelete, nil),
+							Obj:    "o",
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+				//g.Add(returnIfErrValue(jen.Nil()))
+			}
+			if _, hok := t.HaveHook(TypeHookChange); hok {
+				cf.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChange, nil),
+							Obj: "o",
+							Params: []HookArgParam{
+								//{"oldValue", jen.Id("o")},
+								{"newValue", jen.Nil()},
+							},
+							ErrVar: "err",
+						},
+					),
+				)
+				cf.AddCheckError()
+			}
+			cf.Enter(false)
+
+			provided := cf.MainAction()
+			if !provided {
+				cf.Add(
+					cf.GetErr().Op("=").Id(EngineVar).Dot(
+						b.Descriptor.GetMethodName(
+							MethodRemove,
+							name,
+						),
+					).Params(jen.List(jen.Id("ctx"), jen.Id("id"))),
+				)
+				cf.AddCheckError()
+			}
+			cf.Exit(true)
+			if _, hok := t.HaveHook(TypeHookChanged); hok {
+				cf.Add(
+					b.Descriptor.CallFeatureHookFunc(
+						t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
+							Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
+							Obj: "o",
+							Params: []HookArgParam{
+								{"newValue", jen.Nil()},
+							},
+						},
+					),
+				)
+			}
+
+			cf.Exit(false)
+			g.Return()
 			cf.Pop()
-		})
-		cf.Enter(true)
-		if _, hok := t.HaveHook(TypeHookDelete); hok {
-			g. /*Id("err").Op(":=").*/ Add(b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookDelete, HookArgsDescriptor{
-				Str:    b.Descriptor.GetHookName(TypeHookDelete, nil),
-				Obj:    "o",
-				ErrVar: "err",
-			}))
-			cf.AddCheckError()
-			//g.Add(returnIfErrValue(jen.Nil()))
-		}
-		if _, hok := t.HaveHook(TypeHookChange); hok {
-			cf.Add(
-				b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChange, HookArgsDescriptor{
-					Str: b.Descriptor.GetHookName(TypeHookChange, nil),
-					Obj: "o",
-					Params: []HookArgParam{
-						//{"oldValue", jen.Id("o")},
-						{"newValue", jen.Nil()},
-					},
-				}),
-			)
-		}
-		cf.Enter(false)
-
-		provided := cf.MainAction()
-		if !provided {
-			cf.Add(cf.GetErr().Op("=").Id(EngineVar).Dot(b.Descriptor.GetMethodName(MethodRemove, name)).Params(jen.List(jen.Id("ctx"), jen.Id("id"))))
-			cf.AddCheckError()
-		}
-		cf.Exit(true)
-		if _, hok := t.HaveHook(TypeHookChanged); hok {
-			cf.Add(
-				b.Descriptor.CallFeatureHookFunc(t, FeaturesHookCodeKind, TypeHookChanged, HookArgsDescriptor{
-					Str: b.Descriptor.GetHookName(TypeHookChanged, nil),
-					Obj: "o",
-					Params: []HookArgParam{
-						{"newValue", jen.Nil()},
-					},
-				}),
-			)
-		}
-
-		cf.Exit(false)
-		g.Return()
-		cf.Pop()
-	},
+		},
 	).Line()
 
 	b.Functions.Add(f)
@@ -441,7 +551,11 @@ func (b *Builder) generateDelete(t *Entity) error {
 }
 
 // ProvideFeature from FeatureProvider interface
-func (ncg *NoCacheGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (ncg *NoCacheGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:
 		switch name {

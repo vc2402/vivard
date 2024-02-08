@@ -930,7 +930,7 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 									)
 								} else {
 									g.If(jen.Len(jen.Id("parts")).Op("==").Lit(1)).Block(
-										g.If(
+										jen.If(
 											jen.List(jen.Id("v"), jen.Id("ok")).Op(":=").Id("val").Assert(
 												f.Features.Stmt(
 													FeatGoKind,
@@ -939,11 +939,22 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 											),
 											jen.Id("ok"),
 										).
-											Block(
-												//TODO save it to DB or not to save - that is the question...
-												jen.Id("o").Dot(f.Name).Op("=").Id("v"),
-												//jen.List(jen.Id("_"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Qual("context", "TODO").Params(), jen.Id("v")),
-												jen.Return(jen.Nil()),
+											BlockFunc(
+												func(g *jen.Group) {
+													//TODO save it to DB or not to save - that is the question...
+													if f.Features.Bool(FeatGoKind, FCGPointer) {
+														g.If(jen.Id("o").Op("!=").Nil().Op("&&").Id("v").Op("!=").Nil()).Block(
+															jen.Op("*").Id("o").Dot(f.Name).Op("=").Op("*").Id("v"),
+														).Else().Block(
+															jen.Id("o").Dot(f.Name).Op("=").Id("v"),
+														)
+													} else {
+														g.Id("o").Dot(f.Name).Op("=").Id("v")
+													}
+
+													//jen.List(jen.Id("_"), jen.Err()).Op(":=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodSave, name)).Call(jen.Qual("context", "TODO").Params(), jen.Id("v")),
+													g.Return(jen.Nil())
+												},
 											).
 											Else().Block(
 											jen.Return(jen.Qual(VivardPackage, "ErrInvalidValueType")),

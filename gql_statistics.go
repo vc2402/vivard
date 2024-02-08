@@ -243,21 +243,21 @@ func (gqe *GQLEngine) getStatisticsSchema() (graphql.Schema, error) {
 					Type: graphql.NewNonNull(durationType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.duration / time.Microsecond), nil
+						return int64(s.duration), nil
 					},
 				},
 				"minDuration": &graphql.Field{
 					Type: graphql.NewNonNull(minMaxType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.minDuration / time.Microsecond), nil
+						return int64(s.minDuration), nil
 					},
 				},
 				"maxDuration": &graphql.Field{
 					Type: graphql.NewNonNull(minMaxType),
 					Resolve: func(p graphql.ResolveParams) (interface{}, error) {
 						s := p.Source.(statistic)
-						return int64(s.maxDuration / time.Microsecond), nil
+						return int64(s.maxDuration), nil
 					},
 				},
 				"maxAt": &graphql.Field{

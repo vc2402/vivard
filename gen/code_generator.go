@@ -217,7 +217,12 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 						return true, fmt.Errorf("at %v: annotation %s:%s accepts only bool values", ann.Pos, ann.Name, value.Key)
 					}
 				default:
-					return true, fmt.Errorf("at %v: annotation %s: unknown annotation parameter: %s", ann.Pos, ann.Name, value.Key)
+					return true, fmt.Errorf(
+						"at %v: annotation %s: unknown annotation parameter: %s",
+						ann.Pos,
+						ann.Name,
+						value.Key,
+					)
 				}
 			}
 			return true, nil
@@ -329,19 +334,36 @@ func (cg *CodeGenerator) Generate(bldr *Builder) (err error) {
 	if cg.desc.Features.Bool(FeatGoKind, FCGScriptingRequired) &&
 		!cg.desc.Features.Bool(FeatGoKind, FCGScriptingCreated) {
 		cg.desc.Features.Set(FeatGoKind, FCGScriptingCreated, true)
-		bldr.Descriptor.Engine.Fields.Add(jen.Id(scriptingEngineField).Op("*").Qual(scriptingEnginePackage, "Service")).Line()
-		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(scriptingEngineField).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceScripting)).
-			Assert(jen.Op("*").Qual(scriptingEnginePackage, "Service"))).Line()
-		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(scriptingEngineField).Dot("SetContext").Params(jen.Map(jen.String()).Interface().Values(jen.Dict{
-			// jen.Lit("SequenceProvider"): jen.Id(EngineVar).Dot("seqProv"),
-			jen.Lit("eng"): jen.Id(EngineVar),
-		}))).Line()
+		bldr.Descriptor.Engine.Fields.Add(
+			jen.Id(scriptingEngineField).Op("*").Qual(
+				scriptingEnginePackage,
+				"Service",
+			),
+		).Line()
+		bldr.Descriptor.Engine.Initializator.Add(
+			jen.Id(EngineVar).Dot(scriptingEngineField).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceScripting)).
+				Assert(jen.Op("*").Qual(scriptingEnginePackage, "Service")),
+		).Line()
+		bldr.Descriptor.Engine.Initializator.Add(
+			jen.Id(EngineVar).Dot(scriptingEngineField).Dot("SetContext").Params(
+				jen.Map(jen.String()).Interface().Values(
+					jen.Dict{
+						// jen.Lit("SequenceProvider"): jen.Id(EngineVar).Dot("seqProv"),
+						jen.Lit("eng"): jen.Id(EngineVar),
+					},
+				),
+			),
+		).Line()
 	}
 	return nil
 }
 
 // ProvideFeature from FeatureProvider interface
-func (cg *CodeGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (cg *CodeGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case FeaturesCommonKind:
 		switch name {
@@ -544,160 +566,218 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 					tn = jen.Id("o").Id(ent.FS(FeatGoKind, FCGBaseTypeAccessorInterface))
 				}
 				cg.b.Functions.Add(
-					jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cg.b.GetComplexMethodName(ent, d, CGGetComplexAttrMethod)).
+					jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(
+						cg.b.GetComplexMethodName(
+							ent,
+							d,
+							CGGetComplexAttrMethod,
+						),
+					).
 						Params(
 							jen.Id("ctx").Qual("context", "Context"),
 							tn,
-						).Parens(jen.List(paramType, jen.Error())).BlockFunc(func(g *jen.Group) {
-						if ent.HasModifier(TypeModifierExtendable) {
-							g.Id("obj").Op(":=").Id("o").Dot(ent.FS(FeatGoKind, FCGBaseTypeAccessorName)).Params()
-						}
-						if itsOneToMany {
-							if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
-								if d.HasModifier(AttrModifierEmbedded) {
-									g.If(jen.Id("obj").Dot(fieldName).Op("!=").Nil()).Block(
-										jen.Return(jen.Id("obj").Dot(fieldName), jen.Nil()),
-									)
-								}
-								g.Return(jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodListFK, otm.Name)).Params(jen.Id("ctx"), cg.getIDFromObjectFuncFeature(ent)()))
-
-							} else {
-								g.Return(jen.Id("obj").Dot(fieldName), jen.Nil())
+						).Parens(jen.List(paramType, jen.Error())).BlockFunc(
+						func(g *jen.Group) {
+							if ent.HasModifier(TypeModifierExtendable) {
+								g.Id("obj").Op(":=").Id("o").Dot(ent.FS(FeatGoKind, FCGBaseTypeAccessorName)).Params()
 							}
-						} else if itsManyToMany {
-							if mtm.IsDictionary() {
-								if mtm.Pckg.Name == ent.Pckg.Name {
-									if code := cg.desc.CallCodeFeatureFunc(mtm, FeaturesCommonKind, FCListDictByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
-										g.Add(code)
+							if itsOneToMany {
+								if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
+									if d.HasModifier(AttrModifierEmbedded) {
+										g.If(jen.Id("obj").Dot(fieldName).Op("!=").Nil()).Block(
+											jen.Return(jen.Id("obj").Dot(fieldName), jen.Nil()),
+										)
+									}
+									g.Return(
+										jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodListFK, otm.Name)).Params(
+											jen.Id("ctx"),
+											cg.getIDFromObjectFuncFeature(ent)(),
+										),
+									)
+
+								} else {
+									g.Return(jen.Id("obj").Dot(fieldName), jen.Nil())
+								}
+							} else if itsManyToMany {
+								if mtm.IsDictionary() {
+									if mtm.Pckg.Name == ent.Pckg.Name {
+										if code := cg.desc.CallCodeFeatureFunc(
+											mtm,
+											FeaturesCommonKind,
+											FCListDictByIDCode,
+											jen.Id("obj").Dot(fieldName),
+										); code != nil {
+											g.Add(code)
+											return
+										}
+									} else {
+										foreignEngine := ent.Pckg.GetExtEngineRef(mtm.Pckg.Name)
+										getterName := mtm.Pckg.GetMethodName(MethodGet, mtm.Name)
+										g.Id("ret").Op(":=").Make(paramType, jen.Len(jen.Id("obj").Dot(fieldName)))
+										g.Var().Id("err").Error()
+										g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("obj").Dot(fieldName)).Block(
+											jen.List(jen.Id("ret").Index(jen.Id("i")), jen.Id("err")).Op("=").
+												Id(EngineVar).Dot(foreignEngine).Dot(getterName).Params(
+												jen.Id("ctx"),
+												jen.Id("v"),
+											),
+											jen.If(jen.Id("err").Op("!=").Nil()).Block(
+												jen.Return(jen.Nil(), jen.Id("err")),
+											),
+										)
+										g.Return(jen.Id("ret"), jen.Nil())
 										return
 									}
-								} else {
-									foreignEngine := ent.Pckg.GetExtEngineRef(mtm.Pckg.Name)
-									getterName := mtm.Pckg.GetMethodName(MethodGet, mtm.Name)
-									g.Id("ret").Op(":=").Make(paramType, jen.Len(jen.Id("obj").Dot(fieldName)))
-									g.Var().Id("err").Error()
-									g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("obj").Dot(fieldName)).Block(
-										jen.List(jen.Id("ret").Index(jen.Id("i")), jen.Id("err")).Op("=").
-											Id(EngineVar).Dot(foreignEngine).Dot(getterName).Params(
-											jen.Id("ctx"),
-											jen.Id("v"),
-										),
-										jen.If(jen.Id("err").Op("!=").Nil()).Block(
-											jen.Return(jen.Nil(), jen.Id("err")),
-										),
-									)
-									g.Return(jen.Id("ret"), jen.Nil())
+								}
+								if code := cg.desc.CallCodeFeatureFunc(
+									mtm,
+									FeaturesCommonKind,
+									FCListByIDCode,
+									jen.Id("obj").Dot(fieldName),
+								); code != nil {
+									g.Add(code)
 									return
 								}
-							}
-							if code := cg.desc.CallCodeFeatureFunc(mtm, FeaturesCommonKind, FCListByIDCode, jen.Id("obj").Dot(fieldName)); code != nil {
-								g.Add(code)
-								return
-							}
-							cg.desc.AddError(fmt.Errorf("at %v: can not find provider for %s", d.Pos, FCListByIDCode))
-						} else if d.Type.Array != nil || d.Type.Map != nil {
-							// TODO: check type
-							g.Return(jen.Id("obj").Dot(fieldName), jen.Nil())
-						} else if d.FB(FeatGoKind, FCGCalculated) {
-							g.ReturnFunc(func(g *jen.Group) {
-								descr := HookArgsDescriptor{
-									Str: cg.desc.GetHookName(AttrHookCalculate, d),
-								}
-								g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookCalculate, descr))
-							})
-						} else {
-							engVar := cg.desc.CallCodeFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
-							g.Return(
-								jen.List(
-									jen.Add(engVar).Dot(cg.desc.GetMethodName(MethodGet, d.Type.Type)).Call(
-										jen.Id("ctx"),
-										cg.getGetAttrValueFuncFeature(d)(),
-										// jen.Id("obj").Dot(d.Name),
+								cg.desc.AddError(fmt.Errorf("at %v: can not find provider for %s", d.Pos, FCListByIDCode))
+							} else if d.Type.Array != nil || d.Type.Map != nil {
+								// TODO: check type
+								g.Return(jen.Id("obj").Dot(fieldName), jen.Nil())
+							} else if d.FB(FeatGoKind, FCGCalculated) {
+								g.ReturnFunc(
+									func(g *jen.Group) {
+										descr := HookArgsDescriptor{
+											Str: cg.desc.GetHookName(AttrHookCalculate, d),
+										}
+										g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookCalculate, descr))
+									},
+								)
+							} else {
+								engVar := cg.desc.CallCodeFeatureFunc(d, FeaturesCommonKind, FCEngineVar)
+								g.Return(
+									jen.List(
+										jen.Add(engVar).Dot(cg.desc.GetMethodName(MethodGet, d.Type.Type)).Call(
+											jen.Id("ctx"),
+											cg.getGetAttrValueFuncFeature(d)(),
+											// jen.Id("obj").Dot(d.Name),
+										),
 									),
-								),
-							)
-						}
-					}).Line(),
+								)
+							}
+						},
+					).Line(),
 				)
 				//TODO maybe correct to use readonly feature here?
 				if !d.FB(FeatGoKind, FCGCalculated) {
 					cg.b.Functions.Add(
-						jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(cg.b.GetComplexMethodName(ent, d, CGSetComplexAttrMethod)).
+						jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(
+							cg.b.GetComplexMethodName(
+								ent,
+								d,
+								CGSetComplexAttrMethod,
+							),
+						).
 							Params(
 								jen.Id("ctx").Qual("context", "Context"),
 								tn,
 								jen.Id("val").Add(paramType),
-							).Parens(jen.Error()).BlockFunc(func(g *jen.Group) {
-							//TODO add OnHook(HookSet, HMStart,...)
-							// g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val"))))
+							).Parens(jen.Error()).BlockFunc(
+							func(g *jen.Group) {
+								//TODO add OnHook(HookSet, HMStart,...)
+								// g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val"))))
 
-							if ent.HasModifier(TypeModifierExtendable) {
-								g.Id("obj").Op(":=").Id("o").Dot(ent.FS(FeatGoKind, FCGBaseTypeAccessorName)).Params()
-							}
-							if _, hok := d.HaveHook(AttrHookSet); hok {
-								g.Add(cg.desc.CallFeatureHookFunc(d, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
-									Str: cg.desc.GetHookName(AttrHookSet, d),
-									Params: []HookArgParam{
-										{"val", jen.Op("&").Id("val")},
-									},
-								}))
-							}
-							if itsOneToMany {
-								if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
-									g.Return(jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodReplaceFK, otm.Name)).Params(jen.Id("ctx"), cg.getIDFromObjectFuncFeature(ent)(), jen.Id("val")))
-								} else {
-									g.Id("obj").Dot(fieldName).Op("=").Id("val").Line()
+								if ent.HasModifier(TypeModifierExtendable) {
+									g.Id("obj").Op(":=").Id("o").Dot(ent.FS(FeatGoKind, FCGBaseTypeAccessorName)).Params()
 								}
-							} else if itsManyToMany {
-								//TODO: change string to id type
-								if idfld, ok := d.Features.GetField(FeaturesCommonKind, FCManyToManyIDField); ok {
-									g.Id("obj").Dot(fieldName).Op("=").Make(jen.Index().String(), jen.Len(jen.Id("val")))
-									g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
-										jen.Id("obj").Dot(fieldName).Index(jen.Id("i")).Op("=").Id("v").Dot(idfld.Name),
+								if _, hok := d.HaveHook(AttrHookSet); hok {
+									g.Add(
+										cg.desc.CallFeatureHookFunc(
+											d, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
+												Str: cg.desc.GetHookName(AttrHookSet, d),
+												Params: []HookArgParam{
+													{"val", jen.Op("&").Id("val")},
+												},
+											},
+										),
 									)
-								} else {
-									cg.desc.AddError(fmt.Errorf("at %v: no %s feature found for field %s", d.Pos, FCManyToManyIDField, fieldName))
-									return
 								}
-							} else if d.Type.Array != nil {
-								tr := d.Type.Array
-								if d.HasModifier(AttrModifierEmbeddedRef) {
-									if t, ok := cg.desc.FindType(tr.Type); ok {
-										if idt, err := t.IdType(); err == nil {
-											tr = &TypeRef{Type: idt}
+								if itsOneToMany {
+									if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
+										g.Return(
+											jen.Id(EngineVar).Dot(
+												cg.desc.GetMethodName(
+													MethodReplaceFK,
+													otm.Name,
+												),
+											).Params(jen.Id("ctx"), cg.getIDFromObjectFuncFeature(ent)(), jen.Id("val")),
+										)
+									} else {
+										g.Id("obj").Dot(fieldName).Op("=").Id("val").Line()
+									}
+								} else if itsManyToMany {
+									//TODO: change string to id type
+									if idfld, ok := d.Features.GetField(FeaturesCommonKind, FCManyToManyIDField); ok {
+										g.Id("obj").Dot(fieldName).Op("=").Make(jen.Index().String(), jen.Len(jen.Id("val")))
+										g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
+											jen.Id("obj").Dot(fieldName).Index(jen.Id("i")).Op("=").Id("v").Dot(idfld.Name),
+										)
+									} else {
+										cg.desc.AddError(
+											fmt.Errorf(
+												"at %v: no %s feature found for field %s",
+												d.Pos,
+												FCManyToManyIDField,
+												fieldName,
+											),
+										)
+										return
+									}
+								} else if d.Type.Array != nil {
+									tr := d.Type.Array
+									if d.HasModifier(AttrModifierEmbeddedRef) {
+										if t, ok := cg.desc.FindType(tr.Type); ok {
+											if idt, err := t.IdType(); err == nil {
+												tr = &TypeRef{Type: idt}
+											}
 										}
 									}
-								}
-								cg.createArraySetter(g, tr, "a", "val", "i")
-								g.Id("obj").Dot(fieldName).Op("=").Id("a")
-							} else if d.Type.Map != nil {
-								cg.createMapSetter(g, d.Type.Map, "m", "val", "i")
-								g.Id("obj").Dot(fieldName).Op("=").Id("m")
-							} else {
-								ref, ok := cg.desc.FindType(d.Type.Type)
-								if !ok {
-									if d.Type.Array != nil {
-										if ref, ok = cg.desc.FindType(d.Type.Array.Type); !ok {
+									cg.createArraySetter(g, tr, "a", "val", "i")
+									g.Id("obj").Dot(fieldName).Op("=").Id("a")
+								} else if d.Type.Map != nil {
+									cg.createMapSetter(g, d.Type.Map, "m", "val", "i")
+									g.Id("obj").Dot(fieldName).Op("=").Id("m")
+								} else {
+									ref, ok := cg.desc.FindType(d.Type.Type)
+									if !ok {
+										if d.Type.Array != nil {
+											if ref, ok = cg.desc.FindType(d.Type.Array.Type); !ok {
+												cg.desc.AddError(fmt.Errorf("at %v: type not found", d.Pos))
+												return
+											}
+										} else {
 											cg.desc.AddError(fmt.Errorf("at %v: type not found", d.Pos))
 											return
 										}
-									} else {
-										cg.desc.AddError(fmt.Errorf("at %v: type not found", d.Pos))
-										return
 									}
+									if ref.entry != nil {
+										g.Add(
+											cg.proj.OnHook(
+												HookSet,
+												HMStart,
+												d,
+												NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val")),
+											),
+										)
+										g.Add(cg.getSetAttrValueFuncFeature(d)("obj", cg.getIDFromObjectFuncFeature(ref.entry)("val")))
+									} else {
+										g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", "val")))
+										g.Add(cg.getSetAttrValueFuncFeature(d)("obj", "val"))
+									}
+									//g.Id("obj").Dot(d.Name).Op("=").Add(cg.getIDFromObjectFuncFeature(ref.entry)("val"))
 								}
-								if ref.entry != nil {
-									g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", cg.getIDFromObjectFuncFeature(ref.entry)("val"))))
-									g.Add(cg.getSetAttrValueFuncFeature(d)("obj", cg.getIDFromObjectFuncFeature(ref.entry)("val")))
-								} else {
-									g.Add(cg.proj.OnHook(HookSet, HMStart, d, NewHookVars("newValue", "val")))
-									g.Add(cg.getSetAttrValueFuncFeature(d)("obj", "val"))
-								}
-								//g.Id("obj").Dot(d.Name).Op("=").Add(cg.getIDFromObjectFuncFeature(ref.entry)("val"))
-							}
-							g.Add(cg.proj.OnHook(HookSet, HMExit, d, nil))
-							g.Return(jen.Nil())
-						}).Line(),
+								g.Add(cg.proj.OnHook(HookSet, HMExit, d, nil))
+								g.Return(jen.Nil())
+							},
+						).Line(),
 					)
 				}
 			}
@@ -731,22 +811,38 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 				setter.Add(jen.Op("&"))
 			}
 			if pointer || d.HasModifier(AttrModifierOneToMany) || d.HasModifier(AttrModifierEmbedded) || itsManyToMany || d.Type.Array != nil || d.Type.Map != nil {
-				nullFuncs = jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(cg.b.GetMethodName(d, CGIsNullMethod)).Params().Bool().Block(
+				nullFuncs = jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(
+					cg.b.GetMethodName(
+						d,
+						CGIsNullMethod,
+					),
+				).Params().Bool().Block(
 					jen.Return(jen.Id("o").Dot(fieldName).Op("==").Nil()),
 				).Line().
 					Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(cg.b.GetMethodName(d, CGSetNullMethod)).Params().Block(
-					jen.Id("o").Dot(fieldName).Op("=").Nil()).
+					jen.Id("o").Dot(fieldName).Op("=").Nil(),
+				).
 					Line()
 			}
 			setter.Add(jen.Id("arg"))
 
 			cg.b.Functions.Add(
-				jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(cg.b.GetMethodName(d, CGSetterMethod)).Params(jen.Id("arg").Add(d.Features.Stmt(FeatGoKind, FCGType))).Block(
+				jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(
+					cg.b.GetMethodName(
+						d,
+						CGSetterMethod,
+					),
+				).Params(jen.Id("arg").Add(d.Features.Stmt(FeatGoKind, FCGType))).Block(
 					cg.proj.OnHook(HookSet, HMStart, d, NewHookVars(GHVContext, false, GHVObject, "o", "newValue", "arg")),
 					setter,
 					cg.proj.OnHook(HookSet, HMExit, d, &GeneratorHookVars{Ctx: false, Obj: "o"}),
 				).Line(),
-				jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(cg.b.GetMethodName(d, CGGetterMethod)).Params().Add(d.Features.Stmt(FeatGoKind, FCGType)).Block(getter).Line(),
+				jen.Func().Parens(jen.Id("o").Op("*").Id(typeName)).Id(
+					cg.b.GetMethodName(
+						d,
+						CGGetterMethod,
+					),
+				).Params().Add(d.Features.Stmt(FeatGoKind, FCGType)).Block(getter).Line(),
 				nullFuncs,
 			)
 		}
@@ -778,7 +874,11 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 				bt := ent.GetBaseType()
 				tt = bt.FS(FeatGoKind, FCGBaseTypeNameType)
 			} else {
-				return fmt.Errorf("at %v: internal error: FCGBaseTypeNameType feature not defined for extendable type %s", ent.Pos, ent.Name)
+				return fmt.Errorf(
+					"at %v: internal error: FCGBaseTypeNameType feature not defined for extendable type %s",
+					ent.Pos,
+					ent.Name,
+				)
 			}
 		}
 		initParams = append(initParams, jen.Id("tip").Op("...").Id(tt))
@@ -789,13 +889,17 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 		params := []jen.Code{jen.Id("ctx"), jen.Id(tn)}
 		if ent.HasModifier(TypeModifierExtendable) {
 			initstmt.Add(jen.Id("t").Op(":=").Id(tn)).Line()
-			initstmt.Add(jen.If(jen.Len(jen.Id("tip")).Op(">").Lit(0)).Block(
-				jen.Id("t").Op("=").Id("tip").Index(jen.Lit(0)),
-			)).Line()
+			initstmt.Add(
+				jen.If(jen.Len(jen.Id("tip")).Op(">").Lit(0)).Block(
+					jen.Id("t").Op("=").Id("tip").Index(jen.Lit(0)),
+				),
+			).Line()
 			params[1] = jen.Id("t")
 		}
-		initstmt.Add(jen.List(jen.Id("base"), jen.Id("_")).Op(":=").
-			Add(cg.desc.GetTypeEngineAccessor(bt)).Dot(cg.b.Descriptor.GetMethodName(MethodInit, bt.Name)).Params(params...))
+		initstmt.Add(
+			jen.List(jen.Id("base"), jen.Id("_")).Op(":=").
+				Add(cg.desc.GetTypeEngineAccessor(bt)).Dot(cg.b.Descriptor.GetMethodName(MethodInit, bt.Name)).Params(params...),
+		)
 		fields[jen.Id(bt.Name)] = jen.Id("base")
 	}
 	for _, d := range ent.Fields {
@@ -814,9 +918,11 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 			} else {
 				tn := ent.FS(FeatGoKind, FCGDerivedTypeNameConst)
 				initstmt.Add(jen.Id("t").Op(":=").Id(tn)).Line()
-				initstmt.Add(jen.If(jen.Len(jen.Id("tip")).Op(">").Lit(0)).Block(
-					jen.Id("t").Op("=").Id("tip").Index(jen.Lit(0)),
-				))
+				initstmt.Add(
+					jen.If(jen.Len(jen.Id("tip")).Op(">").Lit(0)).Block(
+						jen.Id("t").Op("=").Id("tip").Index(jen.Lit(0)),
+					),
+				)
 				fields[jen.Id(ExtendableTypeDescriptorFieldName)] = jen.String().Parens(jen.Id("t"))
 			}
 			continue
@@ -824,7 +930,12 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 		fieldName := d.FS(FeatGoKind, FCGName)
 		if d.IsIdField() && d.HasModifier(AttrModifierIDAuto) {
 			idstmt.Add(
-				jen.List(jen.Id("id"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(cg.b.Descriptor.GetMethodName(MethodGenerateID, name)).Params(
+				jen.List(jen.Id("id"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(
+					cg.b.Descriptor.GetMethodName(
+						MethodGenerateID,
+						name,
+					),
+				).Params(
 					jen.Id("ctx"),
 				).Line().Add(returnIfErrValue(jen.Nil())),
 			).Line()
@@ -841,7 +952,12 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 				fields[jen.Id(fieldName)] = jen.Id(d.Name)
 				if ft.Entity() != nil {
 					idstmt.Add(
-						jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Add(engVar).Dot(cg.b.Descriptor.GetMethodName(MethodInit, ft.Entity().Name)).Params(jen.Id("ctx")),
+						jen.List(jen.Id(d.Name), jen.Id("_")).Op(":=").Add(engVar).Dot(
+							cg.b.Descriptor.GetMethodName(
+								MethodInit,
+								ft.Entity().Name,
+							),
+						).Params(jen.Id("ctx")),
 					).Line()
 				} else if ft.Enum() != nil {
 					jen.Id(d.Name).Op(":=").Add(ft.Enum().GetDefaultValue(cg.desc))
@@ -854,7 +970,12 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 			}
 		}
 	}
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(initParams...).Parens(jen.List(jen.Op("*").Id(name), jen.Error())).Block(
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(initParams...).Parens(
+		jen.List(
+			jen.Op("*").Id(name),
+			jen.Error(),
+		),
+	).Block(
 		idstmt,
 		initstmt,
 		jen.Return(
@@ -879,18 +1000,26 @@ func (cg *CodeGenerator) generateSingleton(ent *Entity) (err error) {
 			jen.Dict{jen.Id(EngineVar): jen.Id(EngineVar)},
 		).Line()
 		if _, hok := ent.HaveHook(TypeHookCreate); hok {
-			cg.desc.Engine.Initialized.Add(cg.desc.CallFeatureHookFunc(ent, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
-				Str: cg.desc.GetHookName(TypeHookCreate, nil),
-				Obj: jen.Id(EngineVar).Dot(name),
-				Ctx: jen.Qual("context", "TODO").Params(),
-			})).Line()
+			cg.desc.Engine.Initialized.Add(
+				cg.desc.CallFeatureHookFunc(
+					ent, FeaturesHookCodeKind, TypeHookCreate, HookArgsDescriptor{
+						Str: cg.desc.GetHookName(TypeHookCreate, nil),
+						Obj: jen.Id(EngineVar).Dot(name),
+						Ctx: jen.Qual("context", "TODO").Params(),
+					},
+				),
+			).Line()
 		}
 		if _, hok := ent.HaveHook(TypeHookStart); hok {
-			cg.desc.Engine.Start.Add(cg.desc.CallFeatureHookFunc(ent, FeaturesHookCodeKind, TypeHookStart, HookArgsDescriptor{
-				Str: cg.desc.GetHookName(TypeHookStart, nil),
-				Obj: jen.Id(EngineVar).Dot(name),
-				Ctx: jen.Qual("context", "TODO").Params(),
-			})).Line()
+			cg.desc.Engine.Start.Add(
+				cg.desc.CallFeatureHookFunc(
+					ent, FeaturesHookCodeKind, TypeHookStart, HookArgsDescriptor{
+						Str: cg.desc.GetHookName(TypeHookStart, nil),
+						Obj: jen.Id(EngineVar).Dot(name),
+						Ctx: jen.Qual("context", "TODO").Params(),
+					},
+				),
+			).Line()
 		}
 	}
 	return nil
@@ -904,7 +1033,8 @@ func (cg *CodeGenerator) generateInterface(ent *Entity) (err error) {
 		cg.b.Types.Add(jen.Type().Id(iname).Interface(jen.Id(fname).Params().Op("*").Id(ent.Name)).Line())
 		cg.b.Functions.Add(
 			jen.Func().Parens(jen.Id("o").Op("*").Id(ent.Name)).Id(fname).Params().Op("*").Id(ent.Name).Block(
-				jen.Return(jen.Id("o"))).Line(),
+				jen.Return(jen.Id("o")),
+			).Line(),
 		)
 	}
 	if ent.BaseTypeName != "" {
@@ -921,7 +1051,8 @@ func (cg *CodeGenerator) generateInterface(ent *Entity) (err error) {
 			fname := bt.FS(FeatGoKind, FCGBaseTypeAccessorName)
 			cg.b.Functions.Add(
 				jen.Func().Parens(jen.Id("o").Op("*").Id(ent.Name)).Id(fname).Params().Op("*").Id(bt.Name).Block(
-					jen.Return(jen.Add(accessor).Dot(bt.Name))).Line(),
+					jen.Return(jen.Add(accessor).Dot(bt.Name)),
+				).Line(),
 			)
 			accessor = jen.Add(accessor).Dot(bt.Name)
 		}
@@ -931,39 +1062,46 @@ func (cg *CodeGenerator) generateInterface(ent *Entity) (err error) {
 
 func (cg *CodeGenerator) createArraySetter(g *jen.Group, ref *TypeRef, goalVar string, array string, idx string) {
 	g.Id(goalVar).Op(":=").Make(jen.Index().Add(cg.b.GoType(ref)), jen.Len(jen.Id(array)))
-	g.For(jen.List(jen.Id(idx), jen.Id("v")).Op(":=").Range().Id(array)).BlockFunc(func(gg *jen.Group) {
-		if ref.Array != nil {
-			cg.createArraySetter(gg, ref.Array, goalVar+"a", "v", idx+"i")
-			// gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id(goalVar + "a")
-		} else if ref.Complex {
-			if t, ok := cg.desc.FindType(ref.Type); ok && t.entry != nil {
-				if idfld := t.entry.GetIdField(); idfld != nil {
-					gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
-					return
+	g.For(jen.List(jen.Id(idx), jen.Id("v")).Op(":=").Range().Id(array)).BlockFunc(
+		func(gg *jen.Group) {
+			if ref.Array != nil {
+				cg.createArraySetter(gg, ref.Array, goalVar+"a", "v", idx+"i")
+				// gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id(goalVar + "a")
+			} else if ref.Complex {
+				if t, ok := cg.desc.FindType(ref.Type); ok && t.entry != nil {
+					if idfld := t.entry.GetIdField(); idfld != nil {
+						gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
+						return
+					}
 				}
 			}
-		}
-		gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v")
+			gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v")
 
-	})
+		},
+	)
 }
 
 func (cg *CodeGenerator) createMapSetter(g *jen.Group, mapType *MapType, goalVar string, from string, idx string) {
-	g.Id(goalVar).Op(":=").Make(jen.Map(jen.Id(mapType.KeyType)).Add(cg.b.GoType(mapType.ValueType)), jen.Len(jen.Id(from)))
-	g.For(jen.List(jen.Id(idx), jen.Id("v")).Op(":=").Range().Id(from)).BlockFunc(func(gg *jen.Group) {
-		if mapType.ValueType.Array != nil {
-			cg.createArraySetter(gg, mapType.ValueType.Array, goalVar+"a", "v", idx+"i")
-		} else if mapType.ValueType.Complex {
-			if t, ok := cg.desc.FindType(mapType.ValueType.Type); ok && t.entry != nil {
-				if idfld := t.entry.GetIdField(); idfld != nil {
-					gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
-					return
+	g.Id(goalVar).Op(":=").Make(
+		jen.Map(jen.Id(mapType.KeyType)).Add(cg.b.GoType(mapType.ValueType)),
+		jen.Len(jen.Id(from)),
+	)
+	g.For(jen.List(jen.Id(idx), jen.Id("v")).Op(":=").Range().Id(from)).BlockFunc(
+		func(gg *jen.Group) {
+			if mapType.ValueType.Array != nil {
+				cg.createArraySetter(gg, mapType.ValueType.Array, goalVar+"a", "v", idx+"i")
+			} else if mapType.ValueType.Complex {
+				if t, ok := cg.desc.FindType(mapType.ValueType.Type); ok && t.entry != nil {
+					if idfld := t.entry.GetIdField(); idfld != nil {
+						gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v").Dot(idfld.Name)
+						return
+					}
 				}
 			}
-		}
-		gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v")
+			gg.Id(goalVar).Index(jen.Id(idx)).Op("=").Id("v")
 
-	})
+		},
+	)
 }
 func (b *Builder) addType(stmt *jen.Statement, ref *TypeRef, embedded ...bool) (f *jen.Statement, err error) {
 	if ref.Array != nil {
@@ -1176,19 +1314,24 @@ func (cg *CodeGenerator) prepareFields(ent *Entity) error {
 				cg.desc.AddTag(f, v.Key, *v.Value.String)
 			}
 		}
-		if f.Type.Complex && !f.Type.Embedded && (f.Type.Array == nil || f.Type.Array.Complex) || f.FB(FeatGoKind, FCGCalculated) {
+		if f.Type.Complex && !f.Type.Embedded && (f.Type.Array == nil || f.Type.Array.Complex) || f.FB(
+			FeatGoKind,
+			FCGCalculated,
+		) {
 			f.Features.Set(FeaturesCommonKind, FCComplexAccessor, true)
 		} else if _, ok := f.Features.GetEntity(FeaturesCommonKind, FCOneToManyType); ok {
 			f.Features.Set(FeaturesCommonKind, FCComplexAccessor, true)
 		}
 		// just to set it is required
 		if _, hok := f.HaveHook(AttrHookSet); hok {
-			cg.desc.CallFeatureHookFunc(f, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
-				Str: cg.desc.GetHookName(AttrHookSet, f),
-				Params: []HookArgParam{
-					{"val", jen.Op("&").Id("val")},
+			cg.desc.CallFeatureHookFunc(
+				f, FeaturesHookCodeKind, AttrHookSet, HookArgsDescriptor{
+					Str: cg.desc.GetHookName(AttrHookSet, f),
+					Params: []HookArgParam{
+						{"val", jen.Op("&").Id("val")},
+					},
 				},
-			})
+			)
 		}
 	}
 	return nil
@@ -1311,18 +1454,40 @@ func (cg *CodeGenerator) createAdditionalFields(e *Entity) (err error) {
 	return nil
 }
 
-func (cg *CodeGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+func (cg *CodeGenerator) ProvideCodeFragment(
+	module interface{},
+	action interface{},
+	point interface{},
+	ctx interface{},
+) interface{} {
 	if module == CodeFragmentModuleGeneral {
 		if cf, ok := ctx.(*CodeFragmentContext); ok {
 			if point == CFGPointEnterAfterHooks && cf.Entity != nil {
-				if action == MethodNew && (cf.Entity.FB(FeatGoKind, FCGLogCreated) || cf.Entity.FB(FeatGoKind, FCGLogModified)) ||
+				if action == MethodNew && (cf.Entity.FB(FeatGoKind, FCGLogCreated) || cf.Entity.FB(
+					FeatGoKind,
+					FCGLogModified,
+				)) ||
 					action == MethodSet && cf.Entity.FB(FeatGoKind, FCGLogModified) {
 					if mf, ok := cf.Entity.Features.GetField(FeatGoKind, FCGLogModifiedField); ok {
-						cf.Add(cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(jen.Qual("time", "Now").Params()))
+						cf.Add(
+							cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(
+								jen.Qual(
+									"time",
+									"Now",
+								).Params(),
+							),
+						)
 					}
 					if action == MethodNew {
 						if mf, ok := cf.Entity.Features.GetField(FeatGoKind, FCGLogCreatedField); ok {
-							cf.Add(cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(jen.Qual("time", "Now").Params()))
+							cf.Add(
+								cf.GetParam(ParamObject).Dot(cg.b.GetMethodName(mf, CGSetterMethod)).Params(
+									jen.Qual(
+										"time",
+										"Now",
+									).Params(),
+								),
+							)
 						}
 					}
 				}

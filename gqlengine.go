@@ -176,10 +176,43 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			OperationName:  opts.OperationName,
 			Context:        r.Context(),
 		}
-		st := gqe.startQueryStatistics(opts.OperationName, opts.Query)
+		var st queryStatistics
+		if gqe.collectStatistics {
+			st = gqe.startQueryStatistics(opts.OperationName, opts.Query)
+		}
 		result := graphql.Do(params)
-		st.finish(result)
-		gqe.collectQueryStatistics(st)
+		if gqe.collectStatistics {
+			st.finish(result)
+			gqe.collectQueryStatistics(st)
+		}
+
+		if len(result.Errors) > 0 && gqe.options.LogClientErrors {
+			uid := -1
+			if rc, ok := r.Context().(Context); ok && rc != nil {
+				uid = rc.UserID()
+			}
+			if gqe.log != nil {
+				gqe.log.Error(
+					"error sent to client",
+					zap.String("request", opts.OperationName),
+					zap.Any("vars", opts.Variables),
+					zap.Int("uid", uid),
+				)
+				for _, err := range result.Errors {
+					gqe.log.Error("error", zap.String("problem", err.Error()))
+				}
+			} else {
+				fmt.Printf(
+					"error sent to client for request '%s' (uid: %d; vars: %+v) ",
+					opts.OperationName,
+					uid,
+					opts.Variables,
+				)
+				for i, err := range result.Errors {
+					fmt.Printf("error %d: %s", i+1, err.Error())
+				}
+			}
+		}
 
 		// use proper JSON Header
 		w.Header().Add("Content-Type", "application/json; charset=utf-8")

@@ -61,6 +61,7 @@ const (
 	GQLAnnotationQueryTag      = "query"
 	GQLAnnotationMutationTag   = "mutation"
 	GQLAnnotationBulkCreateTag = "bulkCreate"
+	GQLAnnotationBulkSetTag    = "bulkSet"
 	// GQLAnnotationReadonlyTag do not generate GraphQL mutations for type
 	GQLAnnotationReadonlyTag = "readonly"
 
@@ -103,6 +104,7 @@ var GQLOperationsAnnotationsTags = [GQLOperationLast]string{
 	GQLAnnotationLookupTag,
 	GQLAnnotationDeleteTag,
 	GQLAnnotationBulkCreateTag,
+	GQLAnnotationBulkSetTag,
 }
 
 type GQLOptions struct {

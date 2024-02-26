@@ -1234,12 +1234,12 @@ export default class {{TypeName}}LookupComponent extends Vue {
       }
       if(useQuery) {
         this.items = await {{FindQuery}}(this.$apollo.getClient(), this.query!);
-      } else { {{end}}
-      this.lastSearch = this.searchString;
-      let res = await {{LookupQuery}}({{ApolloClient}}, this.lastSearch);
-      if(res) {
-        this.items = res;
-      }{{if HasFindType}}
+      } else if(this.searchString) { {{end}}
+        this.lastSearch = this.searchString;
+        let res = await {{LookupQuery}}({{ApolloClient}}, this.lastSearch);
+        if(res) {
+          this.items = res;
+        }{{if HasFindType}}
       } {{end}}
     } catch(exc) {
       this.problem = exc.toString();

@@ -1074,10 +1074,12 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(
 							cf.GetErr().Op("=").Qual("fmt", "Errorf").Params(
 								jen.Lit(
 									fmt.Sprintf(
-										"no %s found with id %%v",
+										"%%w: %s.%%v",
 										cf.TypeName,
 									),
-								), id,
+								),
+								jen.Qual(VivardPackage, "ErrItemNotFound"),
+								id,
 							),
 						)
 					}

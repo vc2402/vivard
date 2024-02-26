@@ -27,11 +27,14 @@ const (
 	// deletableAnnotationIgnore - do not generate Delete operation (overwrites default generation)
 	deletableAnnotationIgnore = "ignore"
 
-	accessCreated  = "created"
-	accessModified = "modified"
+	accessAnnotationCreated  = "created"
+	accessAnnotationModified = "modified"
+	// may be set for 'access' annotation to log user id in createdBy and modifiedBy
+	accessAnnotationUserID = "userID"
 
 	AnnotationBulk    = "bulk" // special annotation for bulk operations
 	AnnotationBulkNew = "new"
+	AnnotationBulkSet = "set"
 )
 
 const (
@@ -67,8 +70,12 @@ const (
 	FCGDeletable = "deletable"
 	// FCGLogCreated - createdOn field and its filling is required
 	FCGLogCreated = "created"
+	// FCGLogCreatedBy - createdBy field and its filling from context is required
+	FCGLogCreatedBy = "created-by"
 	// FCGLogModified - modifiedOn field and its filling is required
 	FCGLogModified = "modified"
+	// FCGLogModifiedBy - modifiedBy field and its filling is required
+	FCGLogModifiedBy = "modified-by"
 	// FCGDeletedFieldName - for entity; name of the deleted field (empty if not needed)
 	FCGDeletedFieldName = "del-fld-name"
 	// FCGDeletedField - for field; set to true for DeletedOn field
@@ -77,8 +84,14 @@ const (
 	FCGLogCreatedField = "created-fld"
 	// FCGLogModifiedField - modifiedOn field
 	FCGLogModifiedField = "modified-fld"
+	// FCGLogCreatedByField - createdBy field
+	FCGLogCreatedByField = "created-by"
+	// FCGLogModifiedByField - modifiedBy field
+	FCGLogModifiedByField = "modified-by"
 	// FCGBulkNew - for Entity; true if should be generated bulk New operations
 	FCGBulkNew = "bulk-new"
+	// FCGBulkSet - for Entity; true if should be generated bulk Set operation
+	FCGBulkSet = "bulk-set"
 )
 
 type EntityTypeSelector string
@@ -103,10 +116,16 @@ type CodeGeneratorOptions struct {
 	GenerateDeletedField bool
 	// GenerateAccessField - generate fields CreatedOn and ModifiedOn (time.Time) for entities
 	GenerateAccessField EntityTypeSelector
+	// GenerateCreatedBy - generate field CreatedBy by default (only if corresponding access field is generated)
+	GenerateCreatedBy bool
+	// GenerateModifiedBy - generate fields ModifiedBy by default (only if corresponding access field is generated)
+	GenerateModifiedBy bool
 	// AllowEmbeddedArraysForDictionary - allow arrays of embedded types for dictionary
 	AllowEmbeddedArraysForDictionary bool
 	// GenerateBulkNew - generate bulk new operations for every type (default false)
 	GenerateBulkNew bool
+	// GenerateBulkSet - generate bulk set operations for every type (default false)
+	GenerateBulkSet bool
 }
 
 // CodeGenerator generates Go code (structs, methods, Engine object  and other)
@@ -156,9 +175,11 @@ const (
 	extendableTypeDescriptorType = "V_%sType"
 	extendedTypeTypeName         = "V_%s_%s"
 
-	deletedFieldName  = "DeletedOn"
-	createdFieldName  = "CreatedOn"
-	modifiedFieldName = "ModifiedOn"
+	deletedFieldName    = "DeletedOn"
+	createdFieldName    = "CreatedOn"
+	modifiedFieldName   = "ModifiedOn"
+	createdByFieldName  = "CreatedBy"
+	modifiedByFieldName = "ModifiedBy"
 )
 
 var cgComplexMethodsTemplates = [cgLastComplexMethod]string{
@@ -212,7 +233,7 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 		if _, ok := item.(*Entity); ok {
 			for _, value := range ann.Values {
 				switch value.Key {
-				case AnnotationBulkNew:
+				case AnnotationBulkNew, AnnotationBulkSet:
 					if _, ok := value.GetBool(); !ok {
 						return true, fmt.Errorf("at %v: annotation %s:%s accepts only bool values", ann.Pos, ann.Name, value.Key)
 					}
@@ -281,9 +302,11 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 					}
 				}
 			}
-			if ann, ok := t.Annotations[AnnotationBulk]; ok || cg.options.GenerateBulkNew {
+			if ann, ok := t.Annotations[AnnotationBulk]; ok || cg.options.GenerateBulkNew || cg.options.GenerateBulkSet {
 				generate := ann.GetBool(AnnotationBulkNew, cg.options.GenerateBulkNew)
 				t.Features.Set(FeatGoKind, FCGBulkNew, generate)
+				generate = ann.GetBool(AnnotationBulkSet, cg.options.GenerateBulkSet)
+				t.Features.Set(FeatGoKind, FCGBulkSet, generate)
 			}
 			err := cg.prepareFields(t)
 			if err != nil {
@@ -898,7 +921,12 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 		}
 		initstmt.Add(
 			jen.List(jen.Id("base"), jen.Id("_")).Op(":=").
-				Add(cg.desc.GetTypeEngineAccessor(bt)).Dot(cg.b.Descriptor.GetMethodName(MethodInit, bt.Name)).Params(params...),
+				Add(cg.desc.GetTypeEngineAccessor(bt)).Dot(
+				cg.b.Descriptor.GetMethodName(
+					MethodInit,
+					bt.Name,
+				),
+			).Params(params...),
 		)
 		fields[jen.Id(bt.Name)] = jen.Id("base")
 	}
@@ -1417,6 +1445,19 @@ func (cg *CodeGenerator) createAdditionalFields(e *Entity) (err error) {
 		e.FieldsIndex[name] = field
 		return field
 	}
+	createIntField := func(name string, nonNullable bool) *Field {
+		field := &Field{
+			Pos:         e.Pos,
+			Name:        name,
+			Type:        &TypeRef{Type: TipInt, NonNullable: nonNullable},
+			Features:    Features{},
+			Annotations: Annotations{},
+			parent:      e,
+		}
+		e.Fields = append(e.Fields, field)
+		e.FieldsIndex[name] = field
+		return field
+	}
 	if e.FB(FeatGoKind, FCGDeletable) {
 		if dfn := e.FS(FeatGoKind, FCGDeletedFieldName); dfn != "" ||
 			cg.options.GenerateDeletedField {
@@ -1440,6 +1481,14 @@ func (cg *CodeGenerator) createAdditionalFields(e *Entity) (err error) {
 		e.Features.Set(FeatGoKind, FCGLogCreated, true)
 		cf := createTimeField(createdFieldName, true)
 		e.Features.Set(FeatGoKind, FCGLogCreatedField, cf)
+		by, ok := e.Features.GetBool(FeatGoKind, FCGLogCreatedBy)
+		if !ok {
+			by = cg.options.GenerateCreatedBy
+		}
+		if by {
+			cf := createIntField(createdByFieldName, true)
+			e.Features.Set(FeatGoKind, FCGLogCreatedByField, cf)
+		}
 	}
 
 	generateModified, set := e.Features.GetBool(FeatGoKind, FCGLogModified)
@@ -1450,6 +1499,14 @@ func (cg *CodeGenerator) createAdditionalFields(e *Entity) (err error) {
 		e.Features.Set(FeatGoKind, FCGLogModified, true)
 		mf := createTimeField(modifiedFieldName, true)
 		e.Features.Set(FeatGoKind, FCGLogModifiedField, mf)
+		by, ok := e.Features.GetBool(FeatGoKind, FCGLogModifiedBy)
+		if !ok {
+			by = cg.options.GenerateModifiedBy
+		}
+		if by {
+			cf := createIntField(modifiedByFieldName, true)
+			e.Features.Set(FeatGoKind, FCGLogModifiedByField, cf)
+		}
 	}
 	return nil
 }

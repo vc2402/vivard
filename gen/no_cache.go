@@ -409,10 +409,10 @@ func (b *Builder) generateNew(t *Entity) error {
 
 func (ncg *NoCacheGenerator) generateBulk(t *Entity) error {
 	if !t.FB(FeaturesCommonKind, FCReadonly) {
+		name := t.Name
+		newMethodName := ncg.b.Descriptor.GetMethodName(MethodNew, name)
 		if t.FB(FeatGoKind, FCGBulkNew) {
-			name := t.Name
 			methodName := ncg.b.Descriptor.GetMethodName(MethodNewBulk, name)
-			newMethodName := ncg.b.Descriptor.GetMethodName(MethodNew, name)
 			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(methodName).
 				Params(
 					jen.Id("ctx").Qual("context", "Context"),
@@ -424,6 +424,48 @@ func (ncg *NoCacheGenerator) generateBulk(t *Entity) error {
 						jen.Id("o"),
 					),
 					jen.Add(returnIfErrValue(jen.Id("objs"))),
+				),
+				jen.Return(jen.List(jen.Id("objs"), jen.Nil())),
+			).Line()
+			ncg.b.Functions.Add(f)
+		}
+		if t.FB(FeatGoKind, FCGBulkSet) {
+			methodName := ncg.b.Descriptor.GetMethodName(MethodSetBulk, name)
+			setMethodName := ncg.b.Descriptor.GetMethodName(MethodSet, name)
+			idField := t.GetIdField()
+			f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(methodName).
+				Params(
+					jen.Id("ctx").Qual("context", "Context"),
+					jen.Id("objs").Index().Op("*").Id(name),
+				).Parens(jen.List(jen.Id("ret").Index().Op("*").Id(name), jen.Err().Error())).Block(
+				jen.For(jen.List(jen.Id("idx"), jen.Id("o")).Op(":=").Range().Id("objs")).BlockFunc(
+					func(g *jen.Group) {
+						setStatements := jen.List(
+							jen.Id("objs").Index(jen.Id("idx")),
+							jen.Err(),
+						).Op("=").Id(EngineVar).Dot(setMethodName).Params(
+							jen.Id("ctx"),
+							jen.Id("o"),
+						)
+						if idField.HasModifier(AttrModifierIDAuto) {
+							g.Add(
+								jen.If(jen.Id("o").Dot(idField.Name).Op("==").Add(ncg.b.goEmptyValue(idField.Type))).Block(
+									jen.List(
+										jen.Id("objs").Index(jen.Id("idx")),
+										jen.Err(),
+									).Op("=").Id(EngineVar).Dot(newMethodName).Params(
+										jen.Id("ctx"),
+										jen.Id("o"),
+									),
+								).Else().Block(
+									setStatements,
+								),
+							)
+						} else {
+							g.Add(setStatements)
+						}
+						g.Add(returnIfErrValue(jen.Id("objs")))
+					},
 				),
 				jen.Return(jen.List(jen.Id("objs"), jen.Nil())),
 			).Line()

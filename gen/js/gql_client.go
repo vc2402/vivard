@@ -146,7 +146,11 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 				if _, ok := an.GetStringTag(AnnotationInputName); !ok /*&& !t.FB(gen.FeaturesCommonKind, gen.FCReadonly)*/ {
 					t.Annotations.AddTag(Annotation, AnnotationInputName, cg.GetJSEntityInputTypeName(t.Name))
 				}
-				jsInputType := t.Annotations.GetStringAnnotationDef(Annotation, AnnotationInputName, cg.GetJSEntityInputTypeName(t.Name))
+				jsInputType := t.Annotations.GetStringAnnotationDef(
+					Annotation,
+					AnnotationInputName,
+					cg.GetJSEntityInputTypeName(t.Name),
+				)
 				t.Features.Set(Features, FFillInputFuncName, "fill"+strings.ToUpper(jsInputType[:1])+jsInputType[1:])
 
 				for i := gen.GQLOperationGet; i < gen.GQLOperationLast; i++ {
@@ -159,7 +163,11 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 				if idfld := t.GetIdField(); idfld != nil {
 					t.Features.Set(Features, FIDType, cg.GetJSTypeName(idfld.Type, false))
 				}
-				t.Features.Set(Features, FInstanceGenerator, "New"+t.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "")+"Instance")
+				t.Features.Set(
+					Features,
+					FInstanceGenerator,
+					"New"+t.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, "")+"Instance",
+				)
 				var tf *gen.Field
 				for _, f := range t.GetFields(true, true) {
 					if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
@@ -172,8 +180,22 @@ func (cg *GQLCLientGenerator) Prepare(desc *gen.Package) error {
 						}
 					}
 					// f.Annotations.AddTag(Annotation, AnnotationType, cg.GetJSTypeName(f.Type))
-					f.Features.Set(Features, FType, cg.GetJSTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly)))
-					f.Features.Set(Features, FInputType, cg.GetJSInputTypeName(f.Type, f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly)))
+					f.Features.Set(
+						Features,
+						FType,
+						cg.GetJSTypeName(
+							f.Type,
+							f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly),
+						),
+					)
+					f.Features.Set(
+						Features,
+						FInputType,
+						cg.GetJSInputTypeName(
+							f.Type,
+							f.HasModifier(gen.AttrModifierEmbeddedRef) || f.FB(gen.GQLFeatures, gen.GQLFIDOnly),
+						),
+					)
 					if title, ok := f.Annotations.GetBoolAnnotation(Annotation, AnnotationTitle); ok && title {
 						tf = f
 					}
@@ -279,20 +301,26 @@ func (cg *GQLCLientGenerator) Generate(b *gen.Builder) (err error) {
 	return cg.GenerateVivard()
 }
 
-func (cg *GQLCLientGenerator) ProvideFeature(kind gen.FeatureKind, name string, obj interface{}) (feature interface{}, ok gen.ProvideFeatureResult) {
+func (cg *GQLCLientGenerator) ProvideFeature(
+	kind gen.FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok gen.ProvideFeatureResult) {
 	switch kind {
 	case Features:
 		switch name {
 		case FFunctionName:
 			if e, isEntity := obj.(*gen.Entity); isEntity {
-				return gen.FeatureFunc(func(args ...interface{}) (any, error) {
-						if len(args) > 0 {
-							if tip, ok := args[0].(gen.GQLOperationKind); ok {
-								return cg.getOperationFunctionName(tip, e), nil
+				return gen.FeatureFunc(
+						func(args ...interface{}) (any, error) {
+							if len(args) > 0 {
+								if tip, ok := args[0].(gen.GQLOperationKind); ok {
+									return cg.getOperationFunctionName(tip, e), nil
+								}
 							}
-						}
-						return "", fmt.Errorf("feature %s:%s expects GQLOperationKind arg", Features, FFunctionName)
-					}),
+							return "", fmt.Errorf("feature %s:%s expects GQLOperationKind arg", Features, FFunctionName)
+						},
+					),
 					gen.FeatureProvided
 			}
 		}
@@ -373,6 +401,7 @@ var gqlFunctionsNamesTemplates = [...]string{
 	"delete%s",
 	"find%s",
 	"create%ss",
+	"set%ss",
 }
 
 func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (err error) {
@@ -428,10 +457,14 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						if !ok {
 							return fmt.Errorf("no type found for %s", idfld.Name)
 						}
-						ad = []ArgDef{{Name: idfld.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""),
-							Type:    idt,
-							JSType:  e.FS(Features, FIDType), //cg.GetJSTypeName(idfld.Type),
-							NotNull: true}}
+						ad = []ArgDef{
+							{
+								Name:    idfld.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""),
+								Type:    idt,
+								JSType:  e.FS(Features, FIDType), //cg.GetJSTypeName(idfld.Type),
+								NotNull: true,
+							},
+						}
 					}
 				case gen.GQLOperationCreate, gen.GQLOperationSet:
 					if e.FB(gen.FeaturesCommonKind, gen.FCReadonly) {
@@ -444,12 +477,14 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						if i == gen.GQLOperationSet {
 							jstype = cg.GetJSEntityInputTypeName(e.Name)
 						}
-						ad = []ArgDef{{
-							Name:    "val",
-							Type:    e.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName),
-							JSType:  jstype,
-							NotNull: true,
-						}}
+						ad = []ArgDef{
+							{
+								Name:    "val",
+								Type:    e.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName),
+								JSType:  jstype,
+								NotNull: true,
+							},
+						}
 					}
 				case gen.GQLOperationList:
 					if !isCfg {
@@ -467,22 +502,29 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 								jstype = "string[]"
 								qualGQLType = "[String]"
 							}
-							ad = []ArgDef{{Name: "quals",
-								Type:     qualGQLType,
-								JSType:   jstype,
-								NotNull:  false,
-								Optional: true,
-							}}
+							ad = []ArgDef{
+								{
+									Name:     "quals",
+									Type:     qualGQLType,
+									JSType:   jstype,
+									NotNull:  false,
+									Optional: true,
+								},
+							}
 						}
 					} else {
 						continue
 					}
 				case gen.GQLOperationLookup:
 					if !isCfg {
-						ad = []ArgDef{{Name: "query",
-							Type:    "String!",
-							JSType:  "string",
-							NotNull: true}}
+						ad = []ArgDef{
+							{
+								Name:    "query",
+								Type:    "String!",
+								JSType:  "string",
+								NotNull: true,
+							},
+						}
 						rt += "[]"
 					} else {
 						continue
@@ -493,10 +535,14 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						if !ok {
 							return fmt.Errorf("no type found for %s", idfld.Name)
 						}
-						ad = []ArgDef{{Name: idfld.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""),
-							Type:    idt,
-							JSType:  e.FS(Features, FIDType), //cg.GetJSTypeName(idfld.Type),
-							NotNull: true}}
+						ad = []ArgDef{
+							{
+								Name:    idfld.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""),
+								Type:    idt,
+								JSType:  e.FS(Features, FIDType), //cg.GetJSTypeName(idfld.Type),
+								NotNull: true,
+							},
+						}
 						req = "mutation"
 						rt = "boolean"
 					} else {
@@ -504,12 +550,14 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 					}
 				case gen.GQLOperationFind:
 					if it, ok := e.Features.GetEntity(gen.FeaturesAPIKind, gen.FAPIFindParamType); ok {
-						ad = []ArgDef{{
-							Name:    "query",
-							Type:    it.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName),
-							JSType:  cg.GetJSEntityTypeName(it.Name),
-							NotNull: true,
-						}}
+						ad = []ArgDef{
+							{
+								Name:    "query",
+								Type:    it.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName),
+								JSType:  cg.GetJSEntityTypeName(it.Name),
+								NotNull: true,
+							},
+						}
 						rt += "[]"
 					} else {
 						continue
@@ -519,6 +567,29 @@ func (cg *GQLCLientGenerator) generateQueriesFile(wr io.Writer, e *gen.Entity) (
 						continue
 					}
 					req = "mutation"
+					rt += "[]"
+					ad = []ArgDef{
+						{
+							Name:    "val",
+							Type:    "[" + e.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName) + "]",
+							JSType:  rt, //cg.GetJSTypeName(idfld.Type),
+							NotNull: true,
+						},
+					}
+				case gen.GQLOperationBulkSet:
+					if !e.FB(gen.FeatGoKind, gen.FCGBulkSet) {
+						continue
+					}
+					req = "mutation"
+					rt += "[]"
+					ad = []ArgDef{
+						{
+							Name:    "val",
+							Type:    "[" + e.Features.String(gen.GQLFeatures, gen.GQLFInputTypeName) + "]",
+							JSType:  rt, //cg.GetJSTypeName(idfld.Type),
+							NotNull: true,
+						},
+					}
 				}
 				params := QueryDef{
 					Request:       req,
@@ -602,10 +673,14 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 		idfld := e.GetIdField()
 		if idfld != nil {
 			if idt, ok := idfld.Features.GetString(gen.GQLFeatures, gen.GQLFTypeTag); ok {
-				ad = append(ad, ArgDef{Name: "id",
-					Type:    idt,
-					JSType:  e.FS(Features, FIDType),
-					NotNull: true})
+				ad = append(
+					ad, ArgDef{
+						Name:    "id",
+						Type:    idt,
+						JSType:  e.FS(Features, FIDType),
+						NotNull: true,
+					},
+				)
 			}
 		}
 		for _, a := range m.Params {
@@ -622,11 +697,15 @@ func (cg *GQLCLientGenerator) processMethods(wr io.Writer, e *gen.Entity) (err e
 			//if a.Type.NonNullable {
 			//  gqlType += "!"
 			//}
-			ad = append(ad,
-				ArgDef{Name: a.Name,
+			ad = append(
+				ad,
+				ArgDef{
+					Name:    a.Name,
 					Type:    gqlType,
 					JSType:  cg.GetJSInputTypeName(a.Type, false),
-					NotNull: a.Type.NonNullable})
+					NotNull: a.Type.NonNullable,
+				},
+			)
 		}
 		qn := m.FS(gen.GQLFeatures, gen.GQLFMethodName)
 
@@ -885,7 +964,11 @@ func (cg *GQLCLientGenerator) getOutputDir() (ret string) {
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }
-func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field, baseType *gen.Entity) (ret string, err error) {
+func (cg *GQLCLientGenerator) getQueryForEmbeddedType(
+	field string,
+	f *gen.Field,
+	baseType *gen.Entity,
+) (ret string, err error) {
 	var t *gen.TypeRef
 	isConfig := baseType.HasModifier(gen.TypeModifierConfig)
 	if f.Type.Array != nil {
@@ -913,7 +996,11 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 			ret = field
 			return
 		}
-		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
+		full := f.Type.Embedded || f.Annotations.GetBoolAnnotationDef(
+			Annotation,
+			AnnotationForce,
+			false,
+		) /* && f.Features.Bool(gen.FeaturesDBKind, gen.FDBIncapsulate) */
 		if ok && tt.Entity() != nil {
 			for _, ff := range tt.Entity().GetFields(true, true) {
 				if s, ok := f.Annotations.GetBoolAnnotation(gen.GQLAnnotation, gen.GQLAnnotationSkipTag); ok && s {
@@ -929,7 +1016,11 @@ func (cg *GQLCLientGenerator) getQueryForEmbeddedType(field string, f *gen.Field
 						continue
 					}
 				}
-				if full || ff.FB(Features, FForceLoadForField) || ff.Annotations.GetBoolAnnotationDef(Annotation, AnnotationForce, false) {
+				if full || ff.FB(Features, FForceLoadForField) || ff.Annotations.GetBoolAnnotationDef(
+					Annotation,
+					AnnotationForce,
+					false,
+				) {
 					if skip, ok := ff.Features.GetBool(gen.FeaturesAPIKind, gen.FCIgnore); !ok || !skip {
 						id = fmt.Sprintf("%s %s", id, ff.Annotations.GetStringAnnotationDef(Annotation, AnnotationName, ""))
 					}

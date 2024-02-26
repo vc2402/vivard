@@ -121,6 +121,8 @@ const (
 	MethodInit
 	// MethodNewBulk creates set of new instances
 	MethodNewBulk
+	// MethodSetBulk creates set of new instances
+	MethodSetBulk
 
 	// methods for store-based actions (db)
 
@@ -167,6 +169,7 @@ var MethodsNamesTemplates = [methodMax]string{
 	"GetAll%s",
 	"Init%s",
 	"New%ss",
+	"Set%ss",
 	"Load%s",
 	"Save%s",
 	"Update%s",

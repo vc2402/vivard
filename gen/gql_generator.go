@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/alecthomas/participle/lexer"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -24,6 +25,7 @@ const (
 	GQLOperationDelete
 	GQLOperationFind
 	GQLOperationBulkCreate
+	GQLOperationBulkSet
 
 	GQLOperationLast
 )
@@ -37,6 +39,7 @@ var gqlOperationsNamesTemplates = [GQLOperationLast]string{
 	"delete%s",
 	"find%s",
 	"create%ss",
+	"set%ss",
 }
 
 const gqlSetNullInputTemplate = "%sSetNull"
@@ -744,44 +747,46 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 									)
 									g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 								} else if f.Type.Array != nil {
-									artype := f.Features.Stmt(FeatGoKind, FCGType)
-									assertArrayItemType := cg.b.GoType(f.Type.Array)
-									resultArrayItem := jen.Id("v")
-									if f.Type.Array.Type != "" {
-										if tr, ok := cg.desc.FindType(f.Type.Array.Type); ok && tr.Enum() != nil {
-											assertArrayItemType = cg.b.GoType(&TypeRef{Type: tr.Enum().AliasForType})
-											if cg.desc == tr.Enum().Pckg {
-												resultArrayItem = jen.Id(tr.Enum().Name).Parens(resultArrayItem)
-											} else {
-												resultArrayItem = jen.Qual(tr.Enum().Pckg.fullPackage, tr.Enum().Name).Parens(resultArrayItem)
-											}
-										}
-									}
-									g.Id("values").Op(":=").Make(artype, jen.Len(jen.Id("val")))
-									g.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("val")).Block(
-										jen.List(
-											// jen.Id("obj").Dot(f.Name),
-											jen.Id("v"),
-											jen.Id("ok"),
-										).Op(":=").Id("item").Assert(assertArrayItemType),
-										jen.If(jen.Op("!").Id("ok")).Block(
-											jen.Return(
-												jen.Nil(),
-												jen.Qual(
-													"errors",
-													"New",
-												).Params(
-													jen.Lit(
-														fmt.Sprintf(
-															"problem while converting array item of type '%s'",
-															f.Type.Array.Type,
-														),
-													),
-												),
-											),
-										),
-										jen.Id("values").Index(jen.Id("i")).Op("=").Add(resultArrayItem),
-									)
+									g.Var().Id("values").Add(f.Features.Stmt(FeatGoKind, FCGType))
+									cg.addArrayInputParser(f, f.Type, g, jen.Id("val"), jen.Id("values"), 1)
+									//artype := f.Features.Stmt(FeatGoKind, FCGType)
+									//assertArrayItemType := cg.b.GoType(f.Type.Array)
+									//resultArrayItem := jen.Id("v")
+									//if f.Type.Array.Type != "" {
+									//  if tr, ok := cg.desc.FindType(f.Type.Array.Type); ok && tr.Enum() != nil {
+									//    assertArrayItemType = cg.b.GoType(&TypeRef{Type: tr.Enum().AliasForType})
+									//    if cg.desc == tr.Enum().Pckg {
+									//      resultArrayItem = jen.Id(tr.Enum().Name).Parens(resultArrayItem)
+									//    } else {
+									//      resultArrayItem = jen.Qual(tr.Enum().Pckg.fullPackage, tr.Enum().Name).Parens(resultArrayItem)
+									//    }
+									//  }
+									//}
+									//g.Id("values").Op(":=").Make(artype, jen.Len(jen.Id("val")))
+									//g.For(jen.List(jen.Id("i"), jen.Id("item")).Op(":=").Range().Id("val")).Block(
+									//  jen.List(
+									//    // jen.Id("obj").Dot(f.Name),
+									//    jen.Id("v"),
+									//    jen.Id("ok"),
+									//  ).Op(":=").Id("item").Assert(assertArrayItemType),
+									//  jen.If(jen.Op("!").Id("ok")).Block(
+									//    jen.Return(
+									//      jen.Nil(),
+									//      jen.Qual(
+									//        "errors",
+									//        "New",
+									//      ).Params(
+									//        jen.Lit(
+									//          fmt.Sprintf(
+									//            "problem while converting array item of type '%s'",
+									//            f.Type.Array.Type,
+									//          ),
+									//        ),
+									//      ),
+									//    ),
+									//  ),
+									//  jen.Id("values").Index(jen.Id("i")).Op("=").Add(resultArrayItem),
+									//)
 									g.Add(cg.desc.CallCodeFeatureFunc(f, FeaturesCommonKind, FCSetterCode, "obj", "values"))
 								} else if f.Type.Map != nil {
 									if f.Type.Map.KeyType != TipString {
@@ -921,6 +926,77 @@ func (cg *GQLGenerator) generateGQLInputTypeParser(t *Entity) error {
 	}
 
 	return nil
+}
+
+func (cg *GQLGenerator) addArrayInputParser(
+	field *Field,
+	ref *TypeRef,
+	g *jen.Group,
+	valueToParse *jen.Statement,
+	valueToSave *jen.Statement,
+	level int,
+) {
+	artype := cg.b.GoType(ref)
+	assertArrayItemType := cg.b.GoType(ref.Array)
+	levelString := strconv.Itoa(level)
+	resultArrayItemName := "v" + levelString
+	resultArrayItem := jen.Id(resultArrayItemName)
+	indexVarName := "i" + levelString
+	itemVarName := "it" + levelString
+	if ref.Array.Type != "" {
+		if tr, ok := cg.desc.FindType(ref.Array.Type); ok && tr.Enum() != nil {
+			assertArrayItemType = cg.b.GoType(&TypeRef{Type: tr.Enum().AliasForType})
+			if cg.desc == tr.Enum().Pckg {
+				resultArrayItem = jen.Id(tr.Enum().Name).Parens(resultArrayItem)
+			} else {
+				resultArrayItem = jen.Qual(tr.Enum().Pckg.fullPackage, tr.Enum().Name).Parens(resultArrayItem)
+			}
+		}
+	}
+	g.Add(valueToSave).Op("=").Make(artype, jen.Len(valueToParse))
+	g.For(jen.List(jen.Id(indexVarName), jen.Id(itemVarName)).Op(":=").Range().Add(valueToParse)).BlockFunc(
+		func(ig *jen.Group) {
+			if ref.Array.Array != nil {
+				assertArrayItemType = jen.Index().Interface()
+			}
+			ig.List(
+				// jen.Id("obj").Dot(f.Name),
+				jen.Id(resultArrayItemName),
+				jen.Id("ok"),
+			).Op(":=").Id(itemVarName).Assert(assertArrayItemType)
+			ig.If(jen.Op("!").Id("ok")).Block(
+				jen.Return(
+					jen.Nil(),
+					jen.Qual(
+						"fmt",
+						"Errorf",
+					).Params(
+						jen.Lit(
+							fmt.Sprintf(
+								"problem while converting array item for field '%s' of type '%s': expecting type '%s', but got '%%T'",
+								field.Name,
+								field.Parent().Name,
+								assertArrayItemType.GoString(),
+							),
+						),
+						jen.Id(itemVarName),
+					),
+				),
+			)
+			if ref.Array.Array == nil {
+				ig.Add(valueToSave).Index(jen.Id(indexVarName)).Op("=").Add(resultArrayItem)
+			} else {
+				cg.addArrayInputParser(
+					field,
+					ref.Array,
+					ig,
+					resultArrayItem,
+					valueToSave.Clone().Index(jen.Id(indexVarName)),
+					level+1,
+				)
+			}
+		},
+	)
 }
 
 func (cg *GQLGenerator) generateGQLLookupQuery(t *Entity) error {
@@ -1461,14 +1537,35 @@ func (cg *GQLGenerator) generateGQLDeleteMutation(t *Entity) error {
 }
 
 func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
-	if !t.FB(FeaturesCommonKind, FCReadonly) {
-		if t.FB(FeatGoKind, FCGBulkNew) {
-			if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationBulkCreate]); ok {
-				name := t.GetName()
-				gqlType := t.FS(GQLFeatures, GQLFTypeTag)
-				fname := fmt.Sprintf("%sBulkCreateMutationGenerator", name)
-				args := jen.Dict{
-					jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
+	if !t.FB(FeaturesCommonKind, FCReadonly) &&
+		(t.FB(FeatGoKind, FCGBulkNew) || t.FB(FeatGoKind, FCGBulkSet)) {
+		name := t.GetName()
+		gqlType := t.FS(GQLFeatures, GQLFTypeTag)
+		var fname string
+		args := jen.Dict{
+			jen.Lit("val"): jen.Op("&").Qual(gqlPackage, "ArgumentConfig").Values(
+				jen.Dict{
+					jen.Id("Type"): jen.Qual(
+						gqlPackage,
+						"NewList",
+					).Params(
+						jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(
+							jen.Op("*").Qual(
+								VivardPackage,
+								"GQLEngine",
+							),
+						).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
+					),
+				},
+			),
+		}
+		createFunction := func(method MethodKind) *jen.Statement {
+			return jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(
+				gqlPackage,
+				"Field",
+			).Block(
+				jen.Return(
+					jen.Op("&").Qual(gqlPackage, "Field").Values(
 						jen.Dict{
 							jen.Id("Type"): jen.Qual(
 								gqlPackage,
@@ -1479,84 +1576,78 @@ func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
 										VivardPackage,
 										"GQLEngine",
 									),
-								).Dot("Descriptor").Params().Dot("GetInputType").Call(jen.Lit(cg.GetGQLInputTypeName(name))),
+								).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
+							),
+							jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
+							jen.Id("Resolve"): jen.Func().Params(
+								jen.Id("p").Qual(
+									gqlPackage,
+									"ResolveParams",
+								),
+							).Parens(jen.List(jen.Interface(), jen.Error())).Block(
+								jen.If(
+									jen.List(
+										jen.Id("vals"),
+										jen.Id("ok").Op(":=").Id("p").Dot("Args").Index(jen.Lit("val")).Assert(jen.Index().Any()),
+									),
+									jen.Id("ok"),
+								).BlockFunc(
+									func(g *jen.Group) {
+										g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Len(jen.Id("vals")))
+										g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).Block(
+											jen.Var().Id("obj").Op("*").Id(name),
+											jen.Var().Err().Error(),
+											jen.List(
+												jen.Id("obj"),
+												jen.Err(),
+											).Op("=").Add(
+												cg.callInputParserMethod(
+													jen.Id("p").Dot("Context"),
+													name,
+													"param",
+													jen.Id("obj"),
+													false,
+												),
+											),
+											jen.Add(returnIfErrValue(jen.Nil())),
+											jen.Id("objs").Index(jen.Id("idx")).Op("=").Id("obj"),
+										)
+										g.Return(
+											jen.List(
+												jen.Id(EngineVar).Dot(cg.desc.GetMethodName(method, name)).Params(
+													jen.Id("p").Dot("Context"),
+													jen.Id("objs"),
+												),
+											),
+										)
+									},
+								).Else().Block(
+									jen.Return(
+										jen.Nil(),
+										jen.Qual("errors", "New").Params(jen.Lit("set without val")),
+									),
+								),
 							),
 						},
 					),
-				}
-				f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params().Op("*").Qual(
-					gqlPackage,
-					"Field",
-				).Block(
-					jen.Return(
-						jen.Op("&").Qual(gqlPackage, "Field").Values(
-							jen.Dict{
-								jen.Id("Type"): jen.Qual(
-									gqlPackage,
-									"NewList",
-								).Params(
-									jen.Id(EngineVar).Dot(EngineVivard).Dot("GetService").Params(jen.Lit("gql")).Assert(
-										jen.Op("*").Qual(
-											VivardPackage,
-											"GQLEngine",
-										),
-									).Dot("Descriptor").Params().Dot("GetType").Call(jen.Lit(gqlType)),
-								),
-								jen.Id("Args"): jen.Qual(gqlPackage, "FieldConfigArgument").Values(args),
-								jen.Id("Resolve"): jen.Func().Params(
-									jen.Id("p").Qual(
-										gqlPackage,
-										"ResolveParams",
-									),
-								).Parens(jen.List(jen.Interface(), jen.Error())).Block(
-									jen.If(
-										jen.List(
-											jen.Id("vals"),
-											jen.Id("ok").Op(":=").Id("p").Dot("Args").Index(jen.Lit("val")).Assert(jen.Index().Any()),
-										),
-										jen.Id("ok"),
-									).BlockFunc(
-										func(g *jen.Group) {
-											g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Len(jen.Id("vals")))
-											g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).Block(
-												jen.Var().Id("obj").Op("*").Id(name),
-												jen.Var().Err().Error(),
-												jen.List(
-													jen.Id("obj"),
-													jen.Err(),
-												).Op("=").Add(
-													cg.callInputParserMethod(
-														jen.Id("p").Dot("Context"),
-														name,
-														"param",
-														jen.Id("obj"),
-														false,
-													),
-												),
-												jen.Add(returnIfErrValue(jen.Nil())),
-												jen.Id("objs").Index(jen.Id("idx")).Op("=").Id("obj"),
-											)
-											g.Return(
-												jen.List(
-													jen.Id(EngineVar).Dot(cg.desc.GetMethodName(MethodNewBulk, name)).Params(
-														jen.Id("p").Dot("Context"),
-														jen.Id("objs"),
-													),
-												),
-											)
-										},
-									).Else().Block(
-										jen.Return(
-											jen.Nil(),
-											jen.Qual("errors", "New").Params(jen.Lit("set without val")),
-										),
-									),
-								),
-							},
-						),
-					),
+				),
+			).Line()
+		}
+		if t.FB(FeatGoKind, FCGBulkNew) {
+			fname = fmt.Sprintf("%sBulkCreateMutationGenerator", name)
+			if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationBulkCreate]); ok {
+				f := createFunction(MethodNewBulk)
+				cg.b.Functions.Add(f)
+				cg.b.Generator.Id(gqlDescriptorVarName).Dot("AddMutationGenerator").Params(
+					jen.Lit(opername),
+					jen.Id(EngineVar).Dot(fname),
 				).Line()
-
+			}
+		}
+		if t.FB(FeatGoKind, FCGBulkSet) {
+			fname = fmt.Sprintf("%sBulkSetMutationGenerator", name)
+			if opername, ok := t.Features.GetString(GQLFeatures, GQLOperationsAnnotationsTags[GQLOperationBulkSet]); ok {
+				f := createFunction(MethodSetBulk)
 				cg.b.Functions.Add(f)
 				cg.b.Generator.Id(gqlDescriptorVarName).Dot("AddMutationGenerator").Params(
 					jen.Lit(opername),

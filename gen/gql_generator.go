@@ -2138,6 +2138,14 @@ func (cg *GQLGenerator) GetGQLOperationName(e *Entity, tip GQLOperationKind) str
 }
 
 func (cg *GQLGenerator) GetGQLEntityTypeName(name string) (ret string) {
+	if entity, ok := cg.desc.FindType(name); ok {
+		if entity.Entity() != nil {
+			if name, ok := entity.Entity().Annotations.GetStringAnnotation(GQLAnnotation, GQLAnnotationNameTag); ok {
+				return name
+			}
+		}
+	}
+
 	names := strings.SplitN(name, ".", 2)
 	packageName := cg.desc.Name
 	if len(names) == 2 {

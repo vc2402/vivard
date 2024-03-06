@@ -25,7 +25,15 @@ type DefaultContext struct {
 
 var ContextID = &struct{ vivardName string }{"VivardContext"}
 
-func NewContext(ctx context.Context, userID int, userName string, source string, roles []string, rolesMask int, ext ...interface{}) context.Context {
+func NewContext(
+	ctx context.Context,
+	userID int,
+	userName string,
+	source string,
+	roles []string,
+	rolesMask int,
+	ext ...interface{},
+) context.Context {
 	newCtx := DefaultContext{userID: userID, userName: userName, source: source, roles: roles, rolesMask: rolesMask}
 	if len(ext) > 0 {
 		newCtx.ext = map[string]interface{}{}
@@ -38,14 +46,14 @@ func NewContext(ctx context.Context, userID int, userName string, source string,
 	return context.WithValue(ctx, ContextID, newCtx)
 }
 
-func WithRequestContext(ctx context.Context, requestContext DefaultContext) context.Context {
+func WithRequestContext(ctx context.Context, requestContext Context) context.Context {
 	return context.WithValue(ctx, ContextID, requestContext)
 }
 
 func RequestContext(ctx context.Context) Context {
 	cv := ctx.Value(ContextID)
-	if dc, ok := cv.(DefaultContext); ok {
-		return dc
+	if vc, ok := cv.(Context); ok {
+		return vc
 	}
 	return DefaultContext{userID: -1}
 }

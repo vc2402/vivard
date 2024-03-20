@@ -204,7 +204,11 @@ func (cg *ServiceGenerator) Generate(b *Builder) (err error) {
 	return nil
 }
 
-func (cg *ServiceGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (cg *ServiceGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	if kind == ServiceFeatureKind {
 		if name == SFKEngineService {
 			var p *Package
@@ -298,6 +302,11 @@ func (cg *ServiceGenerator) getServiceType(srvName string) (pckg, tip, typeRefTy
 		} else {
 			alias = pckg
 		}
+		pckgIdx = strings.LastIndex(pckg, "-")
+		if pckgIdx != -1 {
+			alias = alias[pckgIdx+1:]
+		}
+
 		realType := tip
 		if realType[0] == '*' {
 			realType = tip[1:]
@@ -308,7 +317,12 @@ func (cg *ServiceGenerator) getServiceType(srvName string) (pckg, tip, typeRefTy
 	return
 }
 
-func (cg *ServiceGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+func (cg *ServiceGenerator) ProvideCodeFragment(
+	module interface{},
+	action interface{},
+	point interface{},
+	ctx interface{},
+) interface{} {
 	if module == CodeFragmentModuleGeneral {
 		if cf, ok := ctx.(*CodeFragmentContext); ok && cf.Package != nil {
 			if smf, ok := cf.Package.Features.Get(ServiceFeatureKind, sFKServices); ok {
@@ -372,7 +386,10 @@ func (cg *ServiceGenerator) ProvideCodeFragment(module interface{}, action inter
 					}
 				}
 			}
-			if sp, ok := cf.Package.Features.GetBool(ServiceFeatureKind, sFKServiceProvider); ok && sp && action == MethodEngineRegisterService {
+			if sp, ok := cf.Package.Features.GetBool(
+				ServiceFeatureKind,
+				sFKServiceProvider,
+			); ok && sp && action == MethodEngineRegisterService {
 				ret := false
 				for _, file := range cf.Package.Files {
 					for _, t := range file.Entries {
@@ -385,7 +402,12 @@ func (cg *ServiceGenerator) ProvideCodeFragment(module interface{}, action inter
 										if i > 0 {
 											cf.Add(jen.Line())
 										}
-										cf.Add(jen.Id("v").Dot("WithService").Params(jen.Lit(n), jen.Id(EngineVar).Dot(t.FS(FeatGoKind, FCGSingletonAttrName))))
+										cf.Add(
+											jen.Id("v").Dot("WithService").Params(
+												jen.Lit(n),
+												jen.Id(EngineVar).Dot(t.FS(FeatGoKind, FCGSingletonAttrName)),
+											),
+										)
 									}
 									ret = true
 								}

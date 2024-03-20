@@ -478,7 +478,12 @@ func (p *Project) CallFeatureFunc(obj interface{}, kind FeatureKind, name string
 func (p *Project) CurrentStage() GenerationStage { return p.stage }
 
 // CallFeatureHookFunc looks for feature with given params, tries to assert it to HookFeatureFunc and call
-func (p *Project) CallFeatureHookFunc(obj interface{}, kind FeatureKind, name string, args HookArgsDescriptor) jen.Code {
+func (p *Project) CallFeatureHookFunc(
+	obj interface{},
+	kind FeatureKind,
+	name string,
+	args HookArgsDescriptor,
+) jen.Code {
 	if f, ok := p.GetFeature(obj, kind, name).(HookFeatureFunc); ok {
 		return f(args)
 	}
@@ -540,7 +545,8 @@ func (p *Project) Generate() (err error) {
 				vars:       map[string][]*jen.Statement{},
 				consts:     map[string][]*jen.Statement{},
 				Functions:  &jen.Statement{},
-				Project:    p}
+				Project:    p,
+			}
 
 			bldr.Generator = &jen.Statement{}
 			bldr.JenFile.HeaderComment(fmt.Sprintf("Code generated from file %s by vivgen. DO NOT EDIT.", file.FileName))
@@ -570,14 +576,16 @@ func (p *Project) Generate() (err error) {
 							Multi: true,
 							Open:  "(",
 						}
-						bldr.JenFile.Add(jen.Const().CustomFunc(
-							multiLineConst,
-							func(g *jen.Group) {
-								for _, stmt := range stmts {
-									g.Add(stmt)
-								}
-							},
-						))
+						bldr.JenFile.Add(
+							jen.Const().CustomFunc(
+								multiLineConst,
+								func(g *jen.Group) {
+									for _, stmt := range stmts {
+										g.Add(stmt)
+									}
+								},
+							),
+						)
 					}
 					return nil
 				},
@@ -594,14 +602,16 @@ func (p *Project) Generate() (err error) {
 							Multi: true,
 							Open:  "(",
 						}
-						bldr.JenFile.Add(jen.Var().CustomFunc(
-							multiLineConst,
-							func(g *jen.Group) {
-								for _, stmt := range stmts {
-									g.Add(stmt)
-								}
-							},
-						))
+						bldr.JenFile.Add(
+							jen.Var().CustomFunc(
+								multiLineConst,
+								func(g *jen.Group) {
+									for _, stmt := range stmts {
+										g.Add(stmt)
+									}
+								},
+							),
+						)
 					}
 					return nil
 				},
@@ -632,7 +642,13 @@ func (p *Project) GetInternalPackage() *Package {
 	return pckg
 }
 
-func (p *Project) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}, theOnly bool) interface{} {
+func (p *Project) ProvideCodeFragment(
+	module interface{},
+	action interface{},
+	point interface{},
+	ctx interface{},
+	theOnly bool,
+) interface{} {
 	var atLeastOne interface{}
 	for _, cfp := range p.fragmentProviders {
 		ret := cfp.ProvideCodeFragment(module, action, point, ctx)
@@ -751,7 +767,11 @@ func (p *Project) addExternal(e *Entity, packag *Package) error {
 			pckg = *ann.Values[0].Value.String
 		} else {
 			pckg = ann.Values[0].Key
+			pckgAlias = pckg
 			if idx := strings.LastIndex(pckg, "/"); idx != -1 {
+				pckgAlias = pckg[idx+1:]
+			}
+			if idx := strings.LastIndex(pckg, "-"); idx != -1 {
 				pckgAlias = pckg[idx+1:]
 			}
 		}
@@ -762,7 +782,13 @@ func (p *Project) addExternal(e *Entity, packag *Package) error {
 	if pckgAlias != "" {
 		p.extPackages[pckgAlias] = pckg
 	}
-	p.extTypes[fmt.Sprintf("%s.%s", pckgAlias, e.Name)] = &DefinedType{name: e.Name, entry: e, external: true, packagePath: pckg, pckg: pckgAlias}
+	p.extTypes[fmt.Sprintf("%s.%s", pckgAlias, e.Name)] = &DefinedType{
+		name:        e.Name,
+		entry:       e,
+		external:    true,
+		packagePath: pckg,
+		pckg:        pckgAlias,
+	}
 	return nil
 }
 
@@ -1024,7 +1050,8 @@ func (amp *annotationMetaParser) parseNext() (ok bool, err error) {
 	return
 }
 
-var metaAnnParser = participle.MustBuild(&ampTags{},
+var metaAnnParser = participle.MustBuild(
+	&ampTags{},
 	// participle.Lexer(regexLex),
 	participle.Lexer(lex),
 	participle.Elide("Comment", "Whitespace"),

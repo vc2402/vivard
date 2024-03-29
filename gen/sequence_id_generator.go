@@ -48,8 +48,10 @@ func (cg *SequnceIDGenerator) Generate(bldr *Builder) (err error) {
 	cg.desc = bldr.Descriptor
 	cg.b = bldr
 	if !cg.desc.Features.Bool(SequenceFeatures, sfInited) {
-		bldr.Descriptor.Engine.Initializator.Add(jen.Id(EngineVar).Dot(engineSequenceProvider).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceSequenceProvider)).
-			Assert(jen.Qual(VivardPackage, "SequenceProvider"))).Line()
+		bldr.Descriptor.Engine.Initializator.Add(
+			jen.Id(EngineVar).Dot(engineSequenceProvider).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceSequenceProvider)).
+				Assert(jen.Qual(VivardPackage, "SequenceProvider")),
+		).Line()
 		cg.desc.Features.Set(SequenceFeatures, sfInited, true)
 	}
 	for _, t := range bldr.File.Entries {
@@ -72,17 +74,34 @@ func (cg *SequnceIDGenerator) generateIDGeneratorFunc(e *Entity) error {
 	}
 	idfld := e.GetIdField()
 
-	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(jen.Id("ctx").Qual("context", "Context")).Parens(
+	seqName := e.Name
+	tip := e
+	// let's correct seqName for derived type
+	//TODO: create feature for sequence name and define it earlier
+	for tip.BaseTypeName != "" {
+		tip = tip.GetBaseType()
+		seqName = tip.Name
+	}
+	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(
+		jen.Id("ctx").Qual(
+			"context",
+			"Context",
+		),
+	).Parens(
 		jen.List(ret, jen.Id("err").Error()),
-	).BlockFunc(func(g *jen.Group) {
-		if idfld.Type.Type == TipInt {
-			g.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(e.Name))
-			g.Add(returnIfErr())
-			g.Return(jen.Id("seq").Dot("Next").Params(jen.Id("ctx")))
-		} else {
-			g.Return(jen.List(jen.Qual("github.com/google/uuid", "New").Params().Dot("String").Params(), jen.Nil()))
-		}
-	},
+	).BlockFunc(
+		func(g *jen.Group) {
+			if idfld.Type.Type == TipInt {
+				g.List(
+					jen.Id("seq"),
+					jen.Id("err"),
+				).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(seqName))
+				g.Add(returnIfErr())
+				g.Return(jen.Id("seq").Dot("Next").Params(jen.Id("ctx")))
+			} else {
+				g.Return(jen.List(jen.Qual("github.com/google/uuid", "New").Params().Dot("String").Params(), jen.Nil()))
+			}
+		},
 	).Line()
 
 	cg.b.Functions.Add(f)
@@ -90,7 +109,11 @@ func (cg *SequnceIDGenerator) generateIDGeneratorFunc(e *Entity) error {
 }
 
 // ProvideFeature from FeatureProvider interface
-func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (cg *SequnceIDGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	switch kind {
 	case SequenceFeatures:
 		switch name {
@@ -107,7 +130,13 @@ func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj 
 							}
 						}
 
-						return jen.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(t.Name)).Line().
+						return jen.List(
+							jen.Id("seq"),
+							jen.Id("err"),
+						).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(
+							jen.Id("ctx"),
+							jen.Lit(t.Name),
+						).Line().
 							If(jen.Id("err").Op("==").Nil()).Block(
 							jen.List(jen.Id("_"), jen.Id("err")).Op("=").Id("seq").Dot("SetCurrent").Params(jen.Id("ctx"), val),
 						)
@@ -138,7 +167,10 @@ func (cg *SequnceIDGenerator) ProvideFeature(kind FeatureKind, name string, obj 
 }
 
 func (cg *SequnceIDGenerator) generateSequencesCall(seqName string, receiver jen.Code) *jen.Statement {
-	return jen.List(jen.Id("seq"), jen.Id("err")).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(seqName)).Line().
+	return jen.List(
+		jen.Id("seq"),
+		jen.Id("err"),
+	).Op(":=").Id(EngineVar).Dot(engineSequenceProvider).Dot("Sequence").Params(jen.Id("ctx"), jen.Lit(seqName)).Line().
 		Add(returnIfErr()).Line().
 		List(receiver, jen.Id("err")).Op("=").Id("seq").Dot("Next").Params(jen.Id("ctx"))
 }

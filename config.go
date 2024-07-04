@@ -142,6 +142,10 @@ func (eng *Engine) ConfInt64(key string, def ...int64) int64 {
 	return 0
 }
 
+func (eng *Engine) NotifyConfigChanged(key string, val interface{}) {
+	eng.config.notifyConfigChanged(key, val)
+}
+
 func (cw *configWrapper) registerConfigProvider(p ConfigProvider, priority int) {
 	cp := cw.providers
 	var prev *configProvider
@@ -179,21 +183,24 @@ func (cw *configWrapper) setValue(key string, val interface{}) error {
 		}
 	}
 	if ok {
-		go func() {
-			callbackCaller := func(cb ConfigChangeCallback) {
-				defer func() {
-					if r := recover(); r != nil {
-						//TODO log problem?
-					}
-				}()
-				cb(key, val)
-			}
-			for _, callback := range cw.callbacks {
-				callbackCaller(callback)
-			}
-		}()
 		return nil
 	} else {
 		return ErrValueIgnored
 	}
+}
+
+func (cw *configWrapper) notifyConfigChanged(key string, val interface{}) {
+	go func() {
+		callbackCaller := func(cb ConfigChangeCallback) {
+			defer func() {
+				if r := recover(); r != nil {
+					//TODO log problem?
+				}
+			}()
+			cb(key, val)
+		}
+		for _, callback := range cw.callbacks {
+			callbackCaller(callback)
+		}
+	}()
 }

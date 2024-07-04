@@ -812,6 +812,7 @@ func (ncg *DictionariesGenerator) generateConfigSetter(name string) error {
 				name,
 			),
 		).Call(jen.Id("ctx"), jen.Id("o")),
+		jen.Id(EngineVar).Dot(EngineVivard).Dot("NotifyConfigChanged").Call(jen.Lit(name), jen.Id("o")),
 		jen.Return(),
 	).Line()
 

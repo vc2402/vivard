@@ -35,11 +35,11 @@ type SequenceProvider struct {
 	seqMux    sync.RWMutex
 }
 
-func MongoSequenceForDB(db *mongo.Database) *SequenceProvider {
+func SequenceForDB(db *mongo.Database) *SequenceProvider {
 	return &SequenceProvider{db: db}
 }
 
-func MongoSequenceForService(ms *Service) *SequenceProvider {
+func SequenceForService(ms *Service) *SequenceProvider {
 	return &SequenceProvider{ms: ms}
 }
 
@@ -168,7 +168,8 @@ func (s *Sequence) SetCurrent(ctx context.Context, value int) (int, error) {
 func (s *Sequence) load(ctx context.Context) error {
 	m := map[string]interface{}{}
 	err := s.p.db.Collection(sequencesCollectionName).
-		FindOne(ctx,
+		FindOne(
+			ctx,
 			bson.M{"_id": s.name},
 			options.FindOne().SetProjection(bson.D{{"current", 1}}),
 		).
@@ -196,7 +197,8 @@ func (s *Sequence) load(ctx context.Context) error {
 
 func (s *Sequence) save(ctx context.Context) (err error) {
 	_, err = s.p.db.Collection(sequencesCollectionName).
-		UpdateOne(ctx,
+		UpdateOne(
+			ctx,
 			bson.M{"_id": s.name}, bson.M{"$set": bson.M{"current": s.curr}},
 		)
 	return

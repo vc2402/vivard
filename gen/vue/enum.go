@@ -9,7 +9,7 @@ import (
 	"text/template"
 )
 
-func (cg *VueCLientGenerator) generateEnum(outDir string, e *gen.Enum) error {
+func (cg *ClientGenerator) generateEnum(outDir string, e *gen.Enum) error {
 	fileName := e.Features.String(featureVueKind, fVKLookupComponentPath)
 	p := filepath.Join(outDir, fileName)
 	f, err := os.Create(p)
@@ -39,7 +39,7 @@ func (cg *VueCLientGenerator) generateEnum(outDir string, e *gen.Enum) error {
 	return nil
 }
 
-func (cg *VueCLientGenerator) getEnumFuncMap(e *gen.Enum) template.FuncMap {
+func (cg *ClientGenerator) getEnumFuncMap(e *gen.Enum) template.FuncMap {
 	return template.FuncMap{
 		"TypeName": func(e *gen.Enum) string {
 			return e.Features.String(js.Features, js.FName)

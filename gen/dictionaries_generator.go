@@ -1012,15 +1012,16 @@ func (ncg *DictionariesGenerator) ProvideCodeFragment(
 					var id jen.Code
 					idx := jen.Id("idx")
 					readLock := false
-					if action == MethodGet {
+					switch action {
+					case MethodGet:
 						id = cf.GetParam(ParamID)
 						readLock = true
-					} else if action == MethodSet {
+					case MethodSet:
 						id = cf.GetParam(ParamObject).Dot(idField.Name)
-					} else if action == MethodNew {
+					case MethodNew:
 						id = cf.GetParam(ParamObject).Dot(idField.Name)
 						idx = jen.Id("_")
-					} else if action == MethodDelete {
+					case MethodDelete:
 						id = cf.GetParam(ParamID)
 						idx = jen.Id("_")
 					}

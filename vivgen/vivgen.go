@@ -189,14 +189,19 @@ func main() {
 				opts.
 					WithCustom("mongo", map[string]interface{}{"idGenerator": false}).
 					WithCustom("gql-ts", map[string]interface{}{"path": viper.GetString("clientOut")}).
-					WithCustom("vue", &vue.VueClientOptions{
-						Components: map[string]vue.VCOptionComponentSpec{
-							vue.VCOptionDateComponent:  {Name: "InputDateComponent", Import: "@/components/DateComponent.vue"},
-							vue.VCOptionMapComponent:   {Name: "KeyValueComponent", Import: "@/components/KVComponent.vue"},
-							vue.VCOptionColorComponent: {Name: "ColorPickerComponent", Import: "@/components/ColorPickerComponent.vue"},
+					WithCustom(
+						"vue", &vue.ClientOptions{
+							Components: map[string]vue.VCOptionComponentSpec{
+								vue.VCOptionDateComponent: {Name: "InputDateComponent", Import: "@/components/DateComponent.vue"},
+								vue.VCOptionMapComponent:  {Name: "KeyValueComponent", Import: "@/components/KVComponent.vue"},
+								vue.VCOptionColorComponent: {
+									Name:   "ColorPickerComponent",
+									Import: "@/components/ColorPickerComponent.vue",
+								},
+							},
+							//ApolloClientVar: "this.$apolloProvider.clients['statistics']",
 						},
-						//ApolloClientVar: "this.$apolloProvider.clients['statistics']",
-					}).
+					).
 					WithCustom(gen.CodeGeneratorOptionsName, map[string]interface{}{"AllowEmbeddedArraysForDictionary": true}),
 			)
 			proj.With(&gen.GQLGenerator{}).
@@ -209,7 +214,7 @@ func main() {
 				With(&gen.SequnceIDGenerator{}).
 				With(&js.GQLCLientGenerator{}).
 				With(&js.TSValidatorGenerator{}).
-				With(&vue.VueCLientGenerator{}).
+				With(&vue.ClientGenerator{}).
 				With(&gen.CroneGenerator{}).
 				With(&gen.ResourceGenerator{}).
 				With(&gen.ServiceGenerator{}).

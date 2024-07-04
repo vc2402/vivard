@@ -993,9 +993,6 @@ func (cg *CodeGenerator) generateInitializer(ent *Entity) (err error) {
 			} else {
 				fields[jen.Id(fieldName)] = cg.b.goEmptyValue(d.Type, !d.HasModifier(AttrModifierEmbedded))
 			}
-			if err != nil {
-				return
-			}
 		}
 	}
 	f := jen.Func().Parens(jen.Id(EngineVar).Op("*").Id("Engine")).Id(fname).Params(initParams...).Parens(
@@ -1185,7 +1182,7 @@ func (b *Builder) addType(stmt *jen.Statement, ref *TypeRef, embedded ...bool) (
 				}
 			}
 		} else {
-			err = fmt.Errorf("undefined type: %s", ref.Type)
+			err = fmt.Errorf("%s: undefined type: %s", b.File.FileName, ref.Type)
 		}
 	}
 	return
@@ -1277,7 +1274,7 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 
 				}
 			} else {
-				b.Descriptor.AddWarning(fmt.Sprintf("undefined type: %s", ref.Type))
+				b.Descriptor.AddWarning(fmt.Sprintf("%s: undefined type: %s (ev)", b.File.FileName, ref.Type))
 			}
 		}
 		return jen.Nil()
@@ -1415,6 +1412,18 @@ func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statemen
 					cg.desc.AddError(fmt.Errorf("there is no id field for type: %s", dt.name))
 					return
 				}
+				idTypeName := it.Type
+				if !IsPrimitiveType(idTypeName.Type) &&
+					strings.Index(idTypeName.Type, ".") == -1 &&
+					cg.desc.Name != it.Parent().Pckg.Name {
+					// not very elegant...
+					lookFor := &Field{}
+					*lookFor = *it
+					lookFor.Type = &TypeRef{}
+					*lookFor.Type = *it.Type
+					lookFor.Type.Type = it.Parent().Pckg.Name + "." + idTypeName.Type
+					it = lookFor
+				}
 				f = cg.goType(it.Type)
 			} else {
 				f = jen.Op("*")
@@ -1425,7 +1434,7 @@ func (cg *CodeGenerator) goType(ref *TypeRef, embedded ...bool) (f *jen.Statemen
 				}
 			}
 		} else {
-			cg.desc.AddError(fmt.Errorf("undefined type: %s", ref.Type))
+			cg.desc.AddError(fmt.Errorf("%s: undefined type: %s (gt)", cg.desc.Name, ref.Type))
 		}
 	}
 	return

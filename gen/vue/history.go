@@ -12,23 +12,23 @@ func (h *helper) generateHistoryComponent() error {
 		parse(vueHistoryTSTemplate).
 		parse(cssFormTemplate)
 	if h.err != nil {
-		return fmt.Errorf("Error while parsing form template: %v", h.err)
+		return fmt.Errorf("error while parsing form template: %v", h.err)
 	}
 	p := h.e.FS(featureVueKind, fVKHistComponentPath)
 	p = filepath.Join(h.outDir, p)
 	f, err := os.Create(p)
 	if err != nil {
-		return fmt.Errorf("Error opening file '%s': %v", p, err)
+		return fmt.Errorf("error opening file '%s': %v", p, err)
 	}
 	defer f.Close()
 
 	h.parse("<template>{{template \"COMPONENT\" .}}</template>\n{{template \"TS\" .}}\n{{template \"CSS\" .}}\n")
 	if h.err != nil {
-		return fmt.Errorf("Error while parsing form file template: %v", h.err)
+		return fmt.Errorf("error while parsing form file template: %v", h.err)
 	}
 	err = h.templ.Execute(f, h)
 	if err != nil {
-		return fmt.Errorf("Error while executing form template: %v", err)
+		return fmt.Errorf("error while executing form template: %v", err)
 	}
 	return nil
 }

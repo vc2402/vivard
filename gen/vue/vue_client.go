@@ -222,30 +222,30 @@ type VCOptionComponentSpec struct {
 	Name   string `json:"name"`
 	Import string `json:"import"`
 }
-type VueClientOptions struct {
+type ClientOptions struct {
 	Components      map[string]VCOptionComponentSpec `json:"components"`
 	ApolloClientVar string                           `json:"apollo_client_var"`
 	OutputDir       string                           `json:"output_dir"`
 }
-type VueCLientGenerator struct {
+type ClientGenerator struct {
 	desc    *gen.Package
-	options VueClientOptions
+	options ClientOptions
 	b       *gen.Builder
 }
 
 func init() {
-	gen.RegisterPlugin(&VueCLientGenerator{})
+	gen.RegisterPlugin(&ClientGenerator{})
 }
 
-func (cg *VueCLientGenerator) Name() string {
+func (cg *ClientGenerator) Name() string {
 	return vueGeneratorName
 }
 
-func (cg *VueCLientGenerator) SetOptions(options any) error {
+func (cg *ClientGenerator) SetOptions(options any) error {
 	return gen.OptionsAnyToStruct(options, &cg.options)
 }
 
-func (cg *VueCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
+func (cg *ClientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annotation, item interface{}) (bool, error) {
 	// if t, ok := item.(*gen.Entity); ok && t.HasModifier(gen.TypeModifierConfig) {
 	//   // at Prepare stage Required features should be set already
 	//   cg.processForConfig(t)
@@ -266,7 +266,7 @@ func (cg *VueCLientGenerator) CheckAnnotation(desc *gen.Package, ann *gen.Annota
 	return false, nil
 }
 
-func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
+func (cg *ClientGenerator) Prepare(desc *gen.Package) error {
 	cg.desc = desc
 	if _, err := desc.Options().CustomToStruct(VCOptions, &cg.options); err != nil {
 		desc.AddWarning(fmt.Sprintf("problem while setting custom options for vue: %v", err))
@@ -447,7 +447,7 @@ func (cg *VueCLientGenerator) Prepare(desc *gen.Package) error {
 	return nil
 }
 
-func (cg *VueCLientGenerator) Generate(b *gen.Builder) (err error) {
+func (cg *ClientGenerator) Generate(b *gen.Builder) (err error) {
 	cg.desc = b.Descriptor
 	cg.b = b
 	for _, t := range b.File.Entries {
@@ -467,7 +467,7 @@ func (cg *VueCLientGenerator) Generate(b *gen.Builder) (err error) {
 	return nil
 }
 
-func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err error) {
+func (cg *ClientGenerator) generateFor(outDir string, e *gen.Entity) (err error) {
 	if e.HasModifier(gen.TypeModifierTransient) || e.HasModifier(gen.TypeModifierSingleton) || e.HasModifier(gen.TypeModifierExternal) {
 		return
 	}
@@ -587,7 +587,7 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 				parse(htmlViewCSS).
 				parse("{{template \"TS\" .}}\n{{template \"HTML\" .}}\n{{template \"CSS\" .}}\n")
 			if th.err != nil {
-				return fmt.Errorf("Error while parsing view template: %v", th.err)
+				return fmt.Errorf("error while parsing view template: %v", th.err)
 			}
 			buffer := bytes.Buffer{}
 			err = th.templ.Execute(&buffer, th)
@@ -677,13 +677,13 @@ func (cg *VueCLientGenerator) generateFor(outDir string, e *gen.Entity) (err err
 	return nil
 }
 
-func (cg *VueCLientGenerator) getOutputDir() (ret string) {
+func (cg *ClientGenerator) getOutputDir() (ret string) {
 	ret = filepath.Join(cg.getClientOutputDir(), "components")
 	os.MkdirAll(ret, os.ModeDir|os.ModePerm)
 	return
 }
 
-func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
+func (cg *ClientGenerator) getClientOutputDir() (ret string) {
 	ret = "./gql-ts"
 	if opt := cg.desc.Options().ClientOutputDir; opt != "" {
 		ret = opt
@@ -695,15 +695,15 @@ func (cg *VueCLientGenerator) getClientOutputDir() (ret string) {
 	return
 }
 
-func (cg *VueCLientGenerator) getOutputDirForEntity(e *gen.Entity) (ret string) {
+func (cg *ClientGenerator) getOutputDirForEntity(e *gen.Entity) (ret string) {
 	return cg.getOutputDirForFile(e.File.Package, e.File.Name)
 }
 
-func (cg *VueCLientGenerator) getOutputDirForEnum(e *gen.Enum) (ret string) {
+func (cg *ClientGenerator) getOutputDirForEnum(e *gen.Enum) (ret string) {
 	return cg.getOutputDirForFile(e.File.Package, e.File.Name)
 }
 
-func (cg *VueCLientGenerator) getOutputDirForFile(packageName, fileName string) (ret string) {
+func (cg *ClientGenerator) getOutputDirForFile(packageName, fileName string) (ret string) {
 	dir := filepath.Join(cg.getOutputDir(), packageName, fileName)
 	err := os.MkdirAll(dir, os.ModeDir|os.ModePerm)
 	if err != nil {
@@ -712,7 +712,7 @@ func (cg *VueCLientGenerator) getOutputDirForFile(packageName, fileName string) 
 	return dir
 }
 
-func (cg *VueCLientGenerator) pathToRelative(from, to string) (ret string) {
+func (cg *ClientGenerator) pathToRelative(from, to string) (ret string) {
 	var err error
 	ret, err = filepath.Rel(from, to)
 	if err != nil {
@@ -726,7 +726,7 @@ func (cg *VueCLientGenerator) pathToRelative(from, to string) (ret string) {
 	return
 }
 
-func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable bool, forIcon bool) string {
+func (cg *ClientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable bool, forIcon bool) string {
 	annName := js.AnnotationTitle
 	if forIcon && f.Annotations.GetBoolAnnotationDef(vueTableAnnotation, vtaUseIcon, false) {
 		annName = js.AnnotationIcon
@@ -784,7 +784,7 @@ func (cg *VueCLientGenerator) getJSAttrNameForDisplay(f *gen.Field, forTable boo
 	return ret
 }
 
-func (cg *VueCLientGenerator) processForConfig(t *gen.Entity) {
+func (cg *ClientGenerator) processForConfig(t *gen.Entity) {
 	for _, f := range t.Fields {
 		if f.Type.Array != nil {
 			if at, ok := cg.b.FindType(f.Type.Array.Type); ok && at.Entity() != nil {
@@ -800,7 +800,7 @@ func (cg *VueCLientGenerator) processForConfig(t *gen.Entity) {
 	}
 }
 
-func (cg *VueCLientGenerator) checkFieldIfStatment(t *gen.Entity, f *gen.Field) error {
+func (cg *ClientGenerator) checkFieldIfStatment(t *gen.Entity, f *gen.Field) error {
 	// if iff, ok := f.Annotations.GetStringAnnotation(vueAnnotation, vcaIf); ok {
 	//   // so far only boolean values
 	//   parts := strings.Split(iff, ".")
@@ -808,7 +808,7 @@ func (cg *VueCLientGenerator) checkFieldIfStatment(t *gen.Entity, f *gen.Field) 
 	return nil
 }
 
-func (cg *VueCLientGenerator) getJSAttrColorForTable(f *gen.Field) (string, bool) {
+func (cg *ClientGenerator) getJSAttrColorForTable(f *gen.Field) (string, bool) {
 	if f.Type.Complex {
 		ret := f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 		found := false
@@ -839,7 +839,7 @@ func (cg *VueCLientGenerator) getJSAttrColorForTable(f *gen.Field) (string, bool
 	return "", false
 }
 
-func (cg *VueCLientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName string) string {
+func (cg *ClientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName string) string {
 	fn := f.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
 	if f.Type.Complex && fieldName != "" && fn != "" {
 		if f.Type.Array == nil && f.Type.Map == nil {
@@ -853,7 +853,7 @@ func (cg *VueCLientGenerator) getJSAttrForSubfield(f *gen.Field, fieldName strin
 	return ""
 }
 
-func (cg *VueCLientGenerator) getPathForComponent(e *gen.Entity, name string) string {
+func (cg *ClientGenerator) getPathForComponent(e *gen.Entity, name string) string {
 	outDir := cg.getOutputDirForEntity(e)
 	return filepath.Join(outDir, name)
 }
@@ -1268,7 +1268,9 @@ export default class {{TypeName}}LookupComponent extends Vue {
         this.search();
     }
   }
-  onChange(event: string) {
+  onChange(event: string) { {{if HasFindType}}
+    if(this.query)
+      return;{{end}}
     if(this.searchString == event {{if ItemTypeIsString}}|| this.selected && (this.selected as {{TypeName .}}).{{ItemText}} && (this.selected as {{TypeName .}}).{{ItemText}} == event{{end}})
       return
     if(this.timer)

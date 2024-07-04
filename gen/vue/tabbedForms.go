@@ -37,7 +37,7 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 		// parse(vueFormCardTSTemplate).
 		parse(cssFormTemplate)
 	if h.err != nil {
-		return fmt.Errorf("Error while parsing form template: %v", h.err)
+		return fmt.Errorf("error while parsing form template: %v", h.err)
 	}
 
 	if h.e.FB(featureVueKind, fVKFormRequired) || (len(compPath) > 0 && compPath[0] != "") {
@@ -48,17 +48,17 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 		p = filepath.Join(h.outDir, p)
 		f, err := os.Create(p)
 		if err != nil {
-			return fmt.Errorf("Error opening file '%s': %v", p, err)
+			return fmt.Errorf("error opening file '%s': %v", p, err)
 		}
 		defer f.Close()
 
 		h.parse("<template>{{template \"FORM\" .}}</template>\n{{template \"FORM.TS\" .}}\n{{template \"CSS\" .}}\n")
 		if h.err != nil {
-			return fmt.Errorf("Error while parsing form file template: %v", h.err)
+			return fmt.Errorf("error while parsing form file template: %v", h.err)
 		}
 		err = h.templ.Execute(f, h)
 		if err != nil {
-			return fmt.Errorf("Error while executing form template: %v", err)
+			return fmt.Errorf("error while executing form template: %v", err)
 		}
 	}
 
@@ -79,11 +79,11 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 
 		h.parse("<template>{{template \"FORM-LIST\" .}}</template>\n{{template \"FORM-LIST.TS\" .}}\n")
 		if h.err != nil {
-			return fmt.Errorf("Error while parsing form list template: %v", h.err)
+			return fmt.Errorf("error while parsing form list template: %v", h.err)
 		}
 		err = h.templ.Execute(f, h.e)
 		if err != nil {
-			return fmt.Errorf("Error while executing form template: %v", err)
+			return fmt.Errorf("error while executing form template: %v", err)
 		}
 	}
 	return nil

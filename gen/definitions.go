@@ -487,7 +487,7 @@ const (
 	//FAPILAll - value for FAPILevel: generate everything
 	FAPILAll = "all"
 
-	//FAPIFindParam - *Entity; for *Entity; type for find method param
+	// FAPIFindParamType - *Entity; for *Entity; type for find method param
 	FAPIFindParamType = "find-param-type"
 	//FAPIFindFor - for *Entity or *Field - ref to object this is find for
 	FAPIFindFor = "find-for"
@@ -500,7 +500,7 @@ const (
 )
 
 const (
-	//FeatureChangeDetectorKind - kind of features related to detecting of fields changes
+	//FeaturesChangeDetectorKind - kind of features related to detecting of fields changes
 	FeaturesChangeDetectorKind FeatureKind = "changes"
 
 	//FCDRequired for Field should be bool; for Entity - one of FCDREntity or FCDRField

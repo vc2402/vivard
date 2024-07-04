@@ -444,13 +444,13 @@ func (desc *Package) processStandardTypeAnnotations(e *Entity) (err error) {
 				e.Features.Set(FeatGoKind, FCGDeletable, true)
 				if tag := a.GetTag(deletableAnnotationWithField); tag != nil /* || cg.options.GenerateDeletedField  */ {
 					dfn := deletedFieldName
-					if tag != nil {
-						if n, ok := tag.GetString(); ok {
-							dfn = n
-						} else if b, ok := tag.GetBool(); ok && !b {
-							dfn = ""
-						}
+					//if tag != nil {
+					if n, ok := tag.GetString(); ok {
+						dfn = n
+					} else if b, ok := tag.GetBool(); ok && !b {
+						dfn = ""
 					}
+					//}
 					if dfn != "" {
 						e.Features.Set(FeatGoKind, FCGDeletedFieldName, dfn)
 					}

@@ -9,8 +9,8 @@ import (
 type HookType string
 type HookModifier string
 
+// well known var names
 const (
-	//well known var names
 	//GHVObject default name of object (this) var
 	GHVObject = "obj"
 	//GHVContext default name of context var
@@ -19,7 +19,7 @@ const (
 	GHVEngine = "eng"
 )
 
-//GeneratorHookVars holds available variables for generator hooks
+// GeneratorHookVars holds available variables for generator hooks
 type GeneratorHookVars struct {
 	// Ctx - variable name or context *jen.Statement if it is not "ctx"; if ctx is not available should be false
 	Ctx interface{}
@@ -31,7 +31,7 @@ type GeneratorHookVars struct {
 	Others map[string]interface{}
 }
 
-//GeneratorHookHolder - interface for hooks code generation
+// GeneratorHookHolder - interface for hooks code generation
 type GeneratorHookHolder interface {
 	//OnEntityHook may be called for Entity for given hook name
 	//  if returned value is not nil, it will be added to code in consideration to order
@@ -49,7 +49,7 @@ type GeneratorHookHolder interface {
 	OnMethodHook(name HookType, mod HookModifier, m *Method, vars *GeneratorHookVars) (code *jen.Statement, order int)
 }
 
-//standart hooks
+// standart hooks
 const (
 	//HookSet will be called on Set for field (start, exit, error)
 	HookSet HookType = "gen:Set"
@@ -67,7 +67,7 @@ const (
 	HookSave HookType = "gen:Save"
 	//HookUpdate will be called on Update for entity (start, exit, error) and for field (modified)
 	HookUpdate HookType = "gen:Update"
-	//HookSave will be called on Create for entity (start, exit, error) and for field (modified)
+	//HookCreate will be called on Create for entity (start, exit, error) and for field (modified)
 	HookCreate HookType = "gen:Create"
 )
 
@@ -82,9 +82,15 @@ const (
 	HMModified HookModifier = "modified"
 )
 
-//OnHook may be called during generation to add hooks code for item (may be *Field, *Method, *Entity)
-//  vars contains var names for common objects (ctx, eng, obj); may be nil, in this case defaults will be used
-func (p *Project) OnHook(name HookType, mod HookModifier, item interface{}, vars *GeneratorHookVars) (st *jen.Statement) {
+// OnHook may be called during generation to add hooks code for item (may be *Field, *Method, *Entity)
+//
+//	vars contains var names for common objects (ctx, eng, obj); may be nil, in this case defaults will be used
+func (p *Project) OnHook(
+	name HookType,
+	mod HookModifier,
+	item interface{},
+	vars *GeneratorHookVars,
+) (st *jen.Statement) {
 	for _, hh := range p.hooks {
 		var hs *jen.Statement
 		switch t := item.(type) {
@@ -109,7 +115,7 @@ func (p *Project) OnHook(name HookType, mod HookModifier, item interface{}, vars
 	return
 }
 
-//GetCtx returns statement for context var; returns nil it is unavailabe
+// GetCtx returns statement for context var; returns nil it is unavailabe
 func (ha *GeneratorHookVars) GetCtx() *jen.Statement {
 	if ha != nil {
 		switch v := ha.Ctx.(type) {
@@ -126,7 +132,7 @@ func (ha *GeneratorHookVars) GetCtx() *jen.Statement {
 	return jen.Id("ctx")
 }
 
-//MustCtx returns statement for context var; panics if it is unavailable
+// MustCtx returns statement for context var; panics if it is unavailable
 func (ha *GeneratorHookVars) MustCtx() *jen.Statement {
 	if stmt := ha.GetCtx(); stmt != nil {
 		return stmt
@@ -134,7 +140,7 @@ func (ha *GeneratorHookVars) MustCtx() *jen.Statement {
 	panic("generator hook: Ctx var is not accessible")
 }
 
-//GetEngine returns statement for engine var; returns nil it is unavailabe
+// GetEngine returns statement for engine var; returns nil it is unavailabe
 func (ha *GeneratorHookVars) GetEngine() *jen.Statement {
 	if ha != nil {
 		switch v := ha.Eng.(type) {
@@ -151,7 +157,7 @@ func (ha *GeneratorHookVars) GetEngine() *jen.Statement {
 	return jen.Id("eng")
 }
 
-//MustEngine returns statement for engine var; panics if it is unavailable
+// MustEngine returns statement for engine var; panics if it is unavailable
 func (ha *GeneratorHookVars) MustEngine() *jen.Statement {
 	if stmt := ha.GetCtx(); stmt != nil {
 		return stmt
@@ -159,7 +165,7 @@ func (ha *GeneratorHookVars) MustEngine() *jen.Statement {
 	panic("generator hook: Engine var is not accessible")
 }
 
-//GetObject returns statement for object (this) var; returns nil it is unavailabe
+// GetObject returns statement for object (this) var; returns nil it is unavailabe
 func (ha *GeneratorHookVars) GetObject() *jen.Statement {
 	if ha != nil {
 		switch v := ha.Obj.(type) {
@@ -176,7 +182,7 @@ func (ha *GeneratorHookVars) GetObject() *jen.Statement {
 	return jen.Id("obj")
 }
 
-//MustEngine returns statement for engine var; panics if it is unavailable
+// MustObject returns statement for engine var; panics if it is unavailable
 func (ha *GeneratorHookVars) MustObject() *jen.Statement {
 	if stmt := ha.GetCtx(); stmt != nil {
 		return stmt
@@ -184,7 +190,7 @@ func (ha *GeneratorHookVars) MustObject() *jen.Statement {
 	panic("generator hook: Object var is not accessible")
 }
 
-//GetObject returns statement for object (this) var; returns nil it is unavailabe
+// GetVar returns statement for object (this) var; returns nil it is unavailabe
 func (ha *GeneratorHookVars) GetVar(name string) *jen.Statement {
 	if ha != nil && ha.Others != nil {
 		switch v := ha.Others[name].(type) {
@@ -198,8 +204,9 @@ func (ha *GeneratorHookVars) GetVar(name string) *jen.Statement {
 }
 
 // NewHookVars creates new instance of *GeneratorHookVars with vars given as args
-//  each var is a pair of name and value(string or *jen.Statement)
-//  names may be well known names
+//
+//	each var is a pair of name and value(string or *jen.Statement)
+//	names may be well known names
 func NewHookVars(vars ...interface{}) *GeneratorHookVars {
 	ret := &GeneratorHookVars{}
 	for i := 0; i < len(vars); i++ {

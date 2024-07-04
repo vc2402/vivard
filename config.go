@@ -20,6 +20,8 @@ type ConfigProvider interface {
 	SetConfigValue(key string, val interface{}) error
 }
 
+type ConfigChangeCallback func(key string, value interface{})
+
 type ViperConfig struct {
 	vip *viper.Viper
 }
@@ -40,6 +42,11 @@ func (vc ViperConfig) SetConfigValue(key string, val interface{}) error {
 	return errors.New("ignored")
 }
 
+type configWrapper struct {
+	providers *configProvider
+	callbacks []ConfigChangeCallback
+}
+
 type configProvider struct {
 	provider ConfigProvider
 	next     *configProvider
@@ -47,42 +54,19 @@ type configProvider struct {
 }
 
 func (eng *Engine) RegisterConfigProvider(p ConfigProvider, priority int) {
-	cp := eng.config
-	var prev *configProvider
-	for cp != nil && cp.priority > priority {
-		prev = cp
-		cp = cp.next
-	}
-	newProv := &configProvider{provider: p, priority: priority, next: cp}
-	if prev != nil {
-		prev.next = newProv
-	} else {
-		eng.config = newProv
-	}
+	eng.config.registerConfigProvider(p, priority)
+}
+
+func (eng *Engine) RegisterConfigChangeCallback(cb ConfigChangeCallback) {
+	eng.config.registerConfigChangeCallback(cb)
 }
 
 func (eng *Engine) ConfValue(key string) interface{} {
-	var ret interface{}
-	for cp := eng.config; cp != nil; cp = cp.next {
-		if ret = cp.provider.GetConfigValue(key); ret != nil {
-			return ret
-		}
-	}
-	return ret
+	return eng.config.value(key)
 }
 
 func (eng *Engine) SetConfValue(key string, val interface{}) error {
-	ok := false
-	for cp := eng.config; cp != nil; cp = cp.next {
-		if ret := cp.provider.SetConfigValue(key, val); ret == nil {
-			ok = true
-		}
-	}
-	if ok {
-		return nil
-	} else {
-		return ErrValueIgnored
-	}
+	return eng.config.setValue(key, val)
 }
 
 func (eng *Engine) ConfString(key string, def ...string) string {
@@ -156,4 +140,60 @@ func (eng *Engine) ConfInt64(key string, def ...int64) int64 {
 		return def[0]
 	}
 	return 0
+}
+
+func (cw *configWrapper) registerConfigProvider(p ConfigProvider, priority int) {
+	cp := cw.providers
+	var prev *configProvider
+	for cp != nil && cp.priority > priority {
+		prev = cp
+		cp = cp.next
+	}
+	newProv := &configProvider{provider: p, priority: priority, next: cp}
+	if prev != nil {
+		prev.next = newProv
+	} else {
+		cw.providers = newProv
+	}
+}
+
+func (cw *configWrapper) registerConfigChangeCallback(cb ConfigChangeCallback) {
+	cw.callbacks = append(cw.callbacks, cb)
+}
+
+func (cw *configWrapper) value(key string) interface{} {
+	var ret interface{}
+	for cp := cw.providers; cp != nil; cp = cp.next {
+		if ret = cp.provider.GetConfigValue(key); ret != nil {
+			return ret
+		}
+	}
+	return ret
+}
+
+func (cw *configWrapper) setValue(key string, val interface{}) error {
+	ok := false
+	for cp := cw.providers; cp != nil; cp = cp.next {
+		if ret := cp.provider.SetConfigValue(key, val); ret == nil {
+			ok = true
+		}
+	}
+	if ok {
+		go func() {
+			callbackCaller := func(cb ConfigChangeCallback) {
+				defer func() {
+					if r := recover(); r != nil {
+						//TODO log problem?
+					}
+				}()
+				cb(key, val)
+			}
+			for _, callback := range cw.callbacks {
+				callbackCaller(callback)
+			}
+		}()
+		return nil
+	} else {
+		return ErrValueIgnored
+	}
 }

@@ -45,7 +45,7 @@ type Engine struct {
 	//TODO: change it to slice for order guaranty
 	services map[string]Service
 	engines  map[string]SubEngine
-	config   *configProvider
+	config   configWrapper
 	logger   *zap.Logger
 }
 
@@ -87,7 +87,7 @@ func (eng *Engine) WithEngine(se SubEngine) *Engine {
 	return eng
 }
 
-//Start performs procedure of starting the engine
+// Start performs procedure of starting the engine
 func (eng *Engine) Start() error {
 	for _, s := range eng.engines {
 		if sp, ok := s.(ServiceProvider); ok {
@@ -121,12 +121,12 @@ func (eng *Engine) Start() error {
 	return nil
 }
 
-//GetService looks for registered service and returns it; returns nil if not found
+// GetService looks for registered service and returns it; returns nil if not found
 func (eng *Engine) GetService(tip string) Service {
 	return eng.services[tip]
 }
 
-//GetConfig looks for config with given name and returns it
+// GetConfig looks for config with given name and returns it
 func (eng *Engine) GetConfig(name string) interface{} {
 	return eng.ConfValue(name)
 }

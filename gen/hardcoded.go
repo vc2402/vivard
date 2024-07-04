@@ -37,7 +37,9 @@ type hcMap struct {
 }
 
 var (
-	hclex = lexer.Must(ebnf.New(`
+	hclex = lexer.Must(
+		ebnf.New(
+			`
 Nil = "null" .
 Ident = (alpha | "_") { "_" | alpha | digit } .
 True = "true" .
@@ -50,9 +52,12 @@ Punct = "!"…"/" | ":"…"@" | "["…` + "\"`\"" + ` | "{"…"~" .
 any = "\u0000"…"\uffff" .																										
 alpha = "a"…"z" | "A"…"Z" .
 digit = "0"…"9" .
-`))
+`,
+		),
+	)
 
-	hcparser = participle.MustBuild(&hardcoded{},
+	hcparser = participle.MustBuild(
+		&hardcoded{},
 		participle.Lexer(hclex),
 		participle.Elide("Whitespace"),
 		participle.Unquote("String"),
@@ -102,7 +107,13 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 		}
 		if a.Null {
 			if notNullable {
-				return nil, fmt.Errorf("at %s:%d: found null value for non nullable attr %s of type %s", m.Pos.Filename, m.Pos.Line+pos, name, TipInt)
+				return nil, fmt.Errorf(
+					"at %s:%d: found null value for non nullable attr %s of type %s",
+					m.Pos.Filename,
+					m.Pos.Line+pos,
+					name,
+					TipInt,
+				)
 			}
 			return jen.Nil(), nil
 		}
@@ -110,21 +121,42 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 		case TipInt:
 			if notNullable {
 				if a.Num == nil {
-					return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipInt, *a)
+					return nil, fmt.Errorf(
+						"at %s:%d: invalid value for attr %s of type %s: %v",
+						m.Pos.Filename,
+						m.Pos.Line+pos,
+						name,
+						TipInt,
+						*a,
+					)
 				}
 				val = jen.Lit(int(*a.Num))
 			} else {
 				if a.Null {
 					val = jen.Qual(VivardPackage, "Ptr").Params(jen.Nil())
 				} else if a.Num == nil {
-					return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipInt, *a)
+					return nil, fmt.Errorf(
+						"at %s:%d: invalid value for attr %s of type %s: %v",
+						m.Pos.Filename,
+						m.Pos.Line+pos,
+						name,
+						TipInt,
+						*a,
+					)
 				} else {
 					val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(int(*a.Num)))
 				}
 			}
 		case TipFloat:
 			if a.Num == nil {
-				return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipFloat, *a)
+				return nil, fmt.Errorf(
+					"at %s:%d: invalid value for attr %s of type %s: %v",
+					m.Pos.Filename,
+					m.Pos.Line+pos,
+					name,
+					TipFloat,
+					*a,
+				)
 			}
 			if notNullable {
 				val = jen.Lit(*a.Num)
@@ -132,17 +164,57 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(*a.Num))
 			}
 		case TipString:
-			if a.Str == nil {
-				return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipString, *a)
+			var value *jen.Statement
+			if a.Str != nil {
+				value = jen.Lit(*a.Str)
+			} else {
+				if a.Ident != nil {
+					var tip string
+					value, tip = cg.findEnumValue(*a.Ident)
+					if tip == TipAny {
+						return nil, fmt.Errorf(
+							"at %s:%d: %s: not found",
+							m.Pos.Filename,
+							m.Pos.Line+pos,
+							*a.Ident,
+						)
+					}
+					if tip != TipString {
+						return nil, fmt.Errorf(
+							"at %s:%d: %s: invalid type (found %s, expected %s",
+							m.Pos.Filename,
+							m.Pos.Line+pos,
+							*a.Ident,
+							tip,
+							TipString,
+						)
+					}
+				} else {
+					return nil, fmt.Errorf(
+						"at %s:%d: invalid value for attr %s of type %s: %v",
+						m.Pos.Filename,
+						m.Pos.Line+pos,
+						name,
+						TipString,
+						*a,
+					)
+				}
 			}
 			if notNullable {
-				val = jen.Lit(*a.Str)
+				val = value
 			} else {
-				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(*a.Str))
+				val = jen.Qual(VivardPackage, "Ptr").Params(value)
 			}
 		case TipBool:
 			if a.Bool == nil {
-				return nil, fmt.Errorf("at %s:%d: invalid value for attr %s of type %s: %v", m.Pos.Filename, m.Pos.Line+pos, name, TipBool, *a)
+				return nil, fmt.Errorf(
+					"at %s:%d: invalid value for attr %s of type %s: %v",
+					m.Pos.Filename,
+					m.Pos.Line+pos,
+					name,
+					TipBool,
+					*a,
+				)
 			}
 			if notNullable {
 				val = jen.Lit(bool(*a.Bool))
@@ -150,34 +222,43 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 				val = jen.Qual(VivardPackage, "Ptr").Params(jen.Lit(bool(*a.Bool)))
 			}
 		case TipDate:
-			return nil, fmt.Errorf("at %s:%d: type datetime of field %s can not be used for hardcoded", m.Pos.Filename, m.Pos.Line+pos, name)
+			return nil, fmt.Errorf(
+				"at %s:%d: type datetime of field %s can not be used for hardcoded",
+				m.Pos.Filename,
+				m.Pos.Line+pos,
+				name,
+			)
 		default:
 			if tr.Array != nil {
-				val = cg.goType(tr).ValuesFunc(func(g *jen.Group) {
-					for _, v := range a.Arr {
-						val, e := valueFor(tr.Array, v, pos, tr.Array.NonNullable)
-						if e != nil {
-							err = e
-							return
+				val = cg.goType(tr).ValuesFunc(
+					func(g *jen.Group) {
+						for _, v := range a.Arr {
+							val, e := valueFor(tr.Array, v, pos, tr.Array.NonNullable)
+							if e != nil {
+								err = e
+								return
+							}
+							g.Add(val)
 						}
-						g.Add(val)
-					}
-				})
+					},
+				)
 				if err != nil {
 					return
 				}
 				break
 			} else if tr.Map != nil {
-				values := jen.DictFunc(func(d jen.Dict) {
-					for _, mv := range a.Map {
-						v, e := valueFor(tr.Map.ValueType, mv.Val, pos, tr.Map.ValueType.NonNullable)
-						if e != nil {
-							err = e
-							return
+				values := jen.DictFunc(
+					func(d jen.Dict) {
+						for _, mv := range a.Map {
+							v, e := valueFor(tr.Map.ValueType, mv.Val, pos, tr.Map.ValueType.NonNullable)
+							if e != nil {
+								err = e
+								return
+							}
+							d[jen.Lit(mv.Key)] = v
 						}
-						d[jen.Lit(mv.Key)] = v
-					}
-				})
+					},
+				)
 				if err != nil {
 					return
 				}
@@ -198,10 +279,21 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 							}
 						}
 					}
-					return nil, fmt.Errorf("at: %s:%d: value '%s' not found in enum %s", m.Pos.Filename, m.Pos.Line+pos, *a.Ident, t.enum.Name)
+					return nil, fmt.Errorf(
+						"at: %s:%d: value '%s' not found in enum %s",
+						m.Pos.Filename,
+						m.Pos.Line+pos,
+						*a.Ident,
+						t.enum.Name,
+					)
 				}
 			}
-			return nil, fmt.Errorf("at: %s:%d: type of field %s can not be used for hardcoded", m.Pos.Filename, m.Pos.Line+pos, name)
+			return nil, fmt.Errorf(
+				"at: %s:%d: type of field %s can not be used for hardcoded",
+				m.Pos.Filename,
+				m.Pos.Line+pos,
+				name,
+			)
 		}
 		return
 	}
@@ -301,6 +393,25 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 	}
 	err = errors.New("unclosed hardcoded section")
 	return
+}
+
+func (cg *CodeGenerator) findEnumValue(name string) (*jen.Statement, string) {
+	for _, definedType := range cg.desc.types {
+		if definedType.enum != nil {
+			for _, field := range definedType.enum.Fields {
+				if field.Name == name {
+					if field.StringVal != nil {
+						return jen.String().Parens(jen.Id(name)), TipString
+					} else if field.IntVal != nil {
+						return jen.Lit(*field.IntVal), TipInt
+					} else if field.FloatVal != nil {
+						return jen.Lit(*field.FloatVal), TipFloat
+					}
+				}
+			}
+		}
+	}
+	return nil, TipAny
 }
 
 func (v hcValue) String() string {

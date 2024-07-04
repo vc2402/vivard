@@ -13,7 +13,7 @@ import (
 	"github.com/vc2402/vivard/gen/js"
 )
 
-func (cg *VueCLientGenerator) newFormHelper(
+func (cg *ClientGenerator) newFormHelper(
 	name string,
 	e *gen.Entity,
 	annName string,

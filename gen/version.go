@@ -50,33 +50,39 @@ const (
 )
 
 func init() {
-	RegisterPlugin(&VersionGenerator{
-		o: VersionOptions{DefaultBehaviour: vaBehaviourWarning, DefaultFieldName: VersionDefaultFieldName, Scope: vaTypeWise},
-	})
+	RegisterPlugin(
+		&VersionGenerator{
+			o: VersionOptions{
+				DefaultBehaviour: vaBehaviourWarning,
+				DefaultFieldName: VersionDefaultFieldName,
+				Scope:            vaTypeWise,
+			},
+		},
+	)
 }
 
-func (cg *VersionGenerator) Name() string {
+func (vg *VersionGenerator) Name() string {
 	return versionGeneratorName
 }
 
-func (cg *VersionGenerator) SetOptions(options any) error {
+func (vg *VersionGenerator) SetOptions(options any) error {
 	if options != nil {
-		return OptionsAnyToStruct(options, &cg.o)
+		return OptionsAnyToStruct(options, &vg.o)
 	}
 	return nil
 }
 
 // SetDescriptor from DescriptorAware
-func (cg *VersionGenerator) SetDescriptor(proj *Project) {
-	cg.proj = proj
+func (vg *VersionGenerator) SetDescriptor(proj *Project) {
+	vg.proj = proj
 }
-func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
+func (vg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
 	if ann.Name == versionAnnotation {
 		if ent, ok := item.(*Entity); ok {
-			beh := cg.o.DefaultBehaviour
-			tryMerge := cg.o.TryMerge
-			fieldName := cg.o.DefaultFieldName
-			scope := cg.o.Scope
+			beh := vg.o.DefaultBehaviour
+			tryMerge := vg.o.TryMerge
+			fieldName := vg.o.DefaultFieldName
+			scope := vg.o.Scope
 			sequenceName := fmt.Sprintf("%sVersion", ent.Name)
 			for _, value := range ann.Values {
 				switch value.Key {
@@ -109,7 +115,12 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 					}
 				case vaSequenceName:
 					if value.Value == nil || value.Value.String == nil {
-						return true, fmt.Errorf("at %v: annotation '%s:%s' should be a string", ann.Pos, versionAnnotation, vaSequenceName)
+						return true, fmt.Errorf(
+							"at %v: annotation '%s:%s' should be a string",
+							ann.Pos,
+							versionAnnotation,
+							vaSequenceName,
+						)
 					}
 					sequenceName = *value.Value.String
 				}
@@ -144,7 +155,7 @@ func (cg *VersionGenerator) CheckAnnotation(desc *Package, ann *Annotation, item
 	return false, nil
 }
 
-func (cg *VersionGenerator) Prepare(desc *Package) error {
+func (vg *VersionGenerator) Prepare(desc *Package) error {
 	//for _, file := range desc.Files {
 	//	for _, e := range file.Entries {
 	//		if fn := e.FS(VersionFeatureKind, VFField); fn != "" {
@@ -155,11 +166,16 @@ func (cg *VersionGenerator) Prepare(desc *Package) error {
 	return nil
 }
 
-func (cg *VersionGenerator) Generate(b *Builder) (err error) {
+func (vg *VersionGenerator) Generate(b *Builder) (err error) {
 	return nil
 }
 
-func (ncg *VersionGenerator) ProvideCodeFragment(module interface{}, action interface{}, point interface{}, ctx interface{}) interface{} {
+func (vg *VersionGenerator) ProvideCodeFragment(
+	module interface{},
+	action interface{},
+	point interface{},
+	ctx interface{},
+) interface{} {
 	if module == CodeFragmentModuleGeneral {
 		if cf, ok := ctx.(*CodeFragmentContext); ok {
 			if cf.Entity != nil {
@@ -169,23 +185,35 @@ func (ncg *VersionGenerator) ProvideCodeFragment(module interface{}, action inte
 						stmt := &jen.Statement{}
 						if action == MethodSet {
 							stmt = jen.If(
-								cf.GetParam(ParamObject).Dot(fn).Op("!=").Id(cf.ObjVar).Dot(fn).BlockFunc(func(g *jen.Group) {
-									//TODO check behaviour
-									idField := cf.Entity.GetIdField()
-									g.Add(ncg.proj.CallCodeFeatureFunc(
-										cf.Entity, LogFeatureKind, LFWarn,
-										"version mismatch",
-										"f", jen.Lit(cf.MethodName),
-										"id", cf.GetParam(ParamObject).Dot(idField.Name),
-										"ver", jen.Id("o").Dot(fn),
-										"curr", jen.Id(cf.ObjVar).Dot(fn),
-									))
-								}),
+								cf.GetParam(ParamObject).Dot(fn).Op("!=").Id(cf.ObjVar).Dot(fn).BlockFunc(
+									func(g *jen.Group) {
+										//TODO check behaviour
+										idField := cf.Entity.GetIdField()
+										g.Add(
+											vg.proj.CallCodeFeatureFunc(
+												cf.Entity, LogFeatureKind, LFWarn,
+												"version mismatch",
+												"f", jen.Lit(cf.MethodName),
+												"id", cf.GetParam(ParamObject).Dot(idField.Name),
+												"ver", jen.Id("o").Dot(fn),
+												"curr", jen.Id(cf.ObjVar).Dot(fn),
+											),
+										)
+									},
+								),
 							).Line()
 						}
 						if cf.Entity.FS(VersionFeatureKind, VFScope) == vaTypeWise {
 							seqName := cf.Entity.FS(VersionFeatureKind, VFSequenceName)
-							stmt.Add(ncg.proj.CallCodeFeatureFunc(cf.Entity, SequenceFeatures, SFGenerateSequenceCall, seqName, jen.Id("o").Dot(fn)))
+							stmt.Add(
+								vg.proj.CallCodeFeatureFunc(
+									cf.Entity,
+									SequenceFeatures,
+									SFGenerateSequenceCall,
+									seqName,
+									jen.Id("o").Dot(fn),
+								),
+							)
 						} else {
 							stmt.Add(jen.Id("o").Dot(fn).Op("++"))
 						}

@@ -771,8 +771,8 @@ func (p *Project) addExternal(e *Entity, packag *Package) error {
 			if idx := strings.LastIndex(pckg, "/"); idx != -1 {
 				pckgAlias = pckg[idx+1:]
 			}
-			if idx := strings.LastIndex(pckg, "-"); idx != -1 {
-				pckgAlias = pckg[idx+1:]
+			if idx := strings.LastIndex(pckgAlias, "-"); idx != -1 {
+				pckgAlias = pckgAlias[idx+1:]
 			}
 		}
 	} else {
@@ -946,7 +946,7 @@ func (desc *Package) processMeta(m *Meta) error {
 			desc.AddWarning(fmt.Sprintf("at %v: type %s not find", m.Pos, m.TypeName))
 		}
 	}
-META_LOOP:
+MetaLoop:
 	for m.Next() {
 		ok, err := desc.ParseAnnotationMeta(m)
 		if err != nil {
@@ -961,7 +961,7 @@ META_LOOP:
 				return e
 			}
 			if ok {
-				continue META_LOOP
+				continue MetaLoop
 			}
 		}
 		return fmt.Errorf("at %s: %d: meta slice not understandable", m.Pos.Filename, m.Pos.Line+m.start)

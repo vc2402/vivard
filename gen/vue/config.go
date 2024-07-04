@@ -30,24 +30,24 @@ func (ch *configHelper) generate() error {
 		parse(configValueHTMLTemplate).
 		parse(vueConfigTSCommonTemplate)
 	if ch.err != nil {
-		return fmt.Errorf("Error while parsing config template: %v", ch.err)
+		return fmt.Errorf("error while parsing config template: %v", ch.err)
 	}
 	p := ch.e.FS(featureVueKind, fVKConfComponentPath)
 	p = filepath.Join(ch.outDir, p)
 
 	f, err := os.Create(p)
 	if err != nil {
-		return fmt.Errorf("Error opening file '%s': %v", p, err)
+		return fmt.Errorf("error opening file '%s': %v", p, err)
 	}
 	defer f.Close()
 
 	ch.parse("<template>{{template \"TEMPL_CONFIG\" .}}</template>\n{{template \"TS_CONFIG\" .}}\n{{template \"CSS\" .}}\n")
 	if ch.err != nil {
-		return fmt.Errorf("Error while parsing config file template: %v", ch.err)
+		return fmt.Errorf("error while parsing config file template: %v", ch.err)
 	}
 	err = ch.templ.Execute(f, ch.e)
 	if err != nil {
-		return fmt.Errorf("Error while executing form template: %v", err)
+		return fmt.Errorf("error while executing form template: %v", err)
 	}
 	return nil
 }
@@ -217,7 +217,7 @@ const cssConfigTemplate = `
 type configHelper struct {
 	templ      *template.Template
 	e          *gen.Entity
-	cg         *VueCLientGenerator
+	cg         *ClientGenerator
 	components map[string]vcComponentDescriptor
 	outDir     string
 	err        error
@@ -238,7 +238,7 @@ type leafDescriptor struct {
 	Path string
 }
 
-func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir string) (*configHelper, error) {
+func (cg *ClientGenerator) newConfigHelper(name string, e *gen.Entity, outDir string) (*configHelper, error) {
 	fp, ok := e.Features.GetString(js.Features, js.FFilePath)
 	if !ok {
 		return nil, fmt.Errorf("vue: at %v: file path not set for %s", e.Pos, e.Name)
@@ -253,7 +253,13 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 	customComponents := map[string]vcCustomComponentDescriptor{}
 	leafs := map[string]leafDescriptor{}
 	tree := cg.buildLeafs(e, leafs)
-	th := &configHelper{templ: template.New(name), cg: cg, e: e, outDir: outDir, components: map[string]vcComponentDescriptor{}}
+	th := &configHelper{
+		templ:      template.New(name),
+		cg:         cg,
+		e:          e,
+		outDir:     outDir,
+		components: map[string]vcComponentDescriptor{},
+	}
 	funcs := template.FuncMap{
 		"GetTreeItems": func(e *gen.Entity) string {
 			return tree
@@ -402,7 +408,8 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 		},
 		"GUITableType": func(f *gen.Field) string {
 			fromAnnotations := func(ann gen.Annotations, def string) string {
-				return ann.GetStringAnnotationDef(vueTableAnnotation, vueAnnotationDisplayType,
+				return ann.GetStringAnnotationDef(
+					vueTableAnnotation, vueAnnotationDisplayType,
 					ann.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType, def),
 				)
 			}
@@ -423,8 +430,10 @@ func (cg *VueCLientGenerator) newConfigHelper(name string, e *gen.Entity, outDir
 					}
 				}
 				if ff := getTitleField(e.Entity()); ff != nil {
-					return ff.Annotations.GetStringAnnotationDef(vueTableAnnotation, vueAnnotationDisplayType,
-						ff.Annotations.GetStringAnnotationDef(vueAnnotation, vueAnnotationDisplayType,
+					return ff.Annotations.GetStringAnnotationDef(
+						vueTableAnnotation, vueAnnotationDisplayType,
+						ff.Annotations.GetStringAnnotationDef(
+							vueAnnotation, vueAnnotationDisplayType,
 							ff.Type.Type,
 						),
 					)
@@ -490,19 +499,19 @@ import {RoundNumber} from '@/filters/numberFilter';
 	return th, nil
 }
 
-func (th *configHelper) parse(str string) *configHelper {
-	if th.err != nil {
-		return th
+func (ch *configHelper) parse(str string) *configHelper {
+	if ch.err != nil {
+		return ch
 	}
-	th.templ, th.err = th.templ.Parse(str)
-	return th
+	ch.templ, ch.err = ch.templ.Parse(str)
+	return ch
 }
 
-func (th *configHelper) addComponent(cmp string, p string, entity *gen.Entity) {
+func (ch *configHelper) addComponent(cmp string, p string, entity *gen.Entity) {
 	if cmp != "" && p != "" {
 		if p[0] != '@' && p[0] != '.' && !filepath.IsAbs(p) {
-			if entity.File.Package == th.e.File.Package {
-				if entity.File.Name == th.e.File.Name {
+			if entity.File.Package == ch.e.File.Package {
+				if entity.File.Name == ch.e.File.Name {
 					p = "." + string(os.PathSeparator) + p
 				} else {
 					p = filepath.Join("..", entity.File.Name, p)
@@ -511,16 +520,32 @@ func (th *configHelper) addComponent(cmp string, p string, entity *gen.Entity) {
 				p = filepath.Join("..", "..", entity.File.Package, entity.File.Name, p)
 			}
 		}
-		th.components[cmp] = vcComponentDescriptor{
+		ch.components[cmp] = vcComponentDescriptor{
 			Comp: cmp,
 			Imp:  p,
 		}
 	}
 }
 
-func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs string, leafs map[string]leafDescriptor, tip leafType, path string, fromField *gen.Field) string {
-	grp := e.Annotations.GetBoolAnnotationDef(gen.AnnotationConfig, gen.AnnCfgGroup, false) || e.HasModifier(gen.TypeModifierConfig)
-	val := e.Annotations.GetBoolAnnotationDef(gen.AnnotationConfig, gen.AnnCfgValue, false) || e.HasModifier(gen.TypeModifierDictionary)
+func (cg *ClientGenerator) getTreeItem(
+	prefix string,
+	e *gen.Entity,
+	tabs string,
+	leafs map[string]leafDescriptor,
+	tip leafType,
+	path string,
+	fromField *gen.Field,
+) string {
+	grp := e.Annotations.GetBoolAnnotationDef(
+		gen.AnnotationConfig,
+		gen.AnnCfgGroup,
+		false,
+	) || e.HasModifier(gen.TypeModifierConfig)
+	val := e.Annotations.GetBoolAnnotationDef(
+		gen.AnnotationConfig,
+		gen.AnnCfgValue,
+		false,
+	) || e.HasModifier(gen.TypeModifierDictionary)
 	name := e.Annotations.GetStringAnnotationDef(vueAnnotation, vcaLabel, e.Name)
 	if fromField != nil {
 		name = fromField.Annotations.GetStringAnnotationDef(vueAnnotation, vcaLabel, name)
@@ -552,16 +577,31 @@ func (cg *VueCLientGenerator) getTreeItem(prefix string, e *gen.Entity, tabs str
 				children.WriteString(cg.getTreeItem(prefix+"_"+f.Name, t.Entity(), tabs+TabAsSpace, leafs, tip, p, f))
 			}
 		}
-		return fmt.Sprintf("%s{id:'%s', name: '%s', leaf: false, children: \n%s[\n%s%s]\n%s},", tabs, prefix, name, tabs+TabAsSpace, children.String(), tabs+TabAsSpace, tabs)
+		return fmt.Sprintf(
+			"%s{id:'%s', name: '%s', leaf: false, children: \n%s[\n%s%s]\n%s},",
+			tabs,
+			prefix,
+			name,
+			tabs+TabAsSpace,
+			children.String(),
+			tabs+TabAsSpace,
+			tabs,
+		)
 	} else if val {
 		leafs[prefix] = leafDescriptor{ID: prefix, Ent: e, Tip: tip, Path: path}
 		return fmt.Sprintf("%s{id:'%s', name: '%s', leaf: true},\n", tabs, prefix, name)
 	} else {
-		cg.b.AddWarning(fmt.Sprintf("vue-config: at %v: there is no 'config' annotation for non-dictionary type %s", e.Pos, e.Name))
+		cg.b.AddWarning(
+			fmt.Sprintf(
+				"vue-config: at %v: there is no 'config' annotation for non-dictionary type %s",
+				e.Pos,
+				e.Name,
+			),
+		)
 		return ""
 	}
 }
 
-func (cg *VueCLientGenerator) buildLeafs(e *gen.Entity, leafs map[string]leafDescriptor) string {
+func (cg *ClientGenerator) buildLeafs(e *gen.Entity, leafs map[string]leafDescriptor) string {
 	return fmt.Sprintf("[\n%s\n%s]", cg.getTreeItem(e.Name, e, TabAsSpace, leafs, ltForm, "", nil), TabAsSpace)
 }

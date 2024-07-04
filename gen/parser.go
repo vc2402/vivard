@@ -189,7 +189,9 @@ type AnnotationValue struct {
 }
 
 var (
-	lex = lexer.Must(ebnf.New(`
+	lex = lexer.Must(
+		ebnf.New(
+			`
 Comment = ("//") { "\u0000"…"\uffff"-"\n" } .
 MetaLine = ("#" | "\t") { "\u0000"…"\uffff"-"\n" } .
 TypeModifier = "config" | "dictionary" | "embeddable" | "foreign" | "singleton" | "transient" .
@@ -213,9 +215,13 @@ ModifierClose = ">" .
 any = "\u0000"…"\uffff" .																										
 alpha = "a"…"z" | "A"…"Z" .
 digit = "0"…"9" .
-`))
+`,
+		),
+	)
 
-	regexLex = lexer.Must(regex.New(`
+	regexLex = lexer.Must(
+		regex.New(
+			`
 Whitespace = [\s\t\n]+
 Comment = \/\/.*^
 BracketOpen = \[
@@ -232,13 +238,16 @@ String = "[^"]*"
 Int = ([-+])?\d+
 Number = ([-+])?(\d+)|(\d*\.\d+)
 Ident = [[:ascii:]][\w\d]*
-`))
+`,
+		),
+	)
 
 	// FieldTypeString = { "string" } .
 	// FieldTypeInt = { "int" } .
 	// FieldTypeDate = { "date" } .
 
-	parser = participle.MustBuild(&File{},
+	parser = participle.MustBuild(
+		&File{},
 		// participle.Lexer(regexLex),
 		participle.Lexer(lex),
 		participle.Elide("Comment", "Whitespace"),
@@ -762,7 +771,7 @@ func (a Annotations) Append(another Annotations) {
 	}
 }
 
-// Add adds values from another to a rewrites values with the same key
+// Append Add adds values from another to a rewrites values with the same key
 func (a *Annotation) Append(another *Annotation) {
 	for _, av := range another.Values {
 		if v := a.GetTag(av.Key); v != nil {
@@ -922,9 +931,9 @@ func (at *AnnotationValue) strip() {
 	}
 }
 
-func (a *AnnotationTag) strip() {
-	if a.Value != nil {
-		a.Value.strip()
+func (at *AnnotationTag) strip() {
+	if at.Value != nil {
+		at.Value.strip()
 	}
 }
 

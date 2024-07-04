@@ -14,7 +14,7 @@ import (
 type helper struct {
 	templ      *template.Template
 	e          *gen.Entity
-	cg         *VueCLientGenerator
+	cg         *ClientGenerator
 	outDir     string
 	idField    *gen.Field
 	err        error
@@ -68,7 +68,7 @@ type componentDescriptor struct {
 	relPath string
 }
 
-func (cg *VueCLientGenerator) getTypesPath(e any) (string, error) {
+func (cg *ClientGenerator) getTypesPath(e any) (string, error) {
 	var features gen.Features
 	var name string
 	var pos lexer.Position
@@ -96,19 +96,19 @@ func (cg *VueCLientGenerator) getTypesPath(e any) (string, error) {
 	return filepath.Join("..", "..", "..", "types", tn), nil
 }
 
-func (th *helper) parse(str string) *helper {
-	if th.err != nil {
-		return th
+func (h *helper) parse(str string) *helper {
+	if h.err != nil {
+		return h
 	}
-	th.templ, th.err = th.templ.Parse(str)
-	return th
+	h.templ, h.err = h.templ.Parse(str)
+	return h
 }
 
-func (th *helper) addComponent(cmp string, p string, file *gen.File, name string) {
+func (h *helper) addComponent(cmp string, p string, file *gen.File, name string) {
 	if cmp != "" && p != "" {
 		if p[0] != '@' && p[0] != '.' && !filepath.IsAbs(p) {
-			if file.Package == th.e.File.Package {
-				if file.Name == th.e.File.Name {
+			if file.Package == h.e.File.Package {
+				if file.Name == h.e.File.Name {
 					p = "." + string(os.PathSeparator) + p
 				} else {
 					p = filepath.Join("..", file.Name, p)
@@ -117,16 +117,16 @@ func (th *helper) addComponent(cmp string, p string, file *gen.File, name string
 				p = filepath.Join("..", "..", file.Package, file.Name, p)
 			}
 		}
-		th.components[cmp] = vcComponentDescriptor{
+		h.components[cmp] = vcComponentDescriptor{
 			Comp: cmp,
 			Imp:  p,
 		}
 	} else {
-		th.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, name))
+		h.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, name))
 	}
 }
 
-func (cg *VueCLientGenerator) getTitleFieldName(e *gen.Entity) (name string, tip string) {
+func (cg *ClientGenerator) getTitleFieldName(e *gen.Entity) (name string, tip string) {
 	name = ""
 	tip = ""
 	for {

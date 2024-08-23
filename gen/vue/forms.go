@@ -239,10 +239,8 @@ const htmlFormArrayAsListTemplate = `{{define "ARRAY_AS_LIST"}}<div class="d-fle
   <div class="d-flex flex-row justify-space-around"><h3>{{Label .}}</h3>{{if not (Readonly .)}}<v-btn if="!disabled" text color="primary" @click="add{{FieldName .}}"><v-icon>add</v-icon> {{Label .}}</v-btn>{{end}}</div>
   <div v-if="value && value.{{FieldName .}}">
     <div class="d-flex flex-column" v-for="(it, idx) in value.{{FieldName .}}"  :key="idx">
-      <div class="d-flex flex-row align-center mt-3">
-        <div class="flex-grow-1 flex-shrink-0">
-          <{{LookupComponent . true}} v-model="value.{{FieldName .}}[idx]" :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}" @change="changed('{{FieldName .}}')"/>
-        </div>
+      <div class="d-flex flex-row align-center justify-space-between mt-3">
+				<{{LookupComponent . true}} v-model="value.{{FieldName .}}[idx]" :disabled="{{if Readonly .}}true{{else}}{{template "DISABLED_IN_FORM" .}}{{end}}" @change="changed('{{FieldName .}}')"/>
         <div class="flex-grow-0 flex-shrink-1 ml-2">
           <v-icon if="!disabled" color="error" @click="remove{{FieldName .}}(idx)" title="delete">mdi-close-circle</v-icon>
         </div>

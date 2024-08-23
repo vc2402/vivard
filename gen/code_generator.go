@@ -1,6 +1,7 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -257,7 +258,9 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 				readonly = set != "false"
 			}
 			f.Features.Set(FeaturesCommonKind, FCReadonly, readonly)
+			return true, nil
 		}
+		return true, errors.New("readonly annotation can be used with fields only")
 	}
 	return false, nil
 }
@@ -1273,9 +1276,9 @@ func (b *Builder) goEmptyValue(ref *TypeRef, idForRef ...bool) (f *jen.Statement
 				} else {
 
 				}
-			} else {
-				b.Descriptor.AddWarning(fmt.Sprintf("%s: undefined type: %s (ev)", b.File.FileName, ref.Type))
 			}
+		} else {
+			b.Descriptor.AddWarning(fmt.Sprintf("%s: undefined type: %s (ev)", b.File.FileName, ref.Type))
 		}
 		return jen.Nil()
 	}

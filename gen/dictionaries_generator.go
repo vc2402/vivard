@@ -651,11 +651,13 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 					    })
 					  } else */if c, ok := t.Features.Get(FeatGoKind, FCDictEnsurer); ok {
 						code := c.(jen.Code)
-						if idField.HasModifier(AttrModifierIDAuto) {
-							g.Id("maxId").Op(":=").Lit(0).Line()
-						}
 						g.List(jen.Id("values"), jen.Id("err")).Op(":=").Add(code)
 						g.Add(returnIfErrValue())
+						g.Line()
+						if idField.HasModifier(AttrModifierIDAuto) {
+							g.Id("maxId").Op(":=").Lit(0)
+							g.Id("needToUpdateSequence").Op(":=").Lit(false)
+						}
 						g.For(jen.List(jen.Id("_"), jen.Id("o")).Op(":=").Range().Id("values")).BlockFunc(
 							func(g *jen.Group) {
 								if idField.HasModifier(AttrModifierIDAuto) {
@@ -666,16 +668,22 @@ func (ncg *DictionariesGenerator) generateDictCacheLoader(t *Entity, idField *Fi
 								g.List(jen.Id("_"), jen.Err()).Op("=").Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, t.Name)).
 									Params(jen.Id("ctx"), jen.Id("o").Dot(idField.Name))
 								// thinking that err is not-found
-								g.If(jen.Err().Op("!=").Nil()).Block(
-									jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o")),
+								g.If(jen.Err().Op("!=").Nil()).BlockFunc(
+									func(gg *jen.Group) {
+										gg.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodNew, t.Name)).Params(jen.Id("ctx"), jen.Id("o"))
+										if idField.HasModifier(AttrModifierIDAuto) {
+											gg.Id("needToUpdateSequence").Op("=").Lit(true)
+										}
+									},
 								)
 							},
 						)
 						if idField.HasModifier(AttrModifierIDAuto) {
-							g.If(jen.Len(jen.Id("items").Op("==").Lit(0))).BlockFunc(
+							g.If(jen.Id("needToUpdateSequence")).BlockFunc(
 								func(g *jen.Group) {
 									//TODO may be we need to put this constant to options or get it from vvf file...
-									g.Id("maxId").Op("+=").Lit("1000")
+									//g.Id("maxId").Op("+=").Lit(1000)
+									g.Id("maxId").Op("++")
 									if f := ncg.desc.GetFeature(t, SequenceFeatures, SFSetCurrentValue); f != nil {
 										fun, ok := f.(func(args ...interface{}) jen.Code)
 										if ok {

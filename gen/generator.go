@@ -964,7 +964,7 @@ MetaLoop:
 				continue MetaLoop
 			}
 		}
-		return fmt.Errorf("at %s: %d: meta slice not understandable", m.Pos.Filename, m.Pos.Line+m.start)
+		return fmt.Errorf("at %s: %d: meta block can not be understood", m.Pos.Filename, m.Pos.Line+m.start)
 	}
 	return nil
 }

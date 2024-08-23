@@ -127,7 +127,7 @@ func (gqe *GQLEngine) doProcessQueryStatistics(qs queryStatistics) {
 	st.current.update(qs)
 	if len(qs.errors) > 0 && gqe.options.LogClientErrors {
 		if gqe.log != nil {
-			gqe.log.Error("error sent to client", zap.String("request", opName))
+			gqe.log.Error("error sent to client", zap.String("request", opName), zap.Int("ms", int(qs.duration/1000)))
 			for _, err := range qs.errors {
 				gqe.log.Error("error", zap.String("problem", err), zap.String("request", opName))
 			}

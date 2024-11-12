@@ -1595,25 +1595,68 @@ func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
 									jen.Id("ok"),
 								).BlockFunc(
 									func(g *jen.Group) {
-										g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Len(jen.Id("vals")))
-										g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).Block(
-											jen.Var().Id("obj").Op("*").Id(name),
-											jen.Var().Err().Error(),
-											jen.List(
-												jen.Id("obj"),
+										g.Var().Err().Error()
+										if t.FB(FeatGoKind, FCGBulkFilterRaw) {
+											g.List(
+												jen.Id("vals"),
 												jen.Err(),
-											).Op("=").Add(
-												cg.callInputParserMethod(
-													jen.Id("p").Dot("Context"),
-													name,
-													"param",
+											).Op("=").Id(EngineVar).Dot(fmt.Sprintf("%sBulkFilterRaw", name)).Call(
+												jen.Id("p").Dot("Context"),
+												jen.Id("vals"),
+											)
+											g.Add(returnIfErrValue(jen.Nil()))
+											g.If(jen.Len(jen.Id("vals")).Op("==").Lit(0)).Block(
+												jen.Return(jen.Nil(), jen.Nil()),
+											)
+										}
+										g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Lit(0), jen.Len(jen.Id("vals")))
+										g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).BlockFunc(
+											func(fg *jen.Group) {
+												fg.Var().Id("obj").Op("*").Id(name)
+												fg.List(
 													jen.Id("obj"),
-													false,
-												),
-											),
-											jen.Add(returnIfErrValue(jen.Nil())),
-											jen.Id("objs").Index(jen.Id("idx")).Op("=").Id("obj"),
+													jen.Err(),
+												).Op("=").Add(
+													cg.callInputParserMethod(
+														jen.Id("p").Dot("Context"),
+														name,
+														"param",
+														jen.Id("obj"),
+														false,
+													),
+												)
+												fg.Add(returnIfErrValue(jen.Nil()))
+												if t.FB(FeatGoKind, FCGBulkFilterEach) {
+													fg.List(
+														jen.Id("obj"),
+														jen.Err(),
+													).Op("=").Id(EngineVar).Dot(fmt.Sprintf("%sBulkFilterEach", name)).Call(
+														jen.Id("p").Dot("Context"),
+														jen.Id("obj"),
+														jen.Id("idx"),
+														jen.Len(jen.Id("vals")),
+													)
+													fg.Add(returnIfErrValue(jen.Nil()))
+													fg.If(jen.Id("obj").Op("==").Nil()).Block(
+														jen.Continue(),
+													)
+												}
+												fg.Id("objs").Op("=").Append(jen.Id("objs"), jen.Id("obj"))
+											},
 										)
+										if t.FB(FeatGoKind, FCGBulkFilterAll) {
+											g.List(
+												jen.Id("objs"),
+												jen.Err(),
+											).Op("=").Id(EngineVar).Dot(fmt.Sprintf("%sBulkFilterAll", name)).Call(
+												jen.Id("p").Dot("Context"),
+												jen.Id("objs"),
+											)
+											g.Add(returnIfErrValue(jen.Nil()))
+											g.If(jen.Len(jen.Id("objs")).Op("==").Lit(0)).Block(
+												jen.Return(jen.Nil(), jen.Nil()),
+											)
+										}
 										g.Return(
 											jen.List(
 												jen.Id(EngineVar).Dot(cg.desc.GetMethodName(method, name)).Params(

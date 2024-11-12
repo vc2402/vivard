@@ -42,11 +42,12 @@ type helperContext struct {
 }
 
 type formTab struct {
-	ID       string
-	label    string
-	order    int
-	roles    string
-	resource string
+	ID        string
+	label     string
+	order     int
+	roles     string
+	resource  string
+	component string
 }
 
 type fieldDescriptor struct {
@@ -185,6 +186,7 @@ func getTabs(e *gen.Entity) (ret formTabs, def string) {
 					tab.label = ta.GetString(vcaLabel, tab.label)
 					tab.roles = ta.GetString(vcaRoles, "")
 					tab.resource = ta.GetString(vcaResource, "")
+					tab.component = ta.GetString(vcaComponent, "")
 					if d := ta.GetBool(vcaDefault, false); d {
 						def = tab.ID
 					}

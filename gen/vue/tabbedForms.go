@@ -100,7 +100,7 @@ var htmlTabbedFormTemplate = `
   <v-tabs>
     {{range Tabs}}<v-tab {{if NeedRolesSecurity}}v-if="hasAccess('{{TabID .}}')"{{else if NeedResourceSecurity}}{{if ne (ResourceForTab (TabID .)) ""}}v-if="{{TabID .}}Accessible"{{end}}{{end}}>{{TabLable .}}</v-tab>
     {{end}}
-    {{range Tabs}}<v-tab-item {{if NeedRolesSecurity}}v-if="hasAccess('{{TabID .}}')"{{else if NeedResourceSecurity}}{{if ne (ResourceForTab (TabID .)) ""}}v-if="{{TabID .}}Accessible"{{end}}{{end}}>{{template "FORM_CONTENT" .}}</v-tab-item>
+    {{range Tabs}}<v-tab-item {{if NeedRolesSecurity}}v-if="hasAccess('{{TabID .}}')"{{else if NeedResourceSecurity}}{{if ne (ResourceForTab (TabID .)) ""}}v-if="{{TabID .}}Accessible"{{end}}{{end}}>{{if ne (ComponentForTab (TabID .)) ""}}<{{(ComponentForTab (TabID .))}} v-model="value"/>{{else}}{{template "FORM_CONTENT" .}}{{end}}</v-tab-item>
     {{end}}
   </v-tabs>
 {{end}}

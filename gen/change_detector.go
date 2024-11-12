@@ -43,7 +43,11 @@ func (cdg *BitSetChangeDetectorGenerator) SetDescriptor(proj *Project) {
 }
 
 // CheckAnnotation checks that annotation may be utilized by CodeGeneration
-func (cdg *BitSetChangeDetectorGenerator) CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error) {
+func (cdg *BitSetChangeDetectorGenerator) CheckAnnotation(
+	desc *Package,
+	ann *Annotation,
+	item interface{},
+) (bool, error) {
 	if ann.Name == cdAnnotationChangeDetector {
 		switch v := item.(type) {
 		case *Entity:
@@ -130,9 +134,16 @@ func (cdg *BitSetChangeDetectorGenerator) Generate(b *Builder) (err error) {
 				b.AddConst(constGroup, stmt)
 				if f.FB(FeaturesChangeDetectorKind, bcdfGenerateChecker) {
 					b.Functions.Add(
-						jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id(cdg.b.GetMethodName(f, CGIsChangedMethod)).Params().Bool().BlockFunc(func(g *jen.Group) {
-							g.Return(cdg.getFieldChangedStmt(f, jen.Id("o")))
-						}),
+						jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id(
+							cdg.b.GetMethodName(
+								f,
+								CGIsChangedMethod,
+							),
+						).Params().Bool().BlockFunc(
+							func(g *jen.Group) {
+								g.Return(cdg.getFieldChangedStmt(f, jen.Id("o")))
+							},
+						),
 						jen.Line(),
 					)
 				}
@@ -143,7 +154,11 @@ func (cdg *BitSetChangeDetectorGenerator) Generate(b *Builder) (err error) {
 }
 
 // ProvideFeature from FeatureProvider interface
-func (cdg *BitSetChangeDetectorGenerator) ProvideFeature(kind FeatureKind, name string, obj interface{}) (feature interface{}, ok ProvideFeatureResult) {
+func (cdg *BitSetChangeDetectorGenerator) ProvideFeature(
+	kind FeatureKind,
+	name string,
+	obj interface{},
+) (feature interface{}, ok ProvideFeatureResult) {
 	if kind == FeaturesChangeDetectorKind {
 		switch name {
 		case FCDChangedHook:
@@ -171,11 +186,16 @@ func (cdg *BitSetChangeDetectorGenerator) ProvideFeature(kind FeatureKind, name 
 }
 
 // OnEntityHook implements GeneratorHookHolder
-func (cdg *BitSetChangeDetectorGenerator) OnEntityHook(name HookType, mod HookModifier, e *Entity, vars *GeneratorHookVars) (code *jen.Statement, order int) {
+func (cdg *BitSetChangeDetectorGenerator) OnEntityHook(
+	name HookType,
+	mod HookModifier,
+	e *Entity,
+	vars *GeneratorHookVars,
+) (code *jen.Statement, order int) {
 	if name == HookSave || name == HookUpdate || name == HookCreate {
-		if mod == HMStart && e.FB(FeaturesChangeDetectorKind, bcdfChangedRequired) {
-			requires := e.FS(FeaturesChangeDetectorKind, FCDRequired)
-			for _, f := range e.Fields {
+		if mod == HMStart && e.FBB(FeaturesChangeDetectorKind, bcdfChangedRequired) {
+			requires := e.FSB(FeaturesChangeDetectorKind, FCDRequired)
+			for _, f := range e.GetFields(true, true) {
 				if requires == FCDREntity || f.FB(FeaturesChangeDetectorKind, bcdfChangedRequired) {
 					block := cdg.proj.OnHook(name, HMModified, f, vars)
 					if block != nil {
@@ -197,9 +217,17 @@ func (cdg *BitSetChangeDetectorGenerator) OnEntityHook(name HookType, mod HookMo
 }
 
 // OnFieldHook implements GeneratorHookHolder
-func (cdg *BitSetChangeDetectorGenerator) OnFieldHook(name HookType, mod HookModifier, f *Field, vars *GeneratorHookVars) (code *jen.Statement, order int) {
+func (cdg *BitSetChangeDetectorGenerator) OnFieldHook(
+	name HookType,
+	mod HookModifier,
+	f *Field,
+	vars *GeneratorHookVars,
+) (code *jen.Statement, order int) {
 	if (name == HookSet || name == HookSetNull) && mod == HMStart &&
-		(f.Parent().FS(FeaturesChangeDetectorKind, FCDRequired) == FCDREntity || f.FB(FeaturesChangeDetectorKind, FCDRequired)) {
+		(f.Parent().FS(FeaturesChangeDetectorKind, FCDRequired) == FCDREntity || f.FB(
+			FeaturesChangeDetectorKind,
+			FCDRequired,
+		)) {
 		code = cdg.getSetFieldChangedStmt(f, vars.GetObject())
 		fieldName := f.FS(FeatGoKind, FCGName)
 		switch name {
@@ -236,7 +264,12 @@ func (cdg *BitSetChangeDetectorGenerator) OnFieldHook(name HookType, mod HookMod
 }
 
 // OnMethodHook implements GeneratorHookHolder
-func (cdg *BitSetChangeDetectorGenerator) OnMethodHook(name HookType, mod HookModifier, m *Method, vars *GeneratorHookVars) (code *jen.Statement, order int) {
+func (cdg *BitSetChangeDetectorGenerator) OnMethodHook(
+	name HookType,
+	mod HookModifier,
+	m *Method,
+	vars *GeneratorHookVars,
+) (code *jen.Statement, order int) {
 	return nil, 0
 
 }
@@ -254,5 +287,10 @@ func (cdg *BitSetChangeDetectorGenerator) getSetFieldChangedStmt(f *Field, obj *
 		return nil
 	}
 	bitsField := f.Parent().FS(bscdFeatureKind, bcdfEntityBitMaskFieldName)
-	return jen.Add(obj).Dot(bitsField).Op("=").Add(obj).Dot(bitsField).Op("|").Id(f.FS(bscdFeatureKind, bcdfFieldBitConst))
+	return jen.Add(obj).Dot(bitsField).Op("=").Add(obj).Dot(bitsField).Op("|").Id(
+		f.FS(
+			bscdFeatureKind,
+			bcdfFieldBitConst,
+		),
+	)
 }

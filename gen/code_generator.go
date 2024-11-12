@@ -33,9 +33,13 @@ const (
 	// may be set for 'access' annotation to log user id in createdBy and modifiedBy
 	accessAnnotationUserID = "userID"
 
-	AnnotationBulk    = "bulk" // special annotation for bulk operations
-	AnnotationBulkNew = "new"
-	AnnotationBulkSet = "set"
+	AnnotationBulk           = "bulk" // special annotation for bulk operations
+	AnnotationBulkNew        = "new"
+	AnnotationBulkSet        = "set"
+	AnnotationBulkFilter     = "filter"
+	AnnotationBulkFilterRaw  = "raw"
+	AnnotationBulkFilterAll  = "all"
+	AnnotationBulkFilterEach = "each"
 )
 
 const (
@@ -92,7 +96,10 @@ const (
 	// FCGBulkNew - for Entity; true if should be generated bulk New operations
 	FCGBulkNew = "bulk-new"
 	// FCGBulkSet - for Entity; true if should be generated bulk Set operation
-	FCGBulkSet = "bulk-set"
+	FCGBulkSet        = "bulk-set"
+	FCGBulkFilterRaw  = "bulk-filter-raw"
+	FCGBulkFilterAll  = "bulk-filter-all"
+	FCGBulkFilterEach = "bulk-filter-each"
 )
 
 type EntityTypeSelector string
@@ -238,6 +245,10 @@ func (cg *CodeGenerator) CheckAnnotation(desc *Package, ann *Annotation, item in
 					if _, ok := value.GetBool(); !ok {
 						return true, fmt.Errorf("at %v: annotation %s:%s accepts only bool values", ann.Pos, ann.Name, value.Key)
 					}
+				case AnnotationBulkFilter:
+					if _, ok := value.GetString(); !ok {
+						return true, fmt.Errorf("at %v: annotation %s:%s should use string value", ann.Pos, ann.Name, value.Key)
+					}
 				default:
 					return true, fmt.Errorf(
 						"at %v: annotation %s: unknown annotation parameter: %s",
@@ -310,6 +321,23 @@ func (cg *CodeGenerator) Prepare(desc *Package) error {
 				t.Features.Set(FeatGoKind, FCGBulkNew, generate)
 				generate = ann.GetBool(AnnotationBulkSet, cg.options.GenerateBulkSet)
 				t.Features.Set(FeatGoKind, FCGBulkSet, generate)
+				filter := ann.GetString(AnnotationBulkFilter, "")
+				if filter != "" {
+					filterParts := strings.Split(filter, ",")
+					for _, part := range filterParts {
+						trimmed := strings.TrimSpace(part)
+						switch trimmed {
+						case AnnotationBulkFilterRaw:
+							t.Features.Set(FeatGoKind, FCGBulkFilterRaw, true)
+						case AnnotationBulkFilterAll:
+							t.Features.Set(FeatGoKind, FCGBulkFilterAll, true)
+						case AnnotationBulkFilterEach:
+							t.Features.Set(FeatGoKind, FCGBulkFilterEach, true)
+						default:
+							return fmt.Errorf("at %v: unknown filter parameter: %s", ann.Pos, trimmed)
+						}
+					}
+				}
 			}
 			err := cg.prepareFields(t)
 			if err != nil {

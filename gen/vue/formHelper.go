@@ -988,6 +988,14 @@ import {RoundNumber} from '@/filters/numberFilter';
 			}
 			return ""
 		},
+		"ComponentForTab": func(tab string) string {
+			for _, t := range ctx.tabs {
+				if t.ID == tab {
+					return t.component
+				}
+			}
+			return ""
+		},
 		"FieldRoles": func(f fieldDescriptor) string {
 			roles := f.ann.getStringDef(vcaRoles, "")
 			if roles == "" {

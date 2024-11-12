@@ -342,14 +342,40 @@ func IsPrimitiveType(name string) bool {
 	return name == TipBool || name == TipDate || name == TipFloat || name == TipInt || name == TipString || name == TipAny
 }
 
-// FS shorcut to Features.String()
+// FS is a shortcut to Features.String()
 func (e *Entity) FS(kind FeatureKind, name string) string {
 	return e.Features.String(kind, name)
 }
 
-// FB shorcut to Features.String()
+// FB is a shortcut to Features.Bool()
 func (e *Entity) FB(kind FeatureKind, name string) bool {
 	return e.Features.Bool(kind, name)
+}
+
+// FSB is a shortcut to Features.String() with base type inspection
+func (e *Entity) FSB(kind FeatureKind, name string) string {
+	val, ok := e.Features[e.Features.Name(kind, name)].(string)
+	if ok {
+		return val
+	}
+	if e.BaseTypeName != "" {
+		bc := e.GetBaseType()
+		return bc.FSB(kind, name)
+	}
+	return ""
+}
+
+// FBB is a shortcut to Features.Bool() with base type inspection
+func (e *Entity) FBB(kind FeatureKind, name string) bool {
+	val, ok := e.Features[e.Features.Name(kind, name)].(bool)
+	if ok {
+		return val
+	}
+	if e.BaseTypeName != "" {
+		bc := e.GetBaseType()
+		return bc.FBB(kind, name)
+	}
+	return false
 }
 
 func (e *Entity) GetIdField() *Field {

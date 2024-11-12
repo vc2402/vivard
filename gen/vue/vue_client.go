@@ -98,6 +98,8 @@ const (
 	vcaRoles = "roles"
 	// vcaResource - check access for resource
 	vcaResource = "resource"
+	// vcaComponent - use component for tab
+	vcaComponent = "component"
 	//vcaOrder - order for field (int) if not specified - 1000
 	vcaOrder = "order"
 	//vcaRow - row int (if not set - 1; if not set for all of the field - will be formed with wrap)

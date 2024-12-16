@@ -1014,6 +1014,7 @@ var htmlLookupTemplate = `
       :label="label"
       :item-text="'{{ItemText}}'"
       :item-value="'{{ItemValue}}'"
+      :item-disabled="disabledProperty"
       :return-object="returnObject"
       :loading="loading"
       :error-messages="problem || errorMessages"
@@ -1076,6 +1077,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:()=>[]}) errorMessages!: string|string[];
   @Prop() filter!: (value: {{TypeName .}}) => boolean;
   @Prop() autoSelect!: ((value: {{TypeName .}}) => boolean)|string|number|boolean;
+  @Prop({default: "disabled"}) disabledProperty!: string; 
 
   private selected: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
@@ -1191,6 +1193,9 @@ export default class {{TypeName}}LookupComponent extends Vue {
   @Prop({default:()=>[]}) rules!: string[] | ((v:any)=>string|boolean)[];
   @Prop({default:()=>[]}) errorMessages!: string|string[];{{if HasFindType}}
   @Prop({default:null}) query!:{{FindTypeName}}|null;{{end}}
+  @Prop() filter!: (value: {{TypeName .}}) => boolean;
+  @Prop({default: "disabled"}) disabledProperty!: string; 
+
   private selected: {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|null = null;
   private items: {{TypeName .}}[] = [];
   private loading = false;
@@ -1243,6 +1248,9 @@ export default class {{TypeName}}LookupComponent extends Vue {
           this.items = res;
         }{{if HasFindType}}
       } {{end}}
+			if(this.filter) {
+          this.items = this.items.filter(this.filter);
+      }
     } catch(exc) {
       this.problem = exc.toString();
     }

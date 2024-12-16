@@ -1610,7 +1610,11 @@ func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
 											)
 										}
 										g.Id("objs").Op(":=").Make(jen.Index().Op("*").Id(name), jen.Lit(0), jen.Len(jen.Id("vals")))
-										g.For(jen.List(jen.Id("idx"), jen.Id("param")).Op(":=").Range().Id("vals")).BlockFunc(
+										idxVar := "_"
+										if t.FB(FeatGoKind, FCGBulkFilterEach) {
+											idxVar = "idx"
+										}
+										g.For(jen.List(jen.Id(idxVar), jen.Id("param")).Op(":=").Range().Id("vals")).BlockFunc(
 											func(fg *jen.Group) {
 												fg.Var().Id("obj").Op("*").Id(name)
 												fg.List(
@@ -1633,7 +1637,7 @@ func (cg *GQLGenerator) generateGQLBulkMethods(t *Entity) error {
 													).Op("=").Id(EngineVar).Dot(fmt.Sprintf("%sBulkFilterEach", name)).Call(
 														jen.Id("p").Dot("Context"),
 														jen.Id("obj"),
-														jen.Id("idx"),
+														jen.Id(idxVar),
 														jen.Len(jen.Id("vals")),
 													)
 													fg.Add(returnIfErrValue(jen.Nil()))

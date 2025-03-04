@@ -107,9 +107,11 @@ func (ns *NatsSequenceProvider) Start(eng *Engine, prov dep.Provider) error {
 	if ns.nats == nil {
 		return errors.New("nats service not found")
 	}
-	err := ns.nats.AddRequestProcessor(processorName, sequenceTopic, ns, false)
-	if err != nil {
-		return err
+	if ns.mode == NsmServer {
+		err := ns.nats.AddRequestProcessor(processorName, sequenceTopic, ns, false)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -120,22 +122,25 @@ func (ns *NatsSequenceProvider) Provide() interface{} {
 
 func (ns *NatsSequenceProvider) ProcessNatsRequest(topic string, request []byte) (response []byte, err error) {
 	parts := strings.Split(topic, ".")
-	if parts[0] == sequenceTopicPrefix && len(parts) > 2 {
+	const partPrefix = 1
+	const partName = 2
+	const partCommand = 3
+	if parts[partPrefix] == sequenceTopicPrefix && len(parts) > 3 {
 		ctx := context.Background()
 		var sequence Sequence
 		if ns.provider != nil {
-			sequence, err = ns.provider.Sequence(ctx, parts[1])
+			sequence, err = ns.provider.Sequence(ctx, parts[partName])
 			if err != nil {
 				return nil, err
 			}
-		} else if s, ok := ns.sequences[parts[1]]; ok {
+		} else if s, ok := ns.sequences[parts[partName]]; ok {
 			sequence = s
 		}
 		if sequence == nil {
 			return nil, errors.New("sequence not found")
 		}
 		var result int
-		switch parts[2] {
+		switch parts[partCommand] {
 		case sequenceCommandCurrent:
 			result, err = sequence.Current(ctx)
 		case sequenceCommandNext:

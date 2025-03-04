@@ -73,10 +73,6 @@ func (msp *SequenceProvider) Start(eng *vivard.Engine, prov dep.Provider) error 
 	return nil
 }
 
-func (msp *SequenceProvider) Provide() interface{} {
-	return msp
-}
-
 // Sequence returns Sequence object with given name
 func (msp *SequenceProvider) Sequence(ctx context.Context, name string) (vivard.Sequence, error) {
 	return msp.sequence(ctx, name)

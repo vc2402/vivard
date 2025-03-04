@@ -21,10 +21,13 @@ const (
 
 const configZapLogger = "zap-logger"
 
-type Service interface {
+type InitProcessor interface {
 	// Prepare will be called for each registered service before SubEngine's Prepare
 	Prepare(eng *Engine, provider dep.Provider) error
 	Start(eng *Engine, provider dep.Provider) error
+}
+type Service interface {
+	InitProcessor
 	// Provide should return some low level object, e.g. *sql.DB for sql Service
 	Provide() interface{}
 }

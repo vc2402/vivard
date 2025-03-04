@@ -3,6 +3,7 @@ package vivard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/vc2402/go-natshelper"
 	dep "github.com/vc2402/vivard/dependencies"
 	"strconv"
@@ -63,6 +64,8 @@ func NewNatsSequenceProvider(args ...any) *NatsSequenceProvider {
 			ns.timeout = time.Duration(arg)
 		case time.Duration:
 			ns.timeout = arg
+		default:
+			fmt.Printf("undefined parameter for NatsSequenceProvider: %v (%T)\n", arg, arg)
 		}
 	}
 	return ns

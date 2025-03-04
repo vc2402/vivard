@@ -1,6 +1,9 @@
 package vivard
 
-import "context"
+import (
+	"context"
+	dep "github.com/vc2402/vivard/dependencies"
+)
 
 // Sequence - interface for named sequence of integer
 type Sequence interface {
@@ -19,4 +22,31 @@ type SequenceProvider interface {
 	// ListSequences returns sequences with names containing mask (case-insensitivity may depend on implementation)
 	// return map with Sequence name as key and current value as value
 	ListSequences(ctx context.Context, mask string) (map[string]int, error)
+}
+
+// SequenceService provides sequence provider
+type SequenceService struct {
+	provider SequenceProvider
+}
+
+func NewSequenceService(provider SequenceProvider) *SequenceService {
+	return &SequenceService{provider: provider}
+}
+
+func (ss *SequenceService) Prepare(eng *Engine, prov dep.Provider) (err error) {
+	if ip, ok := ss.provider.(InitProcessor); ok {
+		return ip.Prepare(eng, prov)
+	}
+	return
+}
+
+func (ss *SequenceService) Start(eng *Engine, prov dep.Provider) error {
+	if ip, ok := ss.provider.(InitProcessor); ok {
+		return ip.Start(eng, prov)
+	}
+	return nil
+}
+
+func (ss *SequenceService) Provide() interface{} {
+	return ss.provider
 }

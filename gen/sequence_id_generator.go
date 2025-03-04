@@ -50,6 +50,7 @@ func (cg *SequnceIDGenerator) Generate(bldr *Builder) (err error) {
 	if !cg.desc.Features.Bool(SequenceFeatures, sfInited) {
 		bldr.Descriptor.Engine.Initializator.Add(
 			jen.Id(EngineVar).Dot(engineSequenceProvider).Op("=").Id("v").Dot("GetService").Params(jen.Lit(vivard.ServiceSequenceProvider)).
+				Dot("Provide").Params().
 				Assert(jen.Qual(VivardPackage, "SequenceProvider")),
 		).Line()
 		cg.desc.Features.Set(SequenceFeatures, sfInited, true)

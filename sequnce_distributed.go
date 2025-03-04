@@ -76,6 +76,9 @@ func NewNatsSequenceProvider(args ...any) *NatsSequenceProvider {
 //	for server mode it is exported sequence
 //	for client mode (sequence may be nil) it is sequence that should be got from server
 func (ns *NatsSequenceProvider) RegisterSequence(name string, sequence Sequence) error {
+	if ns.sequences == nil {
+		ns.sequences = map[string]Sequence{}
+	}
 	ns.sequences[name] = sequence
 	return nil
 }

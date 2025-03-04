@@ -51,7 +51,7 @@ type NatsSequenceProvider struct {
 type NatsSequenceOptionTimeout time.Duration
 
 func NewNatsSequenceProvider(args ...any) *NatsSequenceProvider {
-	ns := &NatsSequenceProvider{mode: NsmServer, timeout: sequenceDefaultTimeout}
+	ns := &NatsSequenceProvider{mode: NsmServer, timeout: sequenceDefaultTimeout, sequences: map[string]Sequence{}}
 	for _, arg := range args {
 		switch arg := arg.(type) {
 		case *natshelper.Server:
@@ -76,9 +76,6 @@ func NewNatsSequenceProvider(args ...any) *NatsSequenceProvider {
 //	for server mode it is exported sequence
 //	for client mode (sequence may be nil) it is sequence that should be got from server
 func (ns *NatsSequenceProvider) RegisterSequence(name string, sequence Sequence) error {
-	if ns.sequences == nil {
-		ns.sequences = map[string]Sequence{}
-	}
 	ns.sequences[name] = sequence
 	return nil
 }
@@ -152,13 +149,21 @@ func (ns *NatsSequenceProvider) ProcessNatsRequest(topic string, request []byte)
 }
 
 func (ns *NatsSequenceProvider) Sequence(ctx context.Context, name string) (Sequence, error) {
-	if _, ok := ns.sequences[name]; !ok {
-		return ns.provider.Sequence(ctx, name)
+	if seq, ok := ns.sequences[name]; ok && seq != nil {
+		return seq, nil
 	}
-	return NatsSequence{
-		name:     name,
-		provider: ns,
-	}, nil
+	switch ns.mode {
+	case NsmServer:
+		if ns.provider != nil {
+			return ns.provider.Sequence(ctx, name)
+		}
+	case NsmClient:
+		return NatsSequence{
+			name:     name,
+			provider: ns,
+		}, nil
+	}
+	return nil, errors.New("sequence not found or provider not registered")
 }
 
 func (ns *NatsSequenceProvider) ListSequences(ctx context.Context, mask string) (map[string]int, error) {

@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	mongoGeneratorName                    = "Mongo"
-	mongoAnnotation                       = "mongo"
-	dbAnnotation                          = "db"
-	mongoAnnotationTagName                = "name"
+	mongoGeneratorName     = "Mongo"
+	mongoAnnotation        = "mongo"
+	dbAnnotation           = "db"
+	mongoAnnotationTagName = "name"
+	//mongoAnnotationTagNameMutable - bool; if true - store collection name in var instead of const
+	mongoAnnotationTagNameMutable         = "nameMutable"
 	mongoAnnotationTagIgnore              = "ignore"
 	mongoAnnotationTagGenerateIDGenerator = "idGenerator"
 	mongoAnnotationTagIncapsulate         = "incapsulate"
@@ -46,14 +48,15 @@ const (
 )
 
 const (
-	mongoFeatures        FeatureKind = "mongo"
-	mfInited                         = "inited"
-	mfDelete                         = "delete"
-	mfSortField                      = "sort-field"
-	mfSortDesc                       = "sort-desc"
-	mfCollectionConst                = "collection-const"
-	mfSkipQueryGenerator             = "skip-q-gen"
-	mfQueryPostProcessor             = "q-p-processor"
+	mongoFeatures           FeatureKind = "mongo"
+	mfInited                            = "inited"
+	mfDelete                            = "delete"
+	mfSortField                         = "sort-field"
+	mfSortDesc                          = "sort-desc"
+	mfCollectionConst                   = "collection-const"
+	mfSkipQueryGenerator                = "skip-q-gen"
+	mfQueryPostProcessor                = "q-p-processor"
+	mfCollectionNameMutable             = "collection-name-mutable"
 )
 
 const (
@@ -133,6 +136,24 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 				} else {
 					return true, fmt.Errorf(
 						"at %v: mongo annotation parameter '%s' can be used for find annotated type only",
+						ann.Pos,
+						v.Key,
+					)
+				}
+			case mongoAnnotationTagNameMutable:
+				if ent {
+					val, ok := v.GetBool()
+					if !ok {
+						return true, fmt.Errorf(
+							"at %v: mongo annotation parameter '%s' should be of bool type",
+							ann.Pos,
+							v.Key,
+						)
+					}
+					e.Features.Set(mongoFeatures, mfCollectionNameMutable, val)
+				} else {
+					return true, fmt.Errorf(
+						"at %v: mongo annotation parameter '%s' can be used for type only",
 						ann.Pos,
 						v.Key,
 					)
@@ -465,7 +486,11 @@ func (cg *MongoGenerator) Generate(bldr *Builder) (err error) {
 func (cg *MongoGenerator) generateConst(e *Entity) {
 	cn := cg.collectionName(e)
 	constName := e.FS(mongoFeatures, mfCollectionConst)
-	cg.b.consts["mongo_collections"] = append(cg.b.consts["mongo_collections"], jen.Id(constName).Op("=").Lit(cn))
+	if e.FB(mongoFeatures, mfCollectionNameMutable) {
+		cg.b.vars["mongo_collections"] = append(cg.b.vars["mongo_collections"], jen.Id(constName).Op("=").Lit(cn))
+	} else {
+		cg.b.consts["mongo_collections"] = append(cg.b.consts["mongo_collections"], jen.Id(constName).Op("=").Lit(cn))
+	}
 	return
 }
 

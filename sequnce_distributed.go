@@ -43,7 +43,6 @@ type NatsSequenceProvider struct {
 	mode      NatsSequenceProviderMode
 	sequences map[string]Sequence
 	provider  SequenceProvider
-	vivard    *Engine
 	nats      *natshelper.Server
 	timeout   time.Duration
 }
@@ -90,7 +89,9 @@ func (ns *NatsSequenceProvider) RegisterProvider(provider SequenceProvider) erro
 }
 
 func (ns *NatsSequenceProvider) Prepare(eng *Engine, prov dep.Provider) (err error) {
-	ns.vivard = eng
+	if ip, ok := ns.provider.(InitProcessor); ok {
+		return ip.Prepare(eng, prov)
+	}
 	return
 }
 
@@ -109,6 +110,9 @@ func (ns *NatsSequenceProvider) Start(eng *Engine, prov dep.Provider) error {
 		if err != nil {
 			return err
 		}
+	}
+	if ip, ok := ns.provider.(InitProcessor); ok {
+		return ip.Start(eng, prov)
 	}
 	return nil
 }

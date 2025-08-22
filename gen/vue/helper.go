@@ -12,14 +12,15 @@ import (
 )
 
 type helper struct {
-	templ      *template.Template
-	e          *gen.Entity
-	cg         *ClientGenerator
-	outDir     string
-	idField    *gen.Field
-	err        error
-	ctx        helperContext
-	components map[string]vcComponentDescriptor
+	templ              *template.Template
+	e                  *gen.Entity
+	cg                 *ClientGenerator
+	outDir             string
+	idField            *gen.Field
+	err                error
+	ctx                helperContext
+	components         map[string]vcComponentDescriptor
+	lateInitComponents map[string]vcComponentDescriptor
 }
 
 type annotationSet []*gen.Annotation
@@ -105,7 +106,7 @@ func (h *helper) parse(str string) *helper {
 	return h
 }
 
-func (h *helper) addComponent(cmp string, p string, file *gen.File, name string) {
+func (h *helper) addComponent(cmp string, p string, file *gen.File, name string, lateInit bool) {
 	if cmp != "" && p != "" {
 		if p[0] != '@' && p[0] != '.' && !filepath.IsAbs(p) {
 			if file.Package == h.e.File.Package {
@@ -118,9 +119,16 @@ func (h *helper) addComponent(cmp string, p string, file *gen.File, name string)
 				p = filepath.Join("..", "..", file.Package, file.Name, p)
 			}
 		}
-		h.components[cmp] = vcComponentDescriptor{
-			Comp: cmp,
-			Imp:  p,
+		if lateInit {
+			h.lateInitComponents[cmp] = vcComponentDescriptor{
+				Comp: cmp,
+				Imp:  p,
+			}
+		} else {
+			h.components[cmp] = vcComponentDescriptor{
+				Comp: cmp,
+				Imp:  p,
+			}
 		}
 	} else {
 		h.cg.desc.AddError(fmt.Errorf("internal error: addComponent was called with %s/%s for %s", cmp, p, name))

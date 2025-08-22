@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+
 	"github.com/dave/jennifer/jen"
 )
 
@@ -180,42 +181,55 @@ func (vg *VersionGenerator) ProvideCodeFragment(
 		if cf, ok := ctx.(*CodeFragmentContext); ok {
 			if cf.Entity != nil {
 				if fn := cf.Entity.FS(VersionFeatureKind, VFField); fn != "" {
-					if (action == MethodSet || action == MethodNew) &&
+					if (action == MethodSet ||
+						action == MethodNew ||
+						action == MethodDelete && cf.Entity.FS(
+							FeatGoKind,
+							FCGDeletedFieldName,
+						) != "") && // for Delete method we need to update version only if there is deleted field
 						point == CFGPointEnterBeforeHooks {
 						stmt := &jen.Statement{}
-						if action == MethodSet {
-							stmt = jen.If(
-								cf.GetParam(ParamObject).Dot(fn).Op("!=").Id(cf.ObjVar).Dot(fn).BlockFunc(
-									func(g *jen.Group) {
-										//TODO check behaviour
-										idField := cf.Entity.GetIdField()
-										g.Add(
-											vg.proj.CallCodeFeatureFunc(
-												cf.Entity, LogFeatureKind, LFWarn,
-												"version mismatch",
-												"f", jen.Lit(cf.MethodName),
-												"id", cf.GetParam(ParamObject).Dot(idField.Name),
-												"ver", jen.Id("o").Dot(fn),
-												"curr", jen.Id(cf.ObjVar).Dot(fn),
-											),
-										)
-									},
-								),
-							).Line()
-						}
-						if cf.Entity.FS(VersionFeatureKind, VFScope) == vaTypeWise {
-							seqName := cf.Entity.FS(VersionFeatureKind, VFSequenceName)
-							stmt.Add(
-								vg.proj.CallCodeFeatureFunc(
-									cf.Entity,
-									SequenceFeatures,
-									SFGenerateSequenceCall,
-									seqName,
-									jen.Id("o").Dot(fn),
-								),
+						if action == MethodDelete {
+							// let's call Set method to update version
+							stmt = jen.Id(EngineVar).Dot(vg.desc.GetMethodName(MethodSet, cf.Entity.Name)).Params(
+								jen.Id("ctx"),
+								jen.Id("o"),
 							)
 						} else {
-							stmt.Add(jen.Id("o").Dot(fn).Op("++"))
+							if action == MethodSet {
+								stmt = jen.If(
+									cf.GetParam(ParamObject).Dot(fn).Op("!=").Id(cf.ObjVar).Dot(fn).BlockFunc(
+										func(g *jen.Group) {
+											//TODO check behaviour
+											idField := cf.Entity.GetIdField()
+											g.Add(
+												vg.proj.CallCodeFeatureFunc(
+													cf.Entity, LogFeatureKind, LFWarn,
+													"version mismatch",
+													"f", jen.Lit(cf.MethodName),
+													"id", cf.GetParam(ParamObject).Dot(idField.Name),
+													"ver", jen.Id("o").Dot(fn),
+													"curr", jen.Id(cf.ObjVar).Dot(fn),
+												),
+											)
+										},
+									),
+								).Line()
+							}
+							if cf.Entity.FS(VersionFeatureKind, VFScope) == vaTypeWise {
+								seqName := cf.Entity.FS(VersionFeatureKind, VFSequenceName)
+								stmt.Add(
+									vg.proj.CallCodeFeatureFunc(
+										cf.Entity,
+										SequenceFeatures,
+										SFGenerateSequenceCall,
+										seqName,
+										jen.Id("o").Dot(fn),
+									),
+								)
+							} else {
+								stmt.Add(jen.Id("o").Dot(fn).Op("++"))
+							}
 						}
 						stmt.Line()
 						cf.Add(stmt)

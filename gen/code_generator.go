@@ -768,9 +768,9 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 										g.Id("obj").Dot(fieldName).Op("=").Id("val").Line()
 									}
 								} else if itsManyToMany {
-									//TODO: change string to id type
 									if idfld, ok := d.Features.GetField(FeaturesCommonKind, FCManyToManyIDField); ok {
-										g.Id("obj").Dot(fieldName).Op("=").Make(jen.Index().String(), jen.Len(jen.Id("val")))
+										idType := cg.goType(idfld.Type)
+										g.Id("obj").Dot(fieldName).Op("=").Make(jen.Index().Add(idType), jen.Len(jen.Id("val")))
 										g.For(jen.List(jen.Id("i"), jen.Id("v")).Op(":=").Range().Id("val")).Block(
 											jen.Id("obj").Dot(fieldName).Index(jen.Id("i")).Op("=").Id("v").Dot(idfld.Name),
 										)

@@ -179,11 +179,17 @@ export default class {{Name}}FormComponent extends Vue {
 {{if NeedSecurity}}{{SecurityInject}}{{end}}
   {{range Tabs}}{{if ne (ResourceForTab (TabID .)) ""}}{{TabID .}}Accessible = false;{{end}}
     {{end}}
+{{if LateInitRequired}}
+  beforeCreate() {
+    {{range LateInitRequiredComponents}}this.$options.components!.{{.Comp}} = require('{{.Imp}}').default 
+{{end}}
+  }
+{{end}}
   @Emit("input")
   emitValue() {
     return this.value;
   }
-  @Emit("change")
+  @Emit("change") 
   emitChanged(fld: string) {
     return fld;
   }

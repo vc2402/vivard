@@ -2158,7 +2158,12 @@ func (cg *GQLGenerator) inputParserCodeGenerator(
 				g.Add(assignTo).Op("=").Id("values")
 			} else {
 				if !t.Complex {
-					g.Add(assignTo).Op("=").Id("p").Dot("Args").Index(jen.Lit(name)).Assert(cg.GetInputGoType(t))
+					if refType, ok := cg.desc.FindType(t.Type); ok && refType.enum != nil {
+						//todo check package
+						g.Add(assignTo).Op("=").Id(refType.enum.Name).Parens(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Assert(jen.Id(refType.enum.AliasForType)))
+					} else {
+						g.Add(assignTo).Op("=").Id("p").Dot("Args").Index(jen.Lit(name)).Assert(cg.GetInputGoType(t))
+					}
 				} else {
 					g.Var().Err().Error()
 					g.Id("item").Op(":=").Id("p").Dot("Args").Index(jen.Lit(name))

@@ -225,7 +225,7 @@ func (ncg *DictionariesGenerator) Prepare(desc *Package) error {
 						if qual.Type.Array != nil {
 							dqt = qual.Type.Array.Type
 						}
-						if qb.Type.Type != dqt {
+						if qb.Type.Type != dqt && qb.Type.Type != dict.Pckg.Name+"."+dqt {
 							return fmt.Errorf(
 								"at %v: qualified-by should reference to type '%s' but refs to '%s'",
 								f.Pos,

@@ -1208,12 +1208,19 @@ export default class {{TypeName}}LookupComponent extends Vue {
     this.selected = this.value;
     if(this.selected && !this.items.length) {
       if(this.returnObject)
-      this.items = {{if CanBeMultiple}}this.multiple ? this.selected as {{TypeName .}}[] : {{end}}[this.selected as {{TypeName .}}];
+        this.items = {{if CanBeMultiple}}this.multiple ? this.selected as {{TypeName .}}[] : {{end}}[this.selected as {{TypeName .}}];
+      else
+        this.fillSelectedFromId(this.value as {{IDType .}});
     }
     
   }{{if HasFindType}}
+  mounted() {
+    this.onQueryChange();
+  }
+  
   @Watch('query') onQueryChange() {
-    this.search();
+    if(this.query)
+      this.search();
   }{{end}}
   @Emit('input') selectedChanged(): {{TypeName .}}|{{IDType .}}{{if CanBeMultiple}}|{{TypeName .}}[]|{{IDType .}}[]{{end}}|{{IDType .}}|null {
     return this.selected;
@@ -1248,7 +1255,7 @@ export default class {{TypeName}}LookupComponent extends Vue {
           this.items = res;
         }{{if HasFindType}}
       } {{end}}
-			if(this.filter) {
+      if(this.filter) {
           this.items = this.items.filter(this.filter);
       }
     } catch(exc) {
@@ -1291,8 +1298,11 @@ export default class {{TypeName}}LookupComponent extends Vue {
   async fillSelectedFromId(id: {{IDType .}}) {
     try {
       this.selected = await {{GetQuery .}}({{ApolloClient}}, id);
-      if(this.selected)
+      if(this.selected) {
         this.items = [this.selected];
+        if(!this.returnObject)
+          this.selected = this.selected.id;
+      }
     } catch(exc) {
       this.problem = exc.toString();
     }

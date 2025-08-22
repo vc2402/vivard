@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.vc2402"
-version = "0.7.4"
+version = "0.7.9"
 
 sourceSets["main"].java.srcDirs("src/main/gen")
 
@@ -33,7 +33,7 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("212")
-        untilBuild.set("242.*")
+        untilBuild.set("253.*")
     }
 
     signPlugin {

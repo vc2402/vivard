@@ -173,13 +173,14 @@ func (cg *ClientGenerator) newFormHelper(
 	}
 	sort.Sort(&ctx.fields)
 	th := &helper{
-		templ:      template.New(name),
-		cg:         cg,
-		e:          e,
-		idField:    idf,
-		outDir:     outDir,
-		ctx:        ctx,
-		components: map[string]vcComponentDescriptor{},
+		templ:              template.New(name),
+		cg:                 cg,
+		e:                  e,
+		idField:            idf,
+		outDir:             outDir,
+		ctx:                ctx,
+		components:         map[string]vcComponentDescriptor{},
+		lateInitComponents: map[string]vcComponentDescriptor{},
 	}
 
 	//components := map[string]vcComponentDescriptor{}
@@ -414,7 +415,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				cmp := qt.FS(featureVueKind, fVKLookupComponent)
 				p := qt.FS(featureVueKind, fVKLookupComponentPath)
 				if cmp != "" && p != "" {
-					hlp.addComponent(cmp, p, qt.File, qt.Name)
+					hlp.addComponent(cmp, p, qt.File, qt.Name, false)
 					return cmp
 				}
 			}
@@ -498,26 +499,26 @@ import {RoundNumber} from '@/filters/numberFilter';
 		"FormComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKFormComponent)
 			p := e.FS(featureVueKind, fVKFormComponentPath)
-			th.addComponent(cmp, p, e.File, e.Name)
+			th.addComponent(cmp, p, e.File, e.Name, false)
 			return cmp
 		},
 		"ViewComponent": func() string {
 			cmp := e.FS(featureVueKind, fVKViewComponent)
 			p := e.FS(featureVueKind, fVKViewComponentPath)
-			th.addComponent(cmp, p, e.File, e.Name)
+			th.addComponent(cmp, p, e.File, e.Name, false)
 			return cmp
 		},
 		"DialogComponent": func(hlp *helper) string {
 			cmp := e.FS(featureVueKind, fVKDialogComponent)
 			p := e.FS(featureVueKind, fVKDialogComponentPath)
-			th.addComponent(cmp, p, e.File, e.Name)
+			th.addComponent(cmp, p, e.File, e.Name, false)
 			return cmp
 		},
 		"DictEditComponent": func(hlp *helper, addToRequired bool) string {
 			cmp := e.FS(featureVueKind, fVKDictEditComponent)
 			if addToRequired {
 				p := e.FS(featureVueKind, fVKDictEditComponentPath)
-				th.addComponent(cmp, p, e.File, e.Name)
+				th.addComponent(cmp, p, e.File, e.Name, false)
 			}
 			return cmp
 		},
@@ -561,6 +562,28 @@ import {RoundNumber} from '@/filters/numberFilter';
 			return false
 		},
 		"LookupComponent": func(f fieldDescriptor, addToRequired bool) string {
+			var checkIfRecursive func(entity *gen.Entity) bool
+			checkIfRecursive = func(entity *gen.Entity) bool {
+				for _, field := range entity.GetFields(true, true) {
+					tip := field.Type.Type
+					if field.Type.Array != nil {
+						tip = field.Type.Array.Type
+					}
+					if tip != "" {
+						if t, ok := e.Pckg.FindType(tip); ok {
+							if t.Entity() != nil {
+								if t.Entity().Package() == e.Package() && t.Entity().Name == e.Name {
+									return true
+									if checkIfRecursive(t.Entity()) {
+										return true
+									}
+								}
+							}
+						}
+					}
+				}
+				return false
+			}
 			if cus := f.fld.Annotations.GetStringAnnotationDef(vueLookupAnnotation, vueATCustom, ""); cus != "" {
 				return cus
 			}
@@ -584,8 +607,10 @@ import {RoundNumber} from '@/filters/numberFilter';
 			var lc, lcp string
 			var genFile *gen.File
 			var entityName string
+			isRecursive := false
 			if t, ok := e.Pckg.FindType(typename); ok {
 				if t.Entity() != nil {
+					isRecursive = checkIfRecursive(t.Entity())
 					genFile = t.Entity().File
 					entityName = t.Entity().Name
 					if t.Entity().HasModifier(gen.TypeModifierEmbeddable) {
@@ -615,7 +640,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				}
 				if lc != "" && lcp != "" {
 					if addToRequired {
-						th.addComponent(lc, lcp, genFile, entityName)
+						th.addComponent(lc, lcp, genFile, entityName, isRecursive)
 					}
 				}
 			}
@@ -642,7 +667,7 @@ import {RoundNumber} from '@/filters/numberFilter';
 				hcp := he.FS(featureVueKind, fVKHistComponentPath)
 				if hf, ok := f.fld.Features.GetField(gen.FeatureHistKind, gen.FHHistoryField); ok {
 					fn := hf.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
-					th.addComponent(hc, hcp, he.File, he.Name)
+					th.addComponent(hc, hcp, he.File, he.Name, false)
 					return []string{fmt.Sprintf("<%s v-if=\"value && value.%s\" :items=\"value.%s\"/>", hc, fn, fn)}
 				}
 			}
@@ -725,6 +750,12 @@ import {RoundNumber} from '@/filters/numberFilter';
 		},
 		"RequiredComponents": func() map[string]vcComponentDescriptor {
 			return th.components
+		},
+		"LateInitRequiredComponents": func() map[string]vcComponentDescriptor {
+			return th.lateInitComponents
+		},
+		"LateInitRequired": func() bool {
+			return len(th.lateInitComponents) > 0
 		},
 		"AdditionalComponents": func() map[string]vcCustomComponentDescriptor { return customComponents },
 		"IsID": func(f fieldDescriptor) bool {

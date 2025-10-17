@@ -2,6 +2,7 @@ package gen
 
 import (
 	"fmt"
+
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard/utils"
 )
@@ -828,6 +829,42 @@ func (ncg *DictionariesGenerator) generateConfigSetter(name string) error {
 	return nil
 }
 
+func (ncg *DictionariesGenerator) generateConfigProviderWrapper(e *Entity) (string, error) {
+	wrapperTypeName := fmt.Sprintf("%sProviderWrapper", e.Name)
+	wrapper := jen.Type().Id(wrapperTypeName).Struct(
+		jen.Id(EngineVar).Op("*").Id("Engine"),
+	)
+	ncg.b.Types.Add(wrapper.Line())
+
+	f := jen.Func().Parens(jen.Id("w").Id(wrapperTypeName)).Id("GetConfigValue").Params(jen.Id("key").String()).Interface().Block(
+		jen.Return(jen.Id("w").Dot(EngineVar).Dot(e.Name).Dot("GetConfigValue").Call(jen.Id("key"))),
+	)
+	ncg.b.Functions.Add(f.Line())
+
+	f = jen.Func().Parens(jen.Id("w").Id(wrapperTypeName)).Id("SetConfigValue").
+		Params(jen.Id("key").String(), jen.Id("val").Interface()).Error().Block(
+		jen.Err().Op(":=").Id("w").Dot(EngineVar).Dot(e.Name).Dot("SetConfigValue").Call(jen.Id("key"), jen.Id("val")),
+		jen.If(jen.Err().Op("==").Nil()).Block(
+			jen.List(jen.Id("w").Dot(EngineVar).Dot(e.Name), jen.Err()).Op("=").Id("w").Dot(EngineVar).Dot(
+				ncg.desc.GetMethodName(
+					MethodSet,
+					e.Name,
+				),
+			).Params(
+				jen.Qual(
+					"context",
+					"TODO",
+				).Params(),
+				jen.Id("w").Dot(EngineVar).Dot(e.Name),
+			),
+		),
+		jen.Return(jen.Err()),
+	)
+
+	ncg.b.Functions.Add(f.Line())
+	return wrapperTypeName, nil
+}
+
 func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 	f := jen.Func().Parens(jen.Id("o").Op("*").Id(e.Name)).Id("GetConfigValue").Params(jen.Id("key").String()).Interface().BlockFunc(
 		func(g *jen.Group) {
@@ -987,6 +1024,7 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 
 	ncg.b.Functions.Add(f.Line())
 	if e.HasModifier(TypeModifierConfig) {
+		wrapperTypeName, _ := ncg.generateConfigProviderWrapper(e)
 		ncg.desc.Engine.Initialized.Add(
 			jen.Id(EngineVar).Dot(ncg.desc.GetMethodName(MethodGet, e.Name)).Params(
 				jen.Qual(
@@ -995,7 +1033,10 @@ func (ncg *DictionariesGenerator) generateConfigProvider(e *Entity) error {
 				).Params(),
 			).Line(),
 			jen.If(jen.Id(EngineVar).Dot(e.Name).Op("!=").Nil()).Block(
-				jen.Id("v").Dot("RegisterConfigProvider").Params(jen.Id(EngineVar).Dot(e.Name), jen.Lit(10)),
+				jen.Id("v").Dot("RegisterConfigProvider").Params(
+					jen.Id(wrapperTypeName).Values(jen.Id(EngineVar)),
+					jen.Lit(10),
+				),
 			).Line(),
 		)
 	}

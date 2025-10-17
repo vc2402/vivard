@@ -636,7 +636,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 								g.Id("obj").Op(":=").Id("o").Dot(ent.FS(FeatGoKind, FCGBaseTypeAccessorName)).Params()
 							}
 							if itsOneToMany {
-								if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
+								if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBEncapsulate); !ok || !inc {
 									if d.HasModifier(AttrModifierEmbedded) {
 										g.If(jen.Id("obj").Dot(fieldName).Op("!=").Nil()).Block(
 											jen.Return(jen.Id("obj").Dot(fieldName), jen.Nil()),
@@ -755,7 +755,7 @@ func (cg *CodeGenerator) generateEntity(ent *Entity) error {
 									)
 								}
 								if itsOneToMany {
-									if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBIncapsulate); !ok || !inc {
+									if inc, ok := d.Features.GetBool(FeaturesDBKind, FDBEncapsulate); !ok || !inc {
 										g.Return(
 											jen.Id(EngineVar).Dot(
 												cg.desc.GetMethodName(

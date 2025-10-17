@@ -6,11 +6,11 @@ import "github.com/dave/jennifer/jen"
 type Generator interface {
 	// Name returns the unique name of generator (plugin)
 	Name() string
-	// CheckAnnotation calls for every annotation to check that it is understandable
-	// item contains whether *Entity, *Field or *Method
-	// return (true, nil) if Generator does understand this annotation
-	//        (false, nil) if Generator does not understand this annotation
-	// error should be returned if annotation is understandable but contains errors
+	// CheckAnnotation calls for every annotation to check that it is understandable.
+	//   item contains whether *Entity, *Field or *Method;
+	//   return (true, nil) if Generator does understand this annotation;
+	//          (false, nil) if Generator does not understand this annotation;
+	//   error should be returned if the annotation is understandable but contains errors
 	CheckAnnotation(desc *Package, ann *Annotation, item interface{}) (bool, error)
 	// Prepare - prepare to generation
 	Prepare(desc *Package) error
@@ -412,8 +412,8 @@ const (
 	//FeaturesDBKind - common kind for db features
 	FeaturesDBKind FeatureKind = "db"
 
-	//FDBIncapsulate - bool; (for one-to-many field) store as array in document db
-	FDBIncapsulate = "incapsulate"
+	//FDBEncapsulate - bool; (for one-to-many field) store as array in document db
+	FDBEncapsulate = "encapsulate"
 	//FDBFlushDict - code for flushing whole dictionary to storage
 	FDBFlushDict = "flush_dict"
 )

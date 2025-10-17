@@ -2,8 +2,9 @@ package gen
 
 import (
 	"fmt"
-	"github.com/vc2402/vivard/utils"
 	"strings"
+
+	"github.com/vc2402/vivard/utils"
 
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard/mongo"
@@ -18,7 +19,7 @@ const (
 	mongoAnnotationTagNameMutable         = "nameMutable"
 	mongoAnnotationTagIgnore              = "ignore"
 	mongoAnnotationTagGenerateIDGenerator = "idGenerator"
-	mongoAnnotationTagIncapsulate         = "incapsulate"
+	mongoAnnotationTagEncapsulate         = "encapsulate"
 	mongoAnnotationTagAddBsonTag          = "bsonTag"
 	mongoAnnotationOrder                  = "sort"
 	mongoAnnotationDeleteMethod           = "deleteMethod"
@@ -100,7 +101,7 @@ func (cg *MongoGenerator) CheckAnnotation(desc *Package, ann *Annotation, item i
 			switch v.Key {
 			case mongoAnnotationTagName:
 			case mongoAnnotationTagIgnore:
-			case mongoAnnotationTagIncapsulate:
+			case mongoAnnotationTagEncapsulate:
 			case mongoAnnotationTagAddBsonTag:
 			case mongoAnnotationDeleteMethod:
 				if m, ok := v.GetString(); !ok || m != madmUpdate && m != madmDelete {
@@ -349,12 +350,12 @@ func (cg *MongoGenerator) Prepare(desc *Package) error {
 				}
 				if f.HasModifier(AttrModifierOneToMany) {
 					inc := false
-					if in, ok := f.Annotations.GetBoolAnnotation(mongoAnnotation, mongoAnnotationTagIncapsulate); ok {
+					if in, ok := f.Annotations.GetBoolAnnotation(mongoAnnotation, mongoAnnotationTagEncapsulate); ok {
 						inc = in
-					} else if in, ok := f.Annotations.GetBoolAnnotation(dbAnnotation, mongoAnnotationTagIncapsulate); ok {
+					} else if in, ok := f.Annotations.GetBoolAnnotation(dbAnnotation, mongoAnnotationTagEncapsulate); ok {
 						inc = in
 					}
-					f.Features.Set(FeaturesDBKind, FDBIncapsulate, inc)
+					f.Features.Set(FeaturesDBKind, FDBEncapsulate, inc)
 					if inc {
 						ft, _ := f.Features.GetEntity(FeaturesCommonKind, FCOneToManyType)
 						ft.Features.Set(FeaturesDBKind, FCIgnore, true)

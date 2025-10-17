@@ -538,6 +538,17 @@ import {RoundNumber} from '@/filters/numberFilter';
 				if gen.IsPrimitiveType(f.fld.Type.Array.Type) {
 					return false
 				}
+				if f.tab != "" {
+					// let's check if there is a component defined for this tab we do not need to generate array methods
+					for _, t := range ctx.tabs {
+						if t.ID == f.tab {
+							if t.component != "" {
+								return false
+							}
+							break
+						}
+					}
+				}
 				if e, ok := cg.desc.FindType(f.fld.Type.Array.Type); ok && e.Entity() != nil {
 					if e.Entity().HasModifier(gen.TypeModifierEmbeddable) {
 						name := e.Entity().FS(js.Features, js.FInstanceGenerator)

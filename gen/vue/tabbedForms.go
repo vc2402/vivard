@@ -19,7 +19,7 @@ func (h *helper) generateGridForm(formName string, compPath ...string) error {
 	h.parse(baseTempl).
 		parse(formTempl).
 		parse(newHtmlFormListTemplate).
-		parse(newHtmlFormDisbledTemplate).
+		parse(newHtmlFormDisabledTemplate).
 		// parse(htmlFormCardTemplate).
 		parse(htmlFormInputTemplate).
 		parse(htmlFormTextInputTemplate).
@@ -106,7 +106,7 @@ var htmlTabbedFormTemplate = `
 {{end}}
 `
 
-const newHtmlFormDisbledTemplate = `{{define "DISABLED_IN_FORM"}}disabled===true || isFieldDisabled('{{FieldName .}}'){{end}}`
+const newHtmlFormDisabledTemplate = `{{define "DISABLED_IN_FORM"}}disabled===true || isFieldDisabled('{{FieldName .}}'){{end}}`
 
 var htmlGridFormTemplate = `
 {{define "FORM_CONTENT"}}

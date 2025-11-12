@@ -3,13 +3,14 @@ package gen
 import (
 	"errors"
 	"fmt"
-	"github.com/alecthomas/participle/lexer"
-	"github.com/vc2402/vivard/utils"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/alecthomas/participle/lexer"
+	"github.com/vc2402/vivard/utils"
 
 	"github.com/alecthomas/participle"
 	"github.com/dave/jennifer/jen"
@@ -796,7 +797,7 @@ func (p *Project) addExternal(e *Entity, packag *Package) error {
 func (p *Project) RegisterExternalType(pckg, alias string, name string) error {
 	if alias != "" {
 		if p, ok := p.extPackages[alias]; ok && p != pckg {
-			return fmt.Errorf("attpmt to reassign alias '%s' from package '%s' to '%s", alias, p, pckg)
+			return fmt.Errorf("attempt to reassign alias '%s' from package '%s' to '%s", alias, p, pckg)
 		}
 		p.extPackages[alias] = pckg
 	}

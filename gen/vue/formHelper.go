@@ -245,8 +245,14 @@ func (cg *ClientGenerator) newFormHelper(
 				return ""
 			}
 		},
-		"FieldName": func(f fieldDescriptor) string {
-			return f.fld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
+		"FieldName": func(f fieldDescriptor, params ...any) string {
+			fn := f.fld.Annotations.GetStringAnnotationDef(js.Annotation, js.AnnotationName, "")
+			if len(params) > 0 {
+				if params[0] == "U" {
+					fn = strings.ToUpper(fn[:1]) + fn[1:]
+				}
+			}
+			return fn
 		},
 		"AttrName": func(f fieldDescriptor) string { return cg.getJSAttrNameForDisplay(f.fld, false, false) },
 		"TableAttrName": func(f fieldDescriptor) string {

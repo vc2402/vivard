@@ -3,9 +3,10 @@ package gen
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/alecthomas/participle/lexer"
 	"github.com/vc2402/vivard/utils"
-	"strings"
 
 	"github.com/dave/jennifer/jen"
 )
@@ -665,6 +666,7 @@ func (desc *Package) generateEngine() error {
 				cf.Push(g)
 				desc.Project.ProvideCodeFragment(CodeFragmentModuleGeneral, cf.MethodKind, CFGEngineEnter, &cf, false)
 				g.Add(desc.Engine.Initializator)
+				g.Add(extInit)
 				utils.WalkMap(
 					desc.Engine.SingletonInits,
 					func(statement *jen.Statement, _ string) error {
@@ -674,7 +676,6 @@ func (desc *Package) generateEngine() error {
 				)
 
 				g.Add(desc.Engine.Initialized)
-				g.Add(extInit)
 				if desc.Engine.prepAdd != nil {
 					g.Add(desc.Engine.prepAdd)
 				}

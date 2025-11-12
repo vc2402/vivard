@@ -203,7 +203,7 @@ export default class {{Name}}FormComponent extends Vue {
     this.value = {{InstanceGenerator}}
   }
   {{range (GetFields .)}}{{if and (eq (FormComponentType .) "array") (ArrayAsList .)}}
-  add{{FieldName .}}() {
+  add{{FieldName . "U"}}() {
     if(!this.value)
       this.addValue()
     if(!this.value!.{{FieldName .}})
@@ -211,7 +211,7 @@ export default class {{Name}}FormComponent extends Vue {
     this.value!.{{FieldName .}}!.push({{InstanceGeneratorForField .}})
   }
 
-  remove{{FieldName .}}(idx: number) {
+  remove{{FieldName . "U"}}(idx: number) {
     if(this.value && this.value.{{FieldName .}} && this.value.{{FieldName .}}[idx])
       this.value.{{FieldName .}}.splice(idx, 1);
   }{{end}}{{end}}

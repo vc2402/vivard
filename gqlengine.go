@@ -1,13 +1,15 @@
 package vivard
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	dep "github.com/vc2402/vivard/dependencies"
-	"go.uber.org/zap"
 	"net/http"
 	"sync"
 	"time"
+
+	dep "github.com/vc2402/vivard/dependencies"
+	"go.uber.org/zap"
 
 	"github.com/graphql-go/graphql"
 	"github.com/graphql-go/handler"
@@ -30,6 +32,7 @@ type GQLOptions struct {
 	LogClientErrors          bool
 	StatisticsSnapshotStep   time.Duration
 	StatisticsSnapshotsCount int
+	logRequestsLongerThan    time.Duration
 }
 type GQLTypeGenerator func() graphql.Output
 type GQLInputTypeGenerator func() graphql.Input
@@ -177,26 +180,54 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			Context:        r.Context(),
 		}
 		var st queryStatistics
-		if gqe.collectStatistics {
+		uid := -1
+		getUserID := func(ctx context.Context) int {
+			if uid >= 0 {
+				return uid
+			}
+			uid = 0
+			if rc, ok := ctx.(Context); ok && rc != nil {
+				uid = rc.UserID()
+			}
+			return uid
+		}
+		if gqe.collectStatistics || gqe.options.logRequestsLongerThan > 0 {
 			st = gqe.startQueryStatistics(opts.OperationName, opts.Query)
 		}
 		result := graphql.Do(params)
-		if gqe.collectStatistics {
+		if gqe.collectStatistics || gqe.options.logRequestsLongerThan > 0 {
 			st.finish(result)
-			gqe.collectQueryStatistics(st)
+			if gqe.collectStatistics {
+				gqe.collectQueryStatistics(st)
+			}
+			if gqe.options.logRequestsLongerThan > 0 && st.duration > gqe.options.logRequestsLongerThan {
+				if gqe.log != nil {
+					gqe.log.Error(
+						"too long request",
+						zap.String("request", opts.OperationName),
+						zap.Any("vars", opts.Variables),
+						zap.Duration("duration", st.duration),
+						zap.Int("uid", getUserID(r.Context())),
+					)
+				} else {
+					fmt.Printf(
+						"too long request [%v] '%s' (uid: %d; vars: %+v) ",
+						st.duration,
+						opts.OperationName,
+						getUserID(r.Context()),
+						opts.Variables,
+					)
+				}
+			}
 		}
 
 		if len(result.Errors) > 0 && gqe.options.LogClientErrors {
-			uid := -1
-			if rc, ok := r.Context().(Context); ok && rc != nil {
-				uid = rc.UserID()
-			}
 			if gqe.log != nil {
 				gqe.log.Error(
 					"error sent to client",
 					zap.String("request", opts.OperationName),
 					zap.Any("vars", opts.Variables),
-					zap.Int("uid", uid),
+					zap.Int("uid", getUserID(r.Context())),
 				)
 				for _, err := range result.Errors {
 					gqe.log.Error("error", zap.String("problem", err.Error()))
@@ -205,7 +236,7 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 				fmt.Printf(
 					"error sent to client for request '%s' (uid: %d; vars: %+v) ",
 					opts.OperationName,
-					uid,
+					getUserID(r.Context()),
 					opts.Variables,
 				)
 				for i, err := range result.Errors {

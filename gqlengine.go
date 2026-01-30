@@ -186,6 +186,11 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 				return uid
 			}
 			uid = 0
+			rc := RequestContext(ctx)
+			if rc.UserID() >= 0 {
+				uid = rc.UserID()
+				return uid
+			}
 			if rc, ok := ctx.(Context); ok && rc != nil {
 				uid = rc.UserID()
 			}
@@ -200,19 +205,20 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			if gqe.collectStatistics {
 				gqe.collectQueryStatistics(st)
 			}
-			if gqe.options.LogRequestsLongerThan > 0 && st.finished.Sub(st.started) > gqe.options.LogRequestsLongerThan {
+			duration := st.finished.Sub(st.started)
+			if gqe.options.LogRequestsLongerThan > 0 && duration > gqe.options.LogRequestsLongerThan {
 				if gqe.log != nil {
 					gqe.log.Error(
 						"too long request",
 						zap.String("request", opts.OperationName),
 						zap.Any("vars", opts.Variables),
-						zap.Duration("duration", st.duration),
+						zap.Duration("duration", duration),
 						zap.Int("uid", getUserID(r.Context())),
 					)
 				} else {
 					fmt.Printf(
 						"too long request [%v] '%s' (uid: %d; vars: %+v) ",
-						st.duration,
+						duration,
 						opts.OperationName,
 						getUserID(r.Context()),
 						opts.Variables,

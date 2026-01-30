@@ -200,7 +200,7 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			if gqe.collectStatistics {
 				gqe.collectQueryStatistics(st)
 			}
-			if gqe.options.LogRequestsLongerThan > 0 && st.duration > gqe.options.LogRequestsLongerThan {
+			if gqe.options.LogRequestsLongerThan > 0 && st.finished.Sub(st.started) > gqe.options.LogRequestsLongerThan {
 				if gqe.log != nil {
 					gqe.log.Error(
 						"too long request",

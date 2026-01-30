@@ -32,7 +32,7 @@ type GQLOptions struct {
 	LogClientErrors          bool
 	StatisticsSnapshotStep   time.Duration
 	StatisticsSnapshotsCount int
-	logRequestsLongerThan    time.Duration
+	LogRequestsLongerThan    time.Duration
 }
 type GQLTypeGenerator func() graphql.Output
 type GQLInputTypeGenerator func() graphql.Input
@@ -191,16 +191,16 @@ func (gqe *GQLEngine) HTTPHandler(pretty ...bool) http.HandlerFunc {
 			}
 			return uid
 		}
-		if gqe.collectStatistics || gqe.options.logRequestsLongerThan > 0 {
+		if gqe.collectStatistics || gqe.options.LogRequestsLongerThan > 0 {
 			st = gqe.startQueryStatistics(opts.OperationName, opts.Query)
 		}
 		result := graphql.Do(params)
-		if gqe.collectStatistics || gqe.options.logRequestsLongerThan > 0 {
+		if gqe.collectStatistics || gqe.options.LogRequestsLongerThan > 0 {
 			st.finish(result)
 			if gqe.collectStatistics {
 				gqe.collectQueryStatistics(st)
 			}
-			if gqe.options.logRequestsLongerThan > 0 && st.duration > gqe.options.logRequestsLongerThan {
+			if gqe.options.LogRequestsLongerThan > 0 && st.duration > gqe.options.LogRequestsLongerThan {
 				if gqe.log != nil {
 					gqe.log.Error(
 						"too long request",

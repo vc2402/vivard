@@ -83,7 +83,7 @@ var htmlGridDialogTemplate = `
       <v-card-text>
         <v-progress-linear v-if="loading" intermediate></v-progress-linear>
         <div v-if="problem">{{"{{problem}}"}}</div>
-        <{{SelfFormComponent}} v-model="value" :isNew="isNew" :disabled="readonly || forDelete"{{if WithValidator}} :validator="validator"{{end}}/>
+        <{{SelfFormComponent}} v-model="value" :isNew="isNew" :disabled="readonly || forDelete || disabled"{{if WithValidator}} :validator="validator"{{end}}/>
       </v-card-text>
       <v-divider></v-divider>
       <v-card-actions>
@@ -134,6 +134,7 @@ export default class {{.Name}}DialogComponent extends Vue {
   @Prop({default:false}) readonly!: boolean;
   @Prop({default:"{{Literal "okButton"}}"}) okText!: string;
   @Prop({default:"{{Literal "deleteButton"}}"}) deleteText!: string;
+  @Prop({default:false}) disabled!: boolean|{[key:string]:boolean};
   private value: {{TypeName .}} | null = null;
   private isNew = false;
   

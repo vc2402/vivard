@@ -3,10 +3,11 @@ package gen
 import (
 	"errors"
 	"fmt"
-	"github.com/alecthomas/participle/lexer"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/alecthomas/participle/lexer"
 
 	"github.com/dave/jennifer/jen"
 	"github.com/vc2402/vivard"
@@ -2159,8 +2160,13 @@ func (cg *GQLGenerator) inputParserCodeGenerator(
 			} else {
 				if !t.Complex {
 					if refType, ok := cg.desc.FindType(t.Type); ok && refType.enum != nil {
-						//todo check package
-						g.Add(assignTo).Op("=").Id(refType.enum.Name).Parens(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Assert(jen.Id(refType.enum.AliasForType)))
+						//use GoType to check if we need to use a package
+						g.Add(assignTo).Op("=").Add(
+							cg.b.GoType(
+								t,
+								true,
+							),
+						).Parens(jen.Id("p").Dot("Args").Index(jen.Lit(name)).Assert(jen.Id(refType.enum.AliasForType)))
 					} else {
 						g.Add(assignTo).Op("=").Id("p").Dot("Args").Index(jen.Lit(name)).Assert(cg.GetInputGoType(t))
 					}

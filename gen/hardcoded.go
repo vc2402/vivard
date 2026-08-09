@@ -273,7 +273,12 @@ func (cg *CodeGenerator) parseHardcoded(m *Meta) (ok bool, err error) {
 					for _, fld := range t.enum.Fields {
 						if *a.Ident == fld.Name {
 							if cg.desc == t.enum.Pckg {
-								return jen.Id(fld.Name), nil
+								if notNullable {
+									val = jen.Id(fld.Name)
+								} else {
+									val = jen.Qual(VivardPackage, "Ptr").Params(jen.Id(fld.Name))
+								}
+								return val, nil
 							} else {
 								return jen.Qual(t.enum.Pckg.fullPackage, fld.Name), nil
 							}
